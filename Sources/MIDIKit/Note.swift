@@ -13,6 +13,7 @@ public struct MIDINote: Sendable, Equatable {
     
     public var onset: MusicTimeStamp
     public var offset: MusicTimeStamp
+    /// The key
     public var note: UInt8
     public var velocity: UInt8
     public var channel: UInt8

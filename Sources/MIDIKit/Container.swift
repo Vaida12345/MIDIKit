@@ -134,11 +134,10 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
                             if event.data2 == 127 {
                                 sustainOpen = true
                                 sustainStart = timeStamp
-                            } else if event.data2 == 0 {
-                                assert(sustainOpen)
-                                midiTrack.sustains.append(MIDITrack.SustainEvent(onset: sustainStart, offset: timeStamp))
                             } else {
-                                fatalError()
+                                if sustainOpen {
+                                    midiTrack.sustains.append(MIDITrack.SustainEvent(onset: sustainStart, offset: timeStamp))
+                                }
                             }
                         }
                         
