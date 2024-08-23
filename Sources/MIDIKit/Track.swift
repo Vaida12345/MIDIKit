@@ -41,16 +41,9 @@ public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertibl
             }
         }
         
-        var printed = 0
         for note in notes {
             var message = MIDINoteMessage(channel: note.channel, note: note.note, velocity: note.velocity, releaseVelocity: note.releaseVelocity, duration: Float32(note.offset - note.onset))
             MusicTrackNewMIDINoteEvent(musicTrack, note.onset, &message)
-            
-            if printed < 2 {
-                print(message)
-                print(note.onset)
-            }
-            printed += 1
         }
         
         for sustain in sustains {
