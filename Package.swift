@@ -11,14 +11,14 @@ let package = Package(
             name: "MIDIKit",
             targets: ["MIDIKit"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/Vaida12345/DetailedDescription.git", branch: "main")
+    ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
-        .target(
-            name: "MIDIKit"),
-        .testTarget(
-            name: "MIDIKitTests",
-            dependencies: ["MIDIKit"]
-        ),
+        .target(name: "MIDIKit", dependencies: ["DetailedDescription"]),
+        .executableTarget(name: "Client", dependencies: ["MIDIKit"], path: "Client"),
+        .testTarget(name: "Tests", dependencies: ["MIDIKit"], path: "Tests"),
     ]
 )
