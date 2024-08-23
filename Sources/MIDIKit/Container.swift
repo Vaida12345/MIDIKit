@@ -10,7 +10,7 @@ import AudioToolbox
 import DetailedDescription
 
 
-public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConvertible, Sendable {
+public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConvertible, Sendable, Equatable {
     
     public var tracks: [MIDITrack]
     
@@ -45,13 +45,15 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
         return sequence
     }
     
-    public func writeData(to destination: URL) {
-        MusicSequenceFileCreate(self.makeSequence(), destination as CFURL, .midiType, .eraseFile, 0)
+    public func writeData(to destination: URL) throws {
+        let code = MusicSequenceFileCreate(self.makeSequence(), destination as CFURL, .midiType, .eraseFile, 0)
+        guard code == noErr else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(code)) }
     }
     
-    public func data() -> Data {
+    public func data() throws -> Data {
         var data: Unmanaged<CFData>?
-        MusicSequenceFileCreateData(self.makeSequence(), .midiType, .eraseFile, 0, &data)
+        let code = MusicSequenceFileCreateData(self.makeSequence(), .midiType, .eraseFile, 0, &data)
+        guard code == noErr else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(code)) }
         return data!.takeRetainedValue() as Data
     }
     

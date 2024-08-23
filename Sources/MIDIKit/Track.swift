@@ -11,7 +11,7 @@ import DetailedDescription
 import AVFoundation
 
 
-public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertible, Sendable {
+public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertible, Sendable, Equatable {
     
     public var notes: [Note]
     
@@ -65,7 +65,7 @@ public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertibl
     
     public typealias Note = MIDINote
     
-    public struct SustainEvent: Sendable {
+    public struct SustainEvent: Sendable, Equatable {
         
         public let onset: MusicTimeStamp
         
@@ -96,7 +96,7 @@ public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertibl
     /// - 110
     /// - 111
     /// ```
-    public struct MetaEvent: Sendable {
+    public struct MetaEvent: Sendable, Equatable {
         
         public let timestamp: MusicTimeStamp
         

@@ -9,7 +9,7 @@ import AudioToolbox
 import DetailedDescription
 
 
-public struct MIDITempoTrack: Sendable, CustomStringConvertible, CustomDetailedStringConvertible {
+public struct MIDITempoTrack: Sendable, CustomStringConvertible, CustomDetailedStringConvertible, Equatable {
     
     public var events: [MIDITrack.MetaEvent]
     
@@ -33,7 +33,7 @@ public struct MIDITempoTrack: Sendable, CustomStringConvertible, CustomDetailedS
         }
     }
     
-    public struct Tempo: Sendable {
+    public struct Tempo: Sendable, Equatable {
         
         public let timestamp: MusicTimeStamp
         
