@@ -35,9 +35,22 @@ public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertibl
             fatalError()
         }
         
+        for metaEvent in metaEvents {
+            _ = metaEvent.withUnsafePointer { pointer in
+                MusicTrackNewMetaEvent(musicTrack, metaEvent.timestamp, pointer)
+            }
+        }
+        
+        var printed = 0
         for note in notes {
             var message = MIDINoteMessage(channel: note.channel, note: note.note, velocity: note.velocity, releaseVelocity: note.releaseVelocity, duration: Float32(note.offset - note.onset))
             MusicTrackNewMIDINoteEvent(musicTrack, note.onset, &message)
+            
+            if printed < 2 {
+                print(message)
+                print(note.onset)
+            }
+            printed += 1
         }
         
         for sustain in sustains {
@@ -45,11 +58,6 @@ public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertibl
             var last  = MIDIChannelMessage(status: 0xB0, data1: 64, data2: 0,   reserved: 0)
             MusicTrackNewMIDIChannelEvent(musicTrack, sustain.onset, &first)
             MusicTrackNewMIDIChannelEvent(musicTrack, sustain.offset, &last)
-        }
-        
-        for metaEvent in metaEvents {
-            var event = metaEvent.event
-            MusicTrackNewMetaEvent(musicTrack, metaEvent.timestamp, &event)
         }
         
         return musicTrack
@@ -77,14 +85,44 @@ public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertibl
         
     }
     
+    /// A wrapper for meta event
+    ///
+    /// Byte layout
+    /// ```
+    /// - 3 // metaEventType
+    /// - 0 // unused1
+    /// - 0 // unused2
+    /// - 0 // unused3
+    /// - 5 // dataLength 1
+    /// - 0 // dataLength 2
+    /// - 0 // dataLength 3
+    /// - 0 // dataLength 4
+    /// - 80 // data
+    /// - 105 // ...
+    /// - 97
+    /// - 110
+    /// - 111
+    /// ```
     public struct MetaEvent: Sendable {
         
         public let timestamp: MusicTimeStamp
         
-        public let event: MIDIMetaEvent
+        public let type: UInt8
         
-        /// The extracted data, only for printing purposes.
         public let data: Data
+        
+        
+        func withUnsafePointer<T>(body: (UnsafePointer<MIDIMetaEvent>) throws -> T) rethrows -> T {
+            let data = Swift.withUnsafePointer(to: type) { pointer in
+                Data(bytes: pointer, count: 1)
+            } + Data(repeating: 0, count: 3) + Swift.withUnsafePointer(to: UInt32(data.count)) { pointer in
+                Data(bytes: pointer, count: 4)
+            } + data
+            
+            return try data.withUnsafeBytes { pointer in
+                try body(pointer.baseAddress!.assumingMemoryBound(to: MIDIMetaEvent.self))
+            }
+        }
         
     }
     
@@ -118,7 +156,7 @@ extension MIDITrack.SustainEvent: CustomStringConvertible {
 extension MIDITrack.MetaEvent: CustomStringConvertible {
     
     public var description: String {
-        let type = switch AVMIDIMetaEvent.EventType(rawValue: Int(event.metaEventType)) {
+        let type = switch AVMIDIMetaEvent.EventType(rawValue: Int(self.type)) {
         case .copyright: "copyright"
         case .cuePoint: "cue point"
         case .endOfTrack: "end of track"
@@ -140,7 +178,7 @@ extension MIDITrack.MetaEvent: CustomStringConvertible {
             fatalError()
         }
         
-        let content: Any? = switch AVMIDIMetaEvent.EventType(rawValue: Int(event.metaEventType)) {
+        let content: Any? = switch AVMIDIMetaEvent.EventType(rawValue: Int(self.type)) {
         case .trackName:
             String(data: self.data, encoding: .utf8) .map { "\"" + $0 + "\"" }
             

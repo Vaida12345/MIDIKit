@@ -18,7 +18,7 @@ public struct MIDINote: Sendable {
     public var channel: UInt8
     public var releaseVelocity: UInt8
     
-    public var length: Double {
+    public var duration: Double {
         self.offset - self.onset
     }
     

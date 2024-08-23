@@ -14,12 +14,28 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
     
     public var tracks: [MIDITrack]
     
+    public var tempo: MIDITempoTrack
+    
     
     public func makeSequence() -> MusicSequence {
         var sequence: MusicSequence?
         NewMusicSequence(&sequence)
         guard let sequence else {
             fatalError()
+        }
+        
+        var tempoTrack: MusicTrack?
+        MusicSequenceGetTempoTrack(sequence, &tempoTrack)
+        guard let tempoTrack else {
+            fatalError()
+        }
+        for event in tempo.events {
+            _ = event.withUnsafePointer { pointer in
+                MusicTrackNewMetaEvent(tempoTrack, event.timestamp, pointer)
+            }
+        }
+        for tempo in tempo.tempos {
+            MusicTrackNewExtendedTempoEvent(tempoTrack, tempo.timestamp, tempo.tempo)
         }
         
         for track in tracks {
@@ -30,34 +46,25 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
     }
     
     public func writeData(to destination: URL) {
-        MusicSequenceFileCreate(self.makeSequence(), destination as CFURL, .midiType, .eraseFile, 96)
+        MusicSequenceFileCreate(self.makeSequence(), destination as CFURL, .midiType, .eraseFile, 0)
     }
     
     public func data() -> Data {
         var data: Unmanaged<CFData>?
-        MusicSequenceFileCreateData(self.makeSequence(), .midiType, .eraseFile, 96, &data)
+        MusicSequenceFileCreateData(self.makeSequence(), .midiType, .eraseFile, 0, &data)
         return data!.takeRetainedValue() as Data
     }
     
     
-    public init(tracks: [MIDITrack] = []) {
+    public init(tracks: [MIDITrack] = [], tempo: MIDITempoTrack = MIDITempoTrack(events: [], tempos: [])) {
         self.tracks = tracks
+        self.tempo = tempo
     }
     
-    public init(at url: URL) throws {
-        var sequence: MusicSequence?
-        NewMusicSequence(&sequence)
-        
-        guard let sequence else {
-            fatalError()
-        }
-        
+    public init(sequence: MusicSequence) throws {
         defer {
             DisposeMusicSequence(sequence)
         }
-        
-        let code = MusicSequenceFileLoad(sequence, url as CFURL, .midiType, .smf_PreserveTracks)
-        guard code == noErr else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(code)) }
         
         let _count = UnsafeMutablePointer<UInt32>.allocate(capacity: 1)
         defer { _count.deallocate() }
@@ -67,16 +74,20 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
         
         var midiTracks: [MIDITrack] = []
         
-        for i in 0..<count {
-            var track: MusicTrack?
-            MusicSequenceGetIndTrack(sequence, i, &track)
-            guard let track else { continue }
+        struct AdditionalInfo {
+            var tempos: [MIDITempoTrack.Tempo]
+        }
+        
+        func processTrack(track: MusicTrack, additionalInfo: inout AdditionalInfo) -> MIDITrack? {
             var midiTrack = MIDITrack()
             
             var iterator: MusicEventIterator?
             NewMusicEventIterator(track, &iterator)
             
-            guard let iterator else { continue }
+            guard let iterator else { return nil }
+            defer {
+                DisposeMusicEventIterator(iterator)
+            }
             
             var iteratorHasNextEvent: Bool {
                 var bool = DarwinBoolean(false)
@@ -96,6 +107,20 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
                 MusicEventIteratorGetEventInfo(iterator, &timeStamp, &eventType, &dataPointer, &dataSize)
                 
                 if let dataPointer {
+                    
+                    // The raw values, 0-10
+                    // kMusicEventType_NULL
+                    // kMusicEventType_ExtendedNote
+                    // ???
+                    // kMusicEventType_ExtendedTempo
+                    // kMusicEventType_User
+                    // kMusicEventType_Meta
+                    // kMusicEventType_MIDINoteMessage
+                    // kMusicEventType_MIDIChannelMessage
+                    // kMusicEventType_MIDIRawData
+                    // kMusicEventType_Parameter
+                    // kMusicEventType_AUPreset
+                    
                     switch eventType {
                     case kMusicEventType_MIDINoteMessage:
                         let event = dataPointer.bindMemory(to: MIDINoteMessage.self, capacity: 1).pointee
@@ -119,7 +144,11 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
                         let event = dataPointer.bindMemory(to: MIDIMetaEvent.self, capacity: 1).pointee
                         let data = Data(bytes: dataPointer + 8, count: Int(event.dataLength))
                         
-                        midiTrack.metaEvents.append(.init(timestamp: timeStamp, event: event, data: data))
+                        midiTrack.metaEvents.append(.init(timestamp: timeStamp, type: event.metaEventType, data: data))
+                        
+                    case kMusicEventType_ExtendedTempo:
+                        let tempo = dataPointer.load(as: Double.self)
+                        additionalInfo.tempos.append(MIDITempoTrack.Tempo(timestamp: timeStamp, tempo: tempo))
                         
                     default:
                         fatalError("Unhandled event: \(eventType)")
@@ -129,11 +158,39 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
                 MusicEventIteratorNextEvent(iterator)
             }
             
-            midiTracks.append(midiTrack)
-            DisposeMusicEventIterator(iterator)
+            return midiTrack
         }
         
-        self.init(tracks: midiTracks)
+        for i in 0..<count {
+            var track: MusicTrack?
+            MusicSequenceGetIndTrack(sequence, i, &track)
+            guard let track else { continue }
+            
+            var additionInfo = AdditionalInfo(tempos: [])
+            guard let midiTrack = processTrack(track: track, additionalInfo: &additionInfo) else { continue }
+            midiTracks.append(midiTrack)
+        }
+        
+        var tempoTrack: MusicTrack?
+        MusicSequenceGetTempoTrack(sequence, &tempoTrack)
+        var additionInfo = AdditionalInfo(tempos: [])
+        let midiTempoTrack = processTrack(track: tempoTrack!, additionalInfo: &additionInfo)
+        
+        self.init(tracks: midiTracks, tempo: .init(events: midiTempoTrack!.metaEvents, tempos: additionInfo.tempos))
+    }
+    
+    public init(at url: URL) throws {
+        var sequence: MusicSequence?
+        NewMusicSequence(&sequence)
+        
+        guard let sequence else {
+            fatalError()
+        }
+        
+        let code = MusicSequenceFileLoad(sequence, url as CFURL, .midiType, .smf_PreserveTracks)
+        guard code == noErr else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(code)) }
+        
+        try self.init(sequence: sequence)
     }
     
     
@@ -144,6 +201,7 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
     public func detailedDescription(using descriptor: DetailedDescription.Descriptor<MIDIContainer>) -> any DescriptionBlockProtocol {
         descriptor.container {
             descriptor.sequence(for: \.tracks)
+            descriptor.value(for: \.tempo)
         }
     }
     
