@@ -9,7 +9,7 @@ import Foundation
 import AudioToolbox
 
 
-public struct MIDINote {
+public struct MIDINote: Sendable {
     
     public var onset: MusicTimeStamp
     public var offset: MusicTimeStamp

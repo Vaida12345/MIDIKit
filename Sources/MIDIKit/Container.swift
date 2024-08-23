@@ -10,7 +10,7 @@ import AudioToolbox
 import DetailedDescription
 
 
-public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConvertible {
+public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConvertible, Sendable {
     
     public var tracks: [MIDITrack]
     
