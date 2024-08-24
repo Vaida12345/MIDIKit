@@ -14,14 +14,20 @@ extension MIDITrack {
     ///
     /// The result can be interpreted as the sum of difference in timing. When a key is missing, the penalty is 10 seconds.
     ///
+    /// The duration has a weight of 1/10 compared to onset.
+    ///
     /// - Returns: The distance in seconds.
     public func notesDistance(to rhs: MIDITrack) async -> Double {
-        final class Matching: @unchecked Sendable {
+        final class Matching: CustomStringConvertible, @unchecked Sendable {
             let note: MIDINote
             var isMatched: Bool
             
+            var description: String {
+                self.note.description
+            }
+            
             func distance(to matching: Matching) -> Double {
-                clamp(abs(self.note.onset - matching.note.onset) + abs(self.note.duration - matching.note.duration), max: 10)
+                clamp(abs(self.note.onset - matching.note.onset) + abs(self.note.duration - matching.note.duration) / 10, max: 10)
             }
             
             init(note: MIDINote) {
@@ -49,7 +55,8 @@ extension MIDITrack {
         let lhsGroup = await _lhsGroup.value
         let rhsGroup = await _rhsGroup.value
         
-        let sums = await (UInt8.min ... UInt8.max).stream.map { note in
+        
+        let sums = await (UInt8.min ... UInt8.max).map { note in
             var sum: Double = 0
             
             let lhsNotes = lhsGroup[note, default: []].sorted(on: \.note.onset, by: <)
@@ -95,6 +102,9 @@ extension MIDITrack {
                         lhsBestDistance = distance
                         lhsBestMatch = rhsNotes[lhsMatchingIndex]
                     }
+                    if rhsNotes[lhsMatchingIndex].note.onset > lhs.note.onset {
+                        break
+                    }
                     
                     lhsMatchingIndex &+= 1
                 }
@@ -108,7 +118,10 @@ extension MIDITrack {
                     let distance = lhsNotes[rhsMatchingIndex].distance(to: rhs)
                     if distance < rhsBestDistance {
                         rhsBestDistance = distance
-                        rhsBestMatch = rhsNotes[rhsMatchingIndex]
+                        rhsBestMatch = lhsNotes[rhsMatchingIndex]
+                    }
+                    if lhsNotes[rhsMatchingIndex].note.onset > rhs.note.onset {
+                        break
                     }
                     
                     rhsMatchingIndex &+= 1
@@ -139,10 +152,13 @@ extension MIDITrack {
                 sum += 10
             }
             
+//            print(sum, lhsGroup[note, default: []].count, rhsGroup[note, default: []].count)
+//            print(lhsGroup[note, default: []].map(\.note.onset))
+//            print(rhsGroup[note, default: []].map(\.note.onset))
             return sum
         }
         
-        return try! await sums.sequence.reduce(0, +) // must try! or compiler error
+        return try! await sums.reduce(0, +) // must try! or compiler error
     }
     
 }

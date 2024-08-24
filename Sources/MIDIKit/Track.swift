@@ -19,7 +19,7 @@ public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertibl
     
     public var metaEvents: [MetaEvent]
     
-    
+    /// The range of the notes in the track.
     public var range: ClosedRange<MusicTimeStamp> {
         let onsets = notes.map(\.onset)
         let offsets = notes.map(\.offset)
