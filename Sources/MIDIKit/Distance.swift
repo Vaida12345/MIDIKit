@@ -17,10 +17,11 @@ extension MIDITrack {
     /// The duration has a weight of 1/10 compared to onset.
     ///
     /// - Returns: The distance in seconds.
-    public func notesDistance(to rhs: MIDITrack) async -> Double {
+    public func notesDistance(to rhs: MIDITrack, missingPenalty: Double = 10) async -> Double {
         final class Matching: CustomStringConvertible, @unchecked Sendable {
             let note: MIDINote
             var isMatched: Bool
+            let missingPenalty: Double
             
             var description: String {
                 self.note.description
@@ -30,16 +31,17 @@ extension MIDITrack {
                 clamp(abs(self.note.onset - matching.note.onset) + abs(self.note.duration - matching.note.duration) / 10, max: 10)
             }
             
-            init(note: MIDINote) {
+            init(note: MIDINote, missingPenalty: Double) {
                 self.note = note
                 self.isMatched = false
+                self.missingPenalty = missingPenalty
             }
         }
         
         let _lhsGroup = Task {
             var group : [UInt8 : [Matching]] = [:]
             for note in self.notes {
-                group[note.note, default: []].append(Matching(note: note))
+                group[note.note, default: []].append(Matching(note: note, missingPenalty: missingPenalty))
             }
             return group
         }
@@ -47,7 +49,7 @@ extension MIDITrack {
         let _rhsGroup = Task {
             var group : [UInt8 : [Matching]] = [:]
             for note in rhs.notes {
-                group[note.note, default: []].append(Matching(note: note))
+                group[note.note, default: []].append(Matching(note: note, missingPenalty: missingPenalty))
             }
             return group
         }
@@ -56,7 +58,7 @@ extension MIDITrack {
         let rhsGroup = await _rhsGroup.value
         
         
-        let sums = await (UInt8.min ... UInt8.max).map { note in
+        let sums = await (UInt8.min ... UInt8.max).stream.map { note in
             var sum: Double = 0
             
             let lhsNotes = lhsGroup[note, default: []].sorted(on: \.note.onset, by: <)
@@ -145,11 +147,11 @@ extension MIDITrack {
             // check remaining
             while let lhs = lhs() {
                 lhs.isMatched = true
-                sum += 10
+                sum += missingPenalty
             }
             while let rhs = rhs() {
                 rhs.isMatched = true
-                sum += 10
+                sum += missingPenalty
             }
             
 //            print(sum, lhsGroup[note, default: []].count, rhsGroup[note, default: []].count)
@@ -158,7 +160,7 @@ extension MIDITrack {
             return sum
         }
         
-        return try! await sums.reduce(0, +) // must try! or compiler error
+        return try! await sums.sequence.reduce(0, +) // must try! or compiler error
     }
     
 }

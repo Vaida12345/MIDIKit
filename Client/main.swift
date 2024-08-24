@@ -10,9 +10,8 @@ import MIDIKit
 import AudioToolbox
 
 
-let original = try MIDIContainer(at: URL(filePath: "/Users/vaida/Desktop/AoT Original.mid"))
-var transcribed = try MIDIContainer(at: URL(filePath: "/Users/vaida/Desktop/tests/Attack on Titan Main Theme.mid"))
+var container = try MIDIContainer(at: URL(filePath: "/Users/vaida/Music/Piano Transcription/Sagrada Reset/Rayons - Sagrada Reset - 16 regret - humiliation.mid"))
+container.tracks[0].quantize(by: 1/4)
+print(container)
 
-
-await print(original.tracks[0].notesDistance(to: transcribed.tracks[0]))
-print(original.tracks[0].notes.count)
+try container.writeData(to: .desktopDirectory.appending(path: "export.mid"))

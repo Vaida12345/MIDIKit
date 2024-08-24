@@ -56,6 +56,29 @@ public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertibl
         return musicTrack
     }
     
+    public mutating func appendNotes(from rhs: MIDITrack) {
+        self.notes.append(contentsOf: rhs.notes)
+    }
+    
+    /// Quantize the track.
+    ///
+    /// In 4/4, a `discreteValue` of 1 indicates a quarter note.
+    public mutating func quantize(by discreteValue: MusicTimeStamp) {
+        func _quantize(value: inout MusicTimeStamp) {
+            value = (value / discreteValue).rounded(.toNearestOrAwayFromZero) * discreteValue
+        }
+        
+        for i in 0..<self.notes.count {
+            _quantize(value: &self.notes[i].onset)
+            _quantize(value: &self.notes[i].offset)
+        }
+        
+        for i in 0..<self.sustains.count {
+            _quantize(value: &self.sustains[i].onset)
+            _quantize(value: &self.sustains[i].offset)
+        }
+    }
+    
     
     public init(notes: [Note] = [], sustains: [SustainEvent] = [], metaEvents: [MetaEvent] = []) {
         self.notes = notes
@@ -67,9 +90,9 @@ public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertibl
     
     public struct SustainEvent: Sendable, Equatable {
         
-        public let onset: MusicTimeStamp
+        public var onset: MusicTimeStamp
         
-        public let offset: MusicTimeStamp
+        public var offset: MusicTimeStamp
         
         public init(onset: MusicTimeStamp, offset: MusicTimeStamp) {
             self.onset = onset

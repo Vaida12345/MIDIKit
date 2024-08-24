@@ -46,7 +46,7 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
     }
     
     public func writeData(to destination: URL) throws {
-        let code = MusicSequenceFileCreate(self.makeSequence(), destination as CFURL, .midiType, .eraseFile, 0)
+        let code = MusicSequenceFileCreate(self.makeSequence(), destination as CFURL, .midiType, .eraseFile, .max)
         guard code == noErr else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(code)) }
     }
     
