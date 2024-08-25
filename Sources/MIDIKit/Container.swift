@@ -142,7 +142,7 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
                         }
                         
                     case kMusicEventType_Meta:
-                        let event = dataPointer.bindMemory(to: MIDIMetaEvent.self, capacity: 1).pointee
+                        let event = dataPointer.bindMemory(to: AudioToolbox.MIDIMetaEvent.self, capacity: 1).pointee
                         let data = Data(bytes: dataPointer + 8, count: Int(event.dataLength))
                         
                         midiTrack.metaEvents.append(.init(timestamp: timeStamp, type: event.metaEventType, data: data))

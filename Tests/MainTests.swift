@@ -15,19 +15,19 @@ struct DistanceTests {
     @Test func empty() async throws {
         let lhs = MIDITrack()
         let rhs = MIDITrack()
-        await #expect(lhs.notesDistance(to: rhs) == 0)
+        await #expect(lhs.notes.distance(to: rhs.notes) == 0)
     }
     
     @Test func simple() async throws {
         let lhs = MIDITrack(notes: [.init(onset: 1, offset: 2, note: 3, velocity: 4, channel: 0)])
         let rhs = MIDITrack()
-        await #expect(lhs.notesDistance(to: rhs) == 10)
+        await #expect(lhs.notes.distance(to: rhs.notes) == 10)
     }
     
     @Test func simpleWithMatch() async throws {
         let lhs = MIDITrack(notes: [.init(onset: 1, offset: 2, note: 3, velocity: 4, channel: 0)])
-        let rhs = MIDITrack(notes: [.init(onset: 1.1, offset: 2, note: 3, velocity: 4, channel: 0), .init(onset: 2, offset: 2, note: 3, velocity: 4, channel: 0)])
-        await #expect(lhs.notesDistance(to: rhs) == 10 + 0.1 + 0.1)
+        let rhs = MIDITrack(notes: [.init(onset: 1.1, offset: 2.1, note: 3, velocity: 4, channel: 0), .init(onset: 2, offset: 2, note: 3, velocity: 4, channel: 0)])
+        await #expect(lhs.notes.distance(to: rhs.notes) == 0.1 + 10)
     }
     
 }

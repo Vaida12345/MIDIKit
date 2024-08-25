@@ -13,7 +13,7 @@ import AVFoundation
 
 public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertible, Sendable, Equatable {
     
-    public var notes: [Note]
+    public var notes: Notes
     
     public var sustains: [SustainEvent]
     
@@ -70,7 +70,7 @@ public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertibl
         
         for i in 0..<self.notes.count {
             _quantize(value: &self.notes[i].onset)
-            _quantize(value: &self.notes[i].offset)
+            _quantize(value: &self.notes[i].duration)
         }
         
         for i in 0..<self.sustains.count {
@@ -81,66 +81,24 @@ public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertibl
     
     
     public init(notes: [Note] = [], sustains: [SustainEvent] = [], metaEvents: [MetaEvent] = []) {
+        self.notes = Notes(notes: notes)
+        self.sustains = sustains
+        self.metaEvents = metaEvents
+    }
+    
+    public init(notes: Notes, sustains: [SustainEvent] = [], metaEvents: [MetaEvent] = []) {
         self.notes = notes
         self.sustains = sustains
         self.metaEvents = metaEvents
     }
     
     public typealias Note = MIDINote
+                       
+    public typealias Notes = MIDINotes
     
-    public struct SustainEvent: Sendable, Equatable {
-        
-        public var onset: MusicTimeStamp
-        
-        public var offset: MusicTimeStamp
-        
-        public init(onset: MusicTimeStamp, offset: MusicTimeStamp) {
-            self.onset = onset
-            self.offset = offset
-        }
-        
-    }
+    public typealias SustainEvent = MIDISustainEvent
     
-    /// A wrapper for meta event
-    ///
-    /// Byte layout
-    /// ```
-    /// - 3 // metaEventType
-    /// - 0 // unused1
-    /// - 0 // unused2
-    /// - 0 // unused3
-    /// - 5 // dataLength 1
-    /// - 0 // dataLength 2
-    /// - 0 // dataLength 3
-    /// - 0 // dataLength 4
-    /// - 80 // data
-    /// - 105 // ...
-    /// - 97
-    /// - 110
-    /// - 111
-    /// ```
-    public struct MetaEvent: Sendable, Equatable {
-        
-        public let timestamp: MusicTimeStamp
-        
-        public let type: UInt8
-        
-        public let data: Data
-        
-        
-        func withUnsafePointer<T>(body: (UnsafePointer<MIDIMetaEvent>) throws -> T) rethrows -> T {
-            let data = Swift.withUnsafePointer(to: type) { pointer in
-                Data(bytes: pointer, count: 1)
-            } + Data(repeating: 0, count: 3) + Swift.withUnsafePointer(to: UInt32(data.count)) { pointer in
-                Data(bytes: pointer, count: 4)
-            } + data
-            
-            return try data.withUnsafeBytes { pointer in
-                try body(pointer.baseAddress!.assumingMemoryBound(to: MIDIMetaEvent.self))
-            }
-        }
-        
-    }
+    public typealias MetaEvent = MIDIMetaEvent
     
     
     public var description: String {
@@ -152,60 +110,6 @@ public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertibl
             descriptor.sequence(for: \.notes)
             descriptor.sequence(for: \.sustains)
             descriptor.sequence(for: \.metaEvents)
-        }
-    }
-    
-}
-
-
-@available(macOS 12.0, *)
-extension MIDITrack.SustainEvent: CustomStringConvertible {
-    
-    public var description: String {
-        "Sustain(range: \(onset.formatted(.number.precision(.fractionLength(2)))) - \(offset.formatted(.number.precision(.fractionLength(2)))))"
-    }
-    
-}
-
-
-@available(macOS 13.0, *)
-extension MIDITrack.MetaEvent: CustomStringConvertible {
-    
-    public var description: String {
-        let type = switch AVMIDIMetaEvent.EventType(rawValue: Int(self.type)) {
-        case .copyright: "copyright"
-        case .cuePoint: "cue point"
-        case .endOfTrack: "end of track"
-        case .instrument: "instrument"
-        case .keySignature: "key signature"
-        case .lyric: "lyric"
-        case .marker: "marker"
-        case .midiChannel: "midi channel"
-        case .midiPort: "midi port"
-        case .proprietaryEvent: "proprietary event"
-        case .sequenceNumber: "sequence number"
-        case .smpteOffset: "SMPTE time offset"
-        case .tempo: "tempo"
-        case .text: "text"
-        case .timeSignature: "time signature"
-        case .trackName: "track name"
-        case .none: "(unknown)"
-        default:
-            fatalError()
-        }
-        
-        let content: Any? = switch AVMIDIMetaEvent.EventType(rawValue: Int(self.type)) {
-        case .trackName:
-            String(data: self.data, encoding: .utf8) .map { "\"" + $0 + "\"" }
-            
-        default:
-            "(" + self.data.map({ $0.description }).joined(separator: ", ") + ")"
-        }
-        
-        if let content {
-            return "MetaEvent(timestamp: \(timestamp), type: \(type), content: \(content))"
-        } else {
-            return "MetaEvent(timestamp: \(timestamp), type: \(type), data: \(data))"
         }
     }
     

@@ -1,14 +1,56 @@
 //
-//  Distance.swift
+//  Notes.swift
 //  MIDIKit
 //
-//  Created by Vaida on 8/24/24.
+//  Created by Vaida on 8/26/24.
 //
 
 import Stratum
 
 
-extension MIDITrack {
+public struct MIDINotes: RandomAccessCollection, Sendable, Equatable {
+    
+    var notes: [MIDITrack.Note]
+    
+    public var startIndex: Int {
+        self.notes.startIndex
+    }
+    
+    public var endIndex: Int {
+        self.notes.endIndex
+    }
+    
+    public mutating func append(contentsOf: MIDINotes) {
+        self.notes.append(contentsOf: contentsOf.notes)
+    }
+    
+    public mutating func append(_ note: Note) {
+        self.notes.append(note)
+    }
+    
+    public init(notes: [MIDITrack.Note] = []) {
+        self.notes = notes
+    }
+    
+    public subscript(position: Int) -> Note {
+        get {
+            self.notes[position]
+        }
+        set {
+            self.notes[position] = newValue
+        }
+    }
+    
+    public typealias Index = Int
+    
+    public typealias Note = MIDITrack.Note
+    
+    public typealias Element = Note
+    
+}
+
+
+extension MIDINotes {
     
     /// A difference score to `rhs` based on the timing of notes.
     ///
@@ -17,7 +59,7 @@ extension MIDITrack {
     /// The duration has a weight of 1/10 compared to onset.
     ///
     /// - Returns: The distance in seconds.
-    public func notesDistance(to rhs: MIDITrack, missingPenalty: Double = 10) async -> Double {
+    public func distance(to rhs: MIDINotes, missingPenalty: Double = 10) async -> Double {
         final class Matching: CustomStringConvertible, @unchecked Sendable {
             let note: MIDINote
             var isMatched: Bool
@@ -154,9 +196,6 @@ extension MIDITrack {
                 sum += missingPenalty
             }
             
-//            print(sum, lhsGroup[note, default: []].count, rhsGroup[note, default: []].count)
-//            print(lhsGroup[note, default: []].map(\.note.onset))
-//            print(rhsGroup[note, default: []].map(\.note.onset))
             return sum
         }
         

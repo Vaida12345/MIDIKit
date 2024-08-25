@@ -19,8 +19,14 @@ public struct MIDINote: Sendable, Equatable {
     public var channel: UInt8
     public var releaseVelocity: UInt8
     
+    /// The duration of the note, on set, it changes the ``offset``, while ``onset`` remains the same.
     public var duration: Double {
-        self.offset - self.onset
+        get {
+            self.offset - self.onset
+        }
+        set {
+            self.offset = self.onset + newValue
+        }
     }
     
     public init(onset: MusicTimeStamp, offset: MusicTimeStamp, note: UInt8, velocity: UInt8, channel: UInt8, releaseVelocity: UInt8 = 0) {
