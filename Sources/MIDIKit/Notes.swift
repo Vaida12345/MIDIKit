@@ -32,6 +32,14 @@ public struct MIDINotes: RandomAccessCollection, Sendable, Equatable {
         self.notes = notes
     }
     
+    /// The range of note value.
+    public var noteRange: (min: UInt8, max: UInt8)? {
+        guard !self.isEmpty else { return nil }
+        let notes = self.notes.map(\.note)
+        
+        return (notes.min()!, notes.max()!)
+    }
+    
     public subscript(position: Int) -> Note {
         get {
             self.notes[position]
@@ -200,6 +208,120 @@ extension MIDINotes {
         }
         
         return try! await sums.sequence.reduce(0, +) // must try! or compiler error
+    }
+    
+}
+
+
+extension MIDINotes {
+    
+    /// Separate by note key value
+    ///
+    /// If `$0 >= key`, then the note goes to `high`
+    internal func naiveSeparate(by key: UInt8) -> (low: MIDINotes, high: MIDINotes) {
+        var low = MIDINotes()
+        var high = MIDINotes()
+        
+        for note in self.notes {
+            if note.note >= key {
+                high.append(note)
+            } else {
+                low.append(note)
+            }
+        }
+        
+        return (low, high)
+    }
+    
+    /// Separate the notes by the key value and context
+    ///
+    /// - Parameters:
+    ///   - key: The threshold for naive separate, if `$0 >= key`, then the note goes to `high`. If not specified, one will be automatically determined.
+    ///   - clusteringThreshold: The threshold for clustering. The max range of a cluster.
+    ///   - tolerance: The tolerance for a note being on the other side given the `key`
+    public func separate(
+        by key: UInt8? = nil,
+        clusteringThreshold: Double,
+        tolerance: UInt8
+    ) -> (low: MIDINotes, high: MIDINotes) {
+        let clusters = self.clustered(threshold: clusteringThreshold)
+        let ranges = clusters.compactMap(\.noteRange).filter({ $0.max - $0.min > 7 })
+        let centers = ranges.map({ (Int($0.max) + Int($0.min))/2 })
+        let average = centers.sum / centers.count
+        
+        return naiveSeparate(by: key ?? UInt8(average))
+    }
+    
+    
+    /// Clustered via hierarchical clustering using a single-linkage method.
+    ///
+    /// For the purpose of this function, only the onset is considered.
+    internal func clustered(threshold: Double) -> [MIDINotes] {
+        guard !self.isEmpty else { return [] }
+        
+        func calMinDistance(_ lhs: MIDINotes, to rhs: MIDINotes) -> Double? {
+            var minDistance: Double?
+            
+            var i = 0
+            while i < lhs.count {
+                var j = 0
+                while j < rhs.count {
+                    let distance = abs(lhs[i].onset - rhs[j].onset)
+                    if minDistance == nil || distance < minDistance! {
+                        minDistance = distance
+                    }
+                    
+                    j &+= 1
+                }
+                
+                i &+= 1
+            }
+            
+            return minDistance
+        }
+        
+        
+        // Step 1: Start by initializing each value as its own cluster
+        var clusters = self.map({ MIDINotes(notes: [$0]) })
+        
+        // Step 2: Perform the clustering process
+        var didMerge = true
+        
+        while didMerge {
+            didMerge = false
+            var minDistance = Double.greatestFiniteMagnitude
+            var mergeIndex1: Int?
+            var mergeIndex2: Int?
+            
+            // Step 3: Find the closest pair of clusters
+            var i = 0
+            while i < clusters.count {
+                var j = i &+ 1
+                while j < clusters.count {
+                    if let minClusterDistance = calMinDistance(clusters[i], to: clusters[j]),
+                       minClusterDistance < minDistance {
+                        minDistance = minClusterDistance
+                        mergeIndex1 = i
+                        mergeIndex2 = j
+                    }
+                    
+                    j &+= 1
+                }
+                
+                i &+= 1
+            }
+            
+            // Step 4: Merge clusters if the minimum distance is within the threshold
+            if let index1 = mergeIndex1, let index2 = mergeIndex2, minDistance <= threshold {
+                clusters[index1].append(contentsOf: clusters[index2])
+                clusters.remove(at: index2)
+                didMerge = true
+            }
+            
+//            print("iter")
+        }
+        
+        return clusters
     }
     
 }

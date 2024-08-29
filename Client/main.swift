@@ -11,7 +11,11 @@ import AudioToolbox
 
 
 var container = try MIDIContainer(at: URL(filePath: "/Users/vaida/Music/Piano Transcription/Sagrada Reset/Rayons - Sagrada Reset - 16 regret - humiliation.mid"))
-container.tracks[0].quantize(by: 1/4)
-print(container)
 
-try container.writeData(to: .desktopDirectory.appending(path: "export.mid"))
+print("did start")
+let (low, high) = container.tracks[0].notes.separate(clusteringThreshold: 1, tolerance: 1)
+container.tracks.append(container.tracks[0])
+container.tracks[0].notes = high
+container.tracks[1].notes = low
+
+try container.writeData(to: URL.desktopDirectory.appending(path: "file.mid"))
