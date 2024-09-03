@@ -268,31 +268,22 @@ extension MIDINotes {
     internal func clustered(threshold: Double) -> [MIDINotes] {
         guard !self.isEmpty else { return [] }
         
-        func calMinDistance(_ lhs: Heap<MIDINote>, to rhs: Heap<MIDINote>) -> Double {
-            var minDistance: Double = .greatestFiniteMagnitude
+        func calMinDistance(_ lhs: MIDINotes, to rhs: MIDINotes) -> Double? {
+            var minDistance: Double?
             
-            // make copies
-            var lhs = lhs
-            var rhs = rhs
-            
-            var _lhs = lhs.next()
-            var _rhs = rhs.next()
-            
-            while _lhs != nil && _rhs != nil {
-                let distance = abs(_lhs!.onset - _rhs!.onset)
-                
-                if distance < minDistance {
-                    minDistance = distance
+            var i = 0
+            while i < lhs.count {
+                var j = 0
+                while j < rhs.count {
+                    let distance = abs(lhs[i].onset - rhs[j].onset)
+                    if minDistance == nil || distance < minDistance! {
+                        minDistance = distance
+                    }
+                    
+                    j &+= 1
                 }
                 
-                // Move the pointer in the list with the smaller element
-                if _lhs! < _rhs! {
-                    _lhs = lhs.next()
-                } else if _lhs!.onset == _rhs!.onset {
-                    return 0
-                } else  {
-                    _rhs = rhs.next()
-                }
+                i &+= 1
             }
             
             return minDistance
@@ -300,7 +291,7 @@ extension MIDINotes {
         
         
         // Step 1: Start by initializing each value as its own cluster
-        var clusters = self.map({ Heap(.minHeap, from: [$0]) })
+        var clusters = self.map({ MIDINotes(notes: [$0]) })
         
         // Step 2: Perform the clustering process
         var didMerge = true
@@ -316,9 +307,8 @@ extension MIDINotes {
             while i < clusters.count {
                 var j = i &+ 1
                 while j < clusters.count {
-                    let minClusterDistance = calMinDistance(clusters[i], to: clusters[j])
-                    
-                    if minClusterDistance < minDistance {
+                    if let minClusterDistance = calMinDistance(clusters[i], to: clusters[j]),
+                       minClusterDistance < minDistance {
                         minDistance = minClusterDistance
                         mergeIndex1 = i
                         mergeIndex2 = j
@@ -340,7 +330,7 @@ extension MIDINotes {
 //            print("iter")
         }
         
-        return clusters.map { .init(notes: Array($0)) }
+        return clusters
     }
     
     
@@ -367,6 +357,10 @@ extension MIDINotes {
     /// Or, we could also round it to the nearest nth note.
     public func normalizedLength() -> MIDINotes {
         fatalError()
+    }
+    
+    private func normalizedLengthByShrinkingKeepingOffsetInSameRegion() -> MIDINotes {
+        
     }
     
 }
