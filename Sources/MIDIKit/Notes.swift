@@ -6,6 +6,7 @@
 //
 
 import Stratum
+import OSLog
 
 
 public struct MIDINotes: RandomAccessCollection, Sendable, Equatable {
@@ -244,37 +245,54 @@ extension MIDINotes {
         clusteringThreshold: Double,
         tolerance: UInt8
     ) -> (low: MIDINotes, high: MIDINotes) {
-        let clusters = self.clustered(threshold: clusteringThreshold)
-        let ranges = clusters.compactMap(\.noteRange).filter({ $0.max - $0.min > 7 })
-        let centers = ranges.map({ (Int($0.max) + Int($0.min))/2 })
-        let average = centers.sum / centers.count
-        
-        return naiveSeparate(by: key ?? UInt8(average))
+        if let key {
+            return naiveSeparate(by: key)
+        } else {
+            let clusters = self.clustered(threshold: clusteringThreshold)
+            let ranges = clusters.compactMap(\.noteRange).filter({ $0.max - $0.min > 7 })
+            let centers = ranges.map({ (Int($0.max) + Int($0.min))/2 })
+            let average = centers.sum / centers.count
+            
+            let logger = Logger(subsystem: "MIDIKit", category: "MIDINotes.separate")
+            let key = UInt8(average)
+            logger.info("The separation key is determined to be \(key == 60 ? "Middle C" : "\(key)").")
+            
+            return naiveSeparate(by: UInt8(average))
+        }
     }
     
     
     /// Clustered via hierarchical clustering using a single-linkage method.
     ///
-    /// For the purpose of this function, only the onset is considered.
+    /// For the purpose of this function, only the onset is considered. Hence a cluster might not be a *chord*.
     internal func clustered(threshold: Double) -> [MIDINotes] {
         guard !self.isEmpty else { return [] }
         
-        func calMinDistance(_ lhs: MIDINotes, to rhs: MIDINotes) -> Double? {
-            var minDistance: Double?
+        func calMinDistance(_ lhs: Heap<MIDINote>, to rhs: Heap<MIDINote>) -> Double {
+            var minDistance: Double = .greatestFiniteMagnitude
             
-            var i = 0
-            while i < lhs.count {
-                var j = 0
-                while j < rhs.count {
-                    let distance = abs(lhs[i].onset - rhs[j].onset)
-                    if minDistance == nil || distance < minDistance! {
-                        minDistance = distance
-                    }
-                    
-                    j &+= 1
+            // make copies
+            var lhs = lhs
+            var rhs = rhs
+            
+            var _lhs = lhs.next()
+            var _rhs = rhs.next()
+            
+            while _lhs != nil && _rhs != nil {
+                let distance = abs(_lhs!.onset - _rhs!.onset)
+                
+                if distance < minDistance {
+                    minDistance = distance
                 }
                 
-                i &+= 1
+                // Move the pointer in the list with the smaller element
+                if _lhs! < _rhs! {
+                    _lhs = lhs.next()
+                } else if _lhs!.onset == _rhs!.onset {
+                    return 0
+                } else  {
+                    _rhs = rhs.next()
+                }
             }
             
             return minDistance
@@ -282,7 +300,7 @@ extension MIDINotes {
         
         
         // Step 1: Start by initializing each value as its own cluster
-        var clusters = self.map({ MIDINotes(notes: [$0]) })
+        var clusters = self.map({ Heap(.minHeap, from: [$0]) })
         
         // Step 2: Perform the clustering process
         var didMerge = true
@@ -298,8 +316,9 @@ extension MIDINotes {
             while i < clusters.count {
                 var j = i &+ 1
                 while j < clusters.count {
-                    if let minClusterDistance = calMinDistance(clusters[i], to: clusters[j]),
-                       minClusterDistance < minDistance {
+                    let minClusterDistance = calMinDistance(clusters[i], to: clusters[j])
+                    
+                    if minClusterDistance < minDistance {
                         minDistance = minClusterDistance
                         mergeIndex1 = i
                         mergeIndex2 = j
@@ -321,7 +340,33 @@ extension MIDINotes {
 //            print("iter")
         }
         
-        return clusters
+        return clusters.map { .init(notes: Array($0)) }
+    }
+    
+    
+    /// Returns the list of notes whose lengths are normalized.
+    ///
+    /// ## Manifesto
+    ///
+    /// This function serves to normalize the length created by PianoTranscription.
+    ///
+    /// It seems that PianoTranscription can create excess length due to the sustains.
+    ///
+    /// These factors can be considered when trying to implement this function.
+    ///
+    /// - The sustains
+    ///   - If offset and inset are in the same sustain region, the length can be arbitrary.
+    ///   - If the offset is in a different sustain of inset, the offset must stays in the same sustain region.
+    /// - The following notes
+    ///   - The PianoTranscription algorithm ensures there are no overlapping notes.
+    ///
+    /// ---
+    ///
+    /// After these considerations, it seems we also need a lower bound for the notes. Such lower bound should cease to work when the original note length is lower than such bound. As this function is used to normalize notes lengths, not removing notes.
+    ///
+    /// Or, we could also round it to the nearest nth note.
+    public func normalizedLength() -> MIDINotes {
+        fatalError()
     }
     
 }

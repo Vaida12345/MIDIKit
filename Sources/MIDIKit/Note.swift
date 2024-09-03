@@ -9,7 +9,7 @@ import Foundation
 import AudioToolbox
 
 
-public struct MIDINote: Sendable, Equatable {
+public struct MIDINote: Sendable, Equatable, Comparable {
     
     public var onset: MusicTimeStamp
     public var offset: MusicTimeStamp
@@ -46,6 +46,14 @@ public struct MIDINote: Sendable, Equatable {
         self.velocity = message.velocity
         self.channel = message.channel
         self.releaseVelocity = message.releaseVelocity
+    }
+    
+    public static func < (lhs: MIDINote, rhs: MIDINote) -> Bool {
+        lhs.onset < rhs.onset
+    }
+    
+    public static func <= (lhs: MIDINote, rhs: MIDINote) -> Bool {
+        lhs.onset <= rhs.onset
     }
     
 }
