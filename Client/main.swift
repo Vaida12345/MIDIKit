@@ -12,10 +12,6 @@ import AudioToolbox
 
 var container = try MIDIContainer(at: URL(filePath: "/Users/vaida/Music/Piano Transcription/Ashes on The Fire - Shingeki no Kyojin.mid"))
 
-print("did start")
-let (low, high) = container.tracks[0].notes.separate(clusteringThreshold: 1, tolerance: 1)
-container.tracks.append(container.tracks[0])
-container.tracks[0].notes = high
-container.tracks[1].notes = low
+container.tracks[0].notes = container.tracks[0].notes.normalizedLengthByShrinkingKeepingOffsetInSameRegion(sustains: container.tracks[0].sustains)
 
 try container.writeData(to: URL.desktopDirectory.appending(path: "file.mid"))

@@ -99,6 +99,7 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
             
             var sustainOpen: Bool = false
             var sustainStart: MusicTimeStamp = 0
+            var sustains: [MIDISustainEvent] = []
             
             while iteratorHasNextEvent {
                 var dataPointer: UnsafeRawPointer?
@@ -136,7 +137,7 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
                                 sustainStart = timeStamp
                             } else {
                                 if sustainOpen {
-                                    midiTrack.sustains.append(MIDITrack.SustainEvent(onset: sustainStart, offset: timeStamp))
+                                    sustains.append(MIDITrack.SustainEvent(onset: sustainStart, offset: timeStamp))
                                 }
                             }
                         }
@@ -158,6 +159,7 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
                 
                 MusicEventIteratorNextEvent(iterator)
             }
+            midiTrack.sustains = MIDISustainEvents(sustains: sustains)
             
             return midiTrack
         }

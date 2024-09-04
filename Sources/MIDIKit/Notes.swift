@@ -359,8 +359,28 @@ extension MIDINotes {
         fatalError()
     }
     
-    private func normalizedLengthByShrinkingKeepingOffsetInSameRegion() -> MIDINotes {
+    /// Normalize by shrinking the length of notes as far as possible, while ensuring the offset are in the same sustain region.
+    public func normalizedLengthByShrinkingKeepingOffsetInSameRegion(sustains: MIDISustainEvents) -> MIDINotes {
+        let minimumLength = 0.25
         
+        return MIDINotes(notes: self.notes.enumerated().map { index, note in
+            var note = note
+            let onsetSustainRegion = sustains[at: note.onset]
+            let offsetSustainRegion = sustains[at: note.offset]
+            
+            if onsetSustainRegion == offsetSustainRegion || offsetSustainRegion == nil {
+                // The length can be free.
+                note.duration = minimumLength
+                
+                // context aware length. Check for next note
+                
+            } else {
+                // the length must span to the found sustain.
+                note.offset = offsetSustainRegion!.onset + minimumLength
+            }
+            
+            return note
+        })
     }
     
 }

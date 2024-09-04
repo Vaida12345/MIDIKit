@@ -15,7 +15,7 @@ public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertibl
     
     public var notes: Notes
     
-    public var sustains: [SustainEvent]
+    public var sustains: MIDISustainEvents
     
     public var metaEvents: [MetaEvent]
     
@@ -82,11 +82,11 @@ public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertibl
     
     public init(notes: [Note] = [], sustains: [SustainEvent] = [], metaEvents: [MetaEvent] = []) {
         self.notes = Notes(notes: notes)
-        self.sustains = sustains
+        self.sustains = MIDISustainEvents(sustains: sustains)
         self.metaEvents = metaEvents
     }
     
-    public init(notes: Notes, sustains: [SustainEvent] = [], metaEvents: [MetaEvent] = []) {
+    public init(notes: Notes, sustains: MIDISustainEvents, metaEvents: [MetaEvent] = []) {
         self.notes = notes
         self.sustains = sustains
         self.metaEvents = metaEvents
