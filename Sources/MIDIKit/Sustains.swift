@@ -23,6 +23,31 @@ public struct MIDISustainEvents: RandomAccessCollection, Sendable, Equatable {
         self.sustains.endIndex
     }
     
+    /// Returns the first sustain whose onset is greater than `timeStamp`.
+    ///
+    /// - Complexity: O(log *n*), binary search.
+    public func first(after timeStamp: MusicTimeStamp) -> Element? {
+        var left = 0
+        var right = self.count
+        
+        while left < right {
+            let mid = left + (right - left) / 2
+            if self[mid].onset > timeStamp {
+                right = mid
+            } else {
+                left = mid + 1
+            }
+        }
+        
+        // After the loop, 'left' is the index of the first element greater than the value, if it exists.
+        // Check if 'left' is within bounds and return the element if it exists.
+        if left < self.count {
+            return self[left]
+        } else {
+            return nil
+        }
+    }
+    
     public init(sustains: [Element] = []) {
         self.sustains = sustains.sorted(by: { $0.onset < $1.onset })
     }

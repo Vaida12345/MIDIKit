@@ -361,19 +361,35 @@ extension MIDINotes {
     
     /// Normalize by shrinking the length of notes as far as possible, while ensuring the offset are in the same sustain region.
     public func normalizedLengthByShrinkingKeepingOffsetInSameRegion(sustains: MIDISustainEvents) -> MIDINotes {
-        let minimumLength = 0.25
+        let minimumLength: Double = 1/128
+        let notes = self.notes.sorted(by: { $0.onset < $1.onset })
         
-        return MIDINotes(notes: self.notes.enumerated().map { index, note in
+        return MIDINotes(notes: notes.enumerated().map { index, note in
             var note = note
             let onsetSustainRegion = sustains[at: note.onset]
             let offsetSustainRegion = sustains[at: note.offset]
             
             if onsetSustainRegion == offsetSustainRegion || offsetSustainRegion == nil {
                 // The length can be free.
-                note.duration = minimumLength
-                
+//                note.duration = minimumLength
                 // context aware length. Check for next note
+                var next: Element? {
+                    var index = index + 1
+                    while index < notes.count, notes[index].onset == note.onset {
+                        index += 1
+                    }
+                    return index < notes.count ? notes[index] : nil
+                }
                 
+                if let next {
+                    let nextSustain = sustains.first(after: note.offset)
+                    
+                    let upperBound = Swift.min(next.onset, offsetSustainRegion?.offset ?? nextSustain?.onset ?? Double.greatestFiniteMagnitude, note.offset)
+                    let duration = upperBound - note.onset
+                    note.duration = Swift.max(minimumLength, duration)
+                } else {
+                    // is last note. Just ignore
+                }
             } else {
                 // the length must span to the found sustain.
                 note.offset = offsetSustainRegion!.onset + minimumLength
