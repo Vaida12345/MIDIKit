@@ -5,13 +5,12 @@
 //  Created by Vaida on 9/3/24.
 //
 
-import Stratum
 import OSLog
 import AudioToolbox
 
 
 /// To support efficient lookup, the sustain events are always sorted.
-public struct MIDISustainEvents: RandomAccessCollection, Sendable, Equatable {
+public struct MIDISustainEvents: RandomAccessCollection, Sendable, Equatable, ExpressibleByArrayLiteral {
     
     var sustains: [Element]
     
@@ -48,8 +47,24 @@ public struct MIDISustainEvents: RandomAccessCollection, Sendable, Equatable {
         }
     }
     
+    /// - Complexity: O(*n* log *n*), sorting.
+    public mutating func append(contentsOf: MIDISustainEvents) {
+        self.sustains.append(contentsOf: contentsOf.sustains)
+        self.sustains.sort(by: { $0.onset < $1.onset })
+    }
+    
+    /// - Complexity: O(*n* log *n*), sorting.
+    public mutating func append(_ sustain: MIDISustainEvent) {
+        self.sustains.append(sustain)
+        self.sustains.sort(by: { $0.onset < $1.onset })
+    }
+    
     public init(sustains: [Element] = []) {
         self.sustains = sustains.sorted(by: { $0.onset < $1.onset })
+    }
+    
+    public init(arrayLiteral elements: Element...) {
+        self.sustains = elements
     }
     
     public subscript(position: Int) -> Element {

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import System
 import AudioToolbox
 import DetailedDescription
 
@@ -48,6 +49,10 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
     public func writeData(to destination: URL) throws {
         let code = MusicSequenceFileCreate(self.makeSequence(), destination as CFURL, .midiType, .eraseFile, .max)
         guard code == noErr else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(code)) }
+    }
+    
+    public func writeData(to destination: FilePath) throws {
+        try self.writeData(to: URL(filePath: destination)!)
     }
     
     public func data() throws -> Data {
@@ -180,6 +185,10 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
         let midiTempoTrack = processTrack(track: tempoTrack!, additionalInfo: &additionInfo)
         
         self.init(tracks: midiTracks, tempo: .init(events: midiTempoTrack!.metaEvents, tempos: additionInfo.tempos))
+    }
+    
+    public init(at filePath: FilePath) throws {
+        try self.init(at: URL(filePath: filePath)!)
     }
     
     public init(at url: URL) throws {

@@ -11,6 +11,17 @@ import DetailedDescription
 import AVFoundation
 
 
+/// A MIDI Track.
+///
+/// In CoreAudio, the time stamps are represented in `MusicTimeStamp`, measured in *beats*.
+///
+/// ## The Time Signature
+///
+/// The **numerator** indicates the number of *beats* per measure.
+///
+/// The **denominator** indicates *n*th note gets one *beat*.
+///
+/// For Example, a `4/4` indicates that there are 4 beats per measure, and each beat is a quarter note
 public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertible, Sendable, Equatable {
     
     public var notes: Notes
@@ -62,10 +73,12 @@ public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertibl
     
     /// Quantize the track.
     ///
-    /// In 4/4, a `discreteValue` of 1 indicates a quarter note.
-    public mutating func quantize(by discreteValue: MusicTimeStamp) {
+    /// In a time signature of 4/4, A `beats` of 1 indicates a quarter note (one beat), regardless of time signature.
+    ///
+    /// - SeeAlso: ``MIDITrack``
+    public mutating func quantize(by beats: MusicTimeStamp) {
         func _quantize(value: inout MusicTimeStamp) {
-            value = (value / discreteValue).rounded(.toNearestOrAwayFromZero) * discreteValue
+            value = (value / beats).rounded(.toNearestOrAwayFromZero) * beats
         }
         
         for i in 0..<self.notes.count {
@@ -77,6 +90,65 @@ public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertibl
             _quantize(value: &self.sustains[i].onset)
             _quantize(value: &self.sustains[i].offset)
         }
+    }
+    
+    /// Returns the measures of the track.
+    ///
+    /// The measures are well-defined in MIDI. In a time signature of `n/m`, `n` `m`th notes go in one measure.
+    ///
+    /// The notes cannot be split in half. The measures record only the `onset`, ignoring the `offset`
+    ///
+    /// - Returns: The raw measures.
+    public func measures(timeSignature: (Int, Int)) -> [MIDIMeasure] {
+        let length = Double(timeSignature.0)
+        
+        func groupings<T>(_ elements: [T], upperBound: Double, feature: (T) -> MusicTimeStamp) -> [[T]] {
+            
+            var groups: [[T]] = []
+            var current: [T] = []
+            
+            var lowerBound: Double = 0
+            let elements = elements.sorted(by: { feature($0) < feature($1) })
+            
+            var index = 0
+            while lowerBound < upperBound {
+                var next: T? {
+                    guard index < elements.count else { return nil }
+                    return elements[index]
+                }
+                
+                while let next,
+                      feature(next) < lowerBound + length {
+                    current.append(next)
+                    index += 1
+                }
+                
+                groups.append(current)
+                current = []
+                lowerBound += length
+            }
+            
+            groups.append(current)
+            
+            assert(groups.count == Int(upperBound / length) + 2)
+            
+            return groups
+        }
+        
+        guard !self.notes.isEmpty else { return [] }
+        
+        let upperBound = self.notes.map(\.offset).max()!
+        let sustains = groupings(self.sustains.sustains, upperBound: upperBound, feature: \.onset)
+        let notes = groupings(self.notes.notes, upperBound: upperBound, feature: \.onset)
+        
+        assert(notes.count == sustains.count)
+        
+        return zip(notes, sustains).map({ MIDIMeasure(notes: MIDINotes(notes: $0.0), sustains: MIDISustainEvents(sustains: $0.1)) })
+    }
+    
+    /// Returns the **inferred** measures of the track.
+    public func inferredMeasures() -> [MIDIMeasure] {
+        fatalError()
     }
     
     

@@ -7,9 +7,11 @@
 
 import Stratum
 import OSLog
+import DetailedDescription
+import Accelerate
 
 
-public struct MIDINotes: RandomAccessCollection, Sendable, Equatable {
+public struct MIDINotes: RandomAccessCollection, Sendable, Equatable, CustomDetailedStringConvertible, ExpressibleByArrayLiteral {
     
     var notes: [MIDITrack.Note]
     
@@ -29,8 +31,21 @@ public struct MIDINotes: RandomAccessCollection, Sendable, Equatable {
         self.notes.append(note)
     }
     
+    public mutating func forEach(body: (_ index: Index, _ element: inout Element) -> Void) {
+        var i = 0
+        while i < self.endIndex {
+            body(i, &self.notes[i])
+            
+            i &+= 1
+        }
+    }
+    
     public init(notes: [MIDITrack.Note] = []) {
         self.notes = notes
+    }
+    
+    public init(arrayLiteral elements: Element...) {
+        self.notes = elements
     }
     
     /// The range of note value.
@@ -55,6 +70,11 @@ public struct MIDINotes: RandomAccessCollection, Sendable, Equatable {
     public typealias Note = MIDITrack.Note
     
     public typealias Element = Note
+    
+    
+    public func detailedDescription(using descriptor: DetailedDescription.Descriptor<MIDINotes>) -> any DescriptionBlockProtocol {
+        descriptor.sequence(for: \.notes)
+    }
     
 }
 
@@ -265,7 +285,7 @@ extension MIDINotes {
     /// Clustered via hierarchical clustering using a single-linkage method.
     ///
     /// For the purpose of this function, only the onset is considered. Hence a cluster might not be a *chord*.
-    internal func clustered(threshold: Double) -> [MIDINotes] {
+    public func clustered(threshold: Double) -> [MIDINotes] {
         guard !self.isEmpty else { return [] }
         
         func calMinDistance(_ lhs: MIDINotes, to rhs: MIDINotes) -> Double? {
@@ -397,6 +417,129 @@ extension MIDINotes {
             
             return note
         })
+    }
+    
+    
+    /// Identify the gaps in the notes, useful for inferring measures.
+    ///
+    /// - Parameters:
+    ///   - tolerance: Sometimes, notes can overlap while being in different measures. This is the tolerance in beats.
+    ///
+    /// - Returns: Groups of notes clustered by the gaps.
+    ///
+    /// - Complexity: O(*n* log *n*), sorting.
+    public func identifyGaps(tolerance: Double) -> [MIDINotes] {
+        let notes = self.notes.sorted(by: { $0.onset < $1.onset })
+        
+        var groups: [[Element]] = []
+        var currentGroup: [Element] = []
+        var currentUpperBound: Double = 0
+        
+        var i = 0
+        while i < notes.count {
+            let note = notes[i]
+            
+            if currentUpperBound != 0 {
+                // check if overlap
+                if note.onset <= currentUpperBound - tolerance {
+                    currentGroup.append(note)
+                    currentUpperBound = Swift.max(currentUpperBound, note.offset)
+                } else {
+                    // open new group
+                    groups.append(currentGroup)
+                    currentGroup.removeAll(keepingCapacity: true)
+                    currentGroup.append(note)
+                    currentUpperBound = note.offset
+                }
+            } else {
+                // is first
+                currentGroup.append(note)
+                currentUpperBound = note.offset
+            }
+            
+            i &+= 1
+        }
+        
+        groups.append(currentGroup)
+        
+        return groups.map { MIDINotes(notes: $0) }
+    }
+    
+    
+    /// Calculates the length of the reference note in beats.
+    ///
+    /// A reference note is defined as the baseline most commonly occurred note. This could be, for example, 16th note.
+    ///
+    /// In proper midi, notes should have onsets at *m* \* 1/2^*n*.
+    ///
+    /// - Parameters:
+    ///   - minimumNoteDistance: Drop notes whose distances from previous notes are less than `minimumNoteDistance`. As these notes could be forming a chord. Defaults to 2^-4, 64th note.
+    ///
+    /// - Complexity: O(*n* log *n*). Loss function within golden ratio search.
+    ///
+    /// - Returns: The length of reference note in beats. In 120 bpm, 4/4, which is MIDI default, the new bpm is then 120 \* 0.25 / return value.
+    public func deriveReferenceNoteLength(
+        minimumNoteDistance: Double = Double(sign: .plus, exponent: -4, significand: 1)
+    ) -> Double {
+        let distances = [Double](unsafeUninitializedCapacity: self.notes.count - 1) { buffer, initializedCount in
+            initializedCount = 0
+            
+            var i = 1
+            while i < self.notes.count {
+                let distance = self.notes[i].onset - self.notes[i-1].onset
+                if distance >= minimumNoteDistance {
+                    buffer[initializedCount] = distance
+                    initializedCount &+= 1
+                }
+                
+                i &+= 1
+            }
+        }
+        
+        /// - Complexity: O(*n*).
+        func loss(distances: [Double], reference: Double) -> Double {
+            var i = 1
+            var loss: Double = 0
+            while i < distances.count {
+                let remainder = distances[i].truncatingRemainder(dividingBy: reference)
+                assert(remainder >= 0)
+                loss += Swift.min(remainder, Swift.max(reference - remainder, 0))
+                
+                i &+= 1
+            }
+            
+            return loss
+        }
+        
+        /// - Complexity: O(*n* log *n*).
+        func goldenSectionSearch(left: Double, right: Double, tolerance: Double = 1e-5, body: (Double) -> Double) -> Double {
+            let gr = (sqrt(5) + 1) / 2 // Golden ratio constant
+            
+            var a = left
+            var b = right
+            
+            // We are looking for the minimum, so we apply the golden section search logic
+            var c = b - (b - a) / gr
+            var d = a + (b - a) / gr
+            
+            while abs(c - d) > tolerance {
+                if body(c) < body(d) {
+                    b = d
+                } else {
+                    a = c
+                }
+                
+                c = b - (b - a) / gr
+                d = a + (b - a) / gr
+            }
+            
+            // The point of minimum loss is between a and b
+            return (b + a) / 2
+        }
+        
+        return goldenSectionSearch(left: 0, right: vDSP.mean(distances) * 3 / 2) {
+            loss(distances: distances, reference: $0)
+        }
     }
     
 }

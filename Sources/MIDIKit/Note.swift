@@ -11,6 +11,7 @@ import AudioToolbox
 
 public struct MIDINote: Sendable, Equatable {
     
+    /// The onset, in beats.
     public var onset: MusicTimeStamp
     public var offset: MusicTimeStamp
     /// The key
