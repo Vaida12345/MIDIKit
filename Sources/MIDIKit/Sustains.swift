@@ -59,6 +59,10 @@ public struct MIDISustainEvents: RandomAccessCollection, Sendable, Equatable, Ex
         self.sustains.sort(by: { $0.onset < $1.onset })
     }
     
+    public mutating func forEach(body: (_ index: Index, _ element: inout Element) -> Void) {
+        self.sustains.forEach(body: body)
+    }
+    
     public init(sustains: [Element] = []) {
         self.sustains = sustains.sorted(by: { $0.onset < $1.onset })
     }

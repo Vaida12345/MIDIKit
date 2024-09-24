@@ -32,12 +32,7 @@ public struct MIDINotes: RandomAccessCollection, Sendable, Equatable, CustomDeta
     }
     
     public mutating func forEach(body: (_ index: Index, _ element: inout Element) -> Void) {
-        var i = 0
-        while i < self.endIndex {
-            body(i, &self.notes[i])
-            
-            i &+= 1
-        }
+        self.notes.forEach(body: body)
     }
     
     public init(notes: [MIDITrack.Note] = []) {
@@ -540,6 +535,30 @@ extension MIDINotes {
         return goldenSectionSearch(left: 0, right: vDSP.mean(distances) * 3 / 2) {
             loss(distances: distances, reference: $0)
         }
+    }
+    
+    /// **DEBUG USE** Draw a histogram of the notes distances from direct previous notes.
+    @MainActor public func drawDistanceDistribution(
+        minimumNoteDistance: Double = Double(sign: .plus, exponent: -4, significand: 1)
+    ) {
+        let distances = [Double](unsafeUninitializedCapacity: self.notes.count - 1) { buffer, initializedCount in
+            initializedCount = 0
+            
+            var i = 1
+            while i < self.notes.count {
+                let distance = self.notes[i].onset - self.notes[i-1].onset
+                if distance >= minimumNoteDistance {
+                    buffer[initializedCount] = distance
+                    initializedCount &+= 1
+                }
+                
+                i &+= 1
+            }
+        }
+        
+        let view = Distribution(values: distances)
+            .frame(width: 800, height: 400)
+        view.render(to: FinderItem.desktopDirectory.appending(path: "frequency.pdf"))
     }
     
 }

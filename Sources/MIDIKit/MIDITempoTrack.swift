@@ -35,9 +35,9 @@ public struct MIDITempoTrack: Sendable, CustomStringConvertible, CustomDetailedS
     
     public struct Tempo: Sendable, Equatable {
         
-        public let timestamp: MusicTimeStamp
+        public var timestamp: MusicTimeStamp
         
-        public let tempo: Double
+        public var tempo: Double
         
     }
     

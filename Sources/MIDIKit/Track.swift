@@ -82,8 +82,10 @@ public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertibl
         }
         
         for i in 0..<self.notes.count {
+            var duration = self.notes[i].duration
+            _quantize(value: &duration) // duration then onset, as onset would change the duration.
             _quantize(value: &self.notes[i].onset)
-            _quantize(value: &self.notes[i].duration)
+            self.notes[i].duration = Swift.max(duration, 1/4)
         }
         
         for i in 0..<self.sustains.count {

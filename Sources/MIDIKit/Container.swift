@@ -9,6 +9,7 @@ import Foundation
 import System
 import AudioToolbox
 import DetailedDescription
+import FinderItem
 
 
 public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConvertible, Sendable, Equatable {
@@ -46,13 +47,10 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
         return sequence
     }
     
-    public func writeData(to destination: URL) throws {
-        let code = MusicSequenceFileCreate(self.makeSequence(), destination as CFURL, .midiType, .eraseFile, .max)
+    public func writeData(to destination: FinderItem) throws {
+        try destination.removeIfExists()
+        let code = MusicSequenceFileCreate(self.makeSequence(), destination.url as CFURL, .midiType, .eraseFile, .max)
         guard code == noErr else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(code)) }
-    }
-    
-    public func writeData(to destination: FilePath) throws {
-        try self.writeData(to: URL(filePath: destination)!)
     }
     
     public func data() throws -> Data {
@@ -62,6 +60,34 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
         return data!.takeRetainedValue() as Data
     }
     
+    /// Apply the tempo.
+    public mutating func applyTempo(tempo: Double) {
+        precondition(self.tempo.tempos.isEmpty || (self.tempo.tempos.count == 1 && self.tempo.tempos[0] == .init(timestamp: 0, tempo: 120)))
+        
+        if self.tempo.tempos.isEmpty {
+            self.tempo.tempos.append(MIDITempoTrack.Tempo(timestamp: 0, tempo: tempo))
+        } else {
+            self.tempo.tempos[0].tempo = tempo
+        }
+        
+        let factor = tempo / 120
+        
+        self.tracks.forEach { index, element in
+            element.notes.forEach { index, element in
+                element.onset *= factor
+                element.offset *= factor
+            }
+            
+            element.sustains.forEach { index, element in
+                element.onset *= factor
+                element.offset *= factor
+            }
+            
+            element.metaEvents.forEach { index, element in
+                element.timestamp *= factor
+            }
+        }
+    }
     
     public init(tracks: [MIDITrack] = [], tempo: MIDITempoTrack = MIDITempoTrack(events: [], tempos: [])) {
         self.tracks = tracks
@@ -187,11 +213,7 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
         self.init(tracks: midiTracks, tempo: .init(events: midiTempoTrack!.metaEvents, tempos: additionInfo.tempos))
     }
     
-    public init(at filePath: FilePath) throws {
-        try self.init(at: URL(filePath: filePath)!)
-    }
-    
-    public init(at url: URL) throws {
+    public init(at url: FinderItem) throws {
         var sequence: MusicSequence?
         NewMusicSequence(&sequence)
         
@@ -199,7 +221,7 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
             fatalError()
         }
         
-        let code = MusicSequenceFileLoad(sequence, url as CFURL, .midiType, .smf_PreserveTracks)
+        let code = MusicSequenceFileLoad(sequence, url.url as CFURL, .midiType, .smf_PreserveTracks)
         guard code == noErr else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(code)) }
         
         try self.init(sequence: sequence)

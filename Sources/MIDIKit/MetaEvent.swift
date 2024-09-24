@@ -29,11 +29,11 @@ import AVFAudio
 /// ```
 public struct MIDIMetaEvent: Sendable, Equatable {
     
-    public let timestamp: MusicTimeStamp
+    public var timestamp: MusicTimeStamp
     
-    public let type: UInt8
+    public var type: UInt8
     
-    public let data: Data
+    public var data: Data
     
     
     func withUnsafePointer<T>(body: (UnsafePointer<AudioToolbox.MIDIMetaEvent>) throws -> T) rethrows -> T {
@@ -78,7 +78,7 @@ extension MIDIMetaEvent: CustomStringConvertible {
         }
         
         let content: Any? = switch AVMIDIMetaEvent.EventType(rawValue: Int(self.type)) {
-        case .trackName:
+        case .trackName, .instrument:
             String(data: self.data, encoding: .utf8) .map { "\"" + $0 + "\"" }
             
         default:
