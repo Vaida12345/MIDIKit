@@ -71,6 +71,25 @@ public struct MIDINotes: RandomAccessCollection, Sendable, Equatable, CustomDeta
         descriptor.sequence(for: \.notes)
     }
     
+    public static let preview: MIDINotes = [
+        MIDINote(onset: 1.03, offset: 1.92, note: 54, velocity: 40, channel: 0),
+        MIDINote(onset: 1.50, offset: 2.22, note: 61, velocity: 60, channel: 0),
+        MIDINote(onset: 1.94, offset: 2.62, note: 54, velocity: 49, channel: 0),
+        MIDINote(onset: 2.24, offset: 2.94, note: 61, velocity: 64, channel: 0),
+        MIDINote(onset: 2.64, offset: 3.28, note: 54, velocity: 59, channel: 0),
+        MIDINote(onset: 2.96, offset: 3.60, note: 61, velocity: 71, channel: 0),
+        MIDINote(onset: 3.31, offset: 3.96, note: 54, velocity: 71, channel: 0),
+        MIDINote(onset: 3.63, offset: 4.24, note: 61, velocity: 83, channel: 0),
+        MIDINote(onset: 3.98, offset: 4.66, note: 54, velocity: 73, channel: 0),
+        MIDINote(onset: 4.27, offset: 4.96, note: 61, velocity: 80, channel: 0),
+        MIDINote(onset: 4.68, offset: 5.36, note: 54, velocity: 71, channel: 0),
+        MIDINote(onset: 4.99, offset: 12.32, note: 61, velocity: 74, channel: 0),
+        MIDINote(onset: 5.38, offset: 6.16, note: 54, velocity: 70, channel: 0),
+        MIDINote(onset: 5.77, offset: 6.46, note: 62, velocity: 61, channel: 0),
+        MIDINote(onset: 6.17, offset: 6.84, note: 54, velocity: 65, channel: 0),
+        MIDINote(onset: 6.47, offset: 7.18, note: 62, velocity: 66, channel: 0)
+    ]
+    
 }
 
 
@@ -467,6 +486,14 @@ extension MIDINotes {
     ///
     /// In proper midi, notes should have onsets at *m* \* 1/2^*n*.
     ///
+    /// ```swift
+    /// // start by normalizing tempo
+    /// let referenceNoteLength = container.tracks[0].notes.deriveReferenceNoteLength()
+    ///
+    /// let tempo = 120 * 1/4 / referenceNoteLength
+    /// container.applyTempo(tempo: tempo)
+    /// ```
+    ///
     /// - Parameters:
     ///   - minimumNoteDistance: Drop notes whose distances from previous notes are less than `minimumNoteDistance`. As these notes could be forming a chord. Defaults to 2^-4, 64th note.
     ///
@@ -556,9 +583,9 @@ extension MIDINotes {
             }
         }
         
-        let view = Distribution(values: distances)
+        DistributionView(values: distances)
             .frame(width: 800, height: 400)
-        view.render(to: FinderItem.desktopDirectory.appending(path: "frequency.pdf"))
+            .render(to: FinderItem.desktopDirectory.appending(path: "frequency.pdf"))
     }
     
 }

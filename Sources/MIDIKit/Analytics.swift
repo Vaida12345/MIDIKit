@@ -10,11 +10,11 @@ import Charts
 import Accelerate
 
 
-struct Distribution: View {
+public struct DistributionView: View {
     
     let value: [(Double, Int)]
     
-    var body: some View {
+    public var body: some View {
         Chart {
             ForEach(value, id: \.self.0) { (key, value) in
                 BarMark(x: .value("range", key), y: .value("frequency", value))
@@ -22,7 +22,7 @@ struct Distribution: View {
         }
     }
     
-    init(values: [Double], bins: Int = 1000, min: Double? = nil, max: Double? = nil) {
+    public init(values: [Double], bins: Int = 1000, min: Double? = nil, max: Double? = nil) {
         let min = min ?? vDSP.minimum(values)
         let max = max ?? vDSP.maximum(values)
         

@@ -6,10 +6,10 @@ import PackageDescription
 let package = Package(
     name: "MIDIKit",
     platforms: [
-        .macOS(.v13),
-        .iOS(.v16),
-        .watchOS(.v9),
-        .tvOS(.v16),
+        .macOS(.v14),
+        .iOS(.v17),
+        .watchOS(.v10),
+        .tvOS(.v17),
         .visionOS(.v1)
     ],
     products: [

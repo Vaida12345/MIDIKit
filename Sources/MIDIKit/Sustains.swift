@@ -7,10 +7,11 @@
 
 import OSLog
 import AudioToolbox
+import DetailedDescription
 
 
 /// To support efficient lookup, the sustain events are always sorted.
-public struct MIDISustainEvents: RandomAccessCollection, Sendable, Equatable, ExpressibleByArrayLiteral {
+public struct MIDISustainEvents: RandomAccessCollection, Sendable, Equatable, ExpressibleByArrayLiteral, CustomDetailedStringConvertible {
     
     var sustains: [Element]
     
@@ -108,5 +109,9 @@ public struct MIDISustainEvents: RandomAccessCollection, Sendable, Equatable, Ex
     public typealias Index = Int
     
     public typealias Element = MIDISustainEvent
+    
+    public func detailedDescription(using descriptor: DetailedDescription.Descriptor<MIDISustainEvents>) -> any DescriptionBlockProtocol {
+        descriptor.sequence("", of: self)
+    }
     
 }

@@ -61,6 +61,14 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
     }
     
     /// Apply the tempo.
+    ///
+    /// ```swift
+    /// // start by normalizing tempo
+    /// let referenceNoteLength = container.tracks[0].notes.deriveReferenceNoteLength()
+    ///
+    /// let tempo = 120 * 1/4 / referenceNoteLength
+    /// container.applyTempo(tempo: tempo)
+    /// ```
     public mutating func applyTempo(tempo: Double) {
         precondition(self.tempo.tempos.isEmpty || (self.tempo.tempos.count == 1 && self.tempo.tempos[0] == .init(timestamp: 0, tempo: 120)))
         
@@ -213,7 +221,7 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
         self.init(tracks: midiTracks, tempo: .init(events: midiTempoTrack!.metaEvents, tempos: additionInfo.tempos))
     }
     
-    public init(at url: FinderItem) throws {
+    public init(at source: FinderItem) throws {
         var sequence: MusicSequence?
         NewMusicSequence(&sequence)
         
@@ -221,7 +229,7 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
             fatalError()
         }
         
-        let code = MusicSequenceFileLoad(sequence, url.url as CFURL, .midiType, .smf_PreserveTracks)
+        let code = MusicSequenceFileLoad(sequence, source.url as CFURL, .midiType, .smf_PreserveTracks)
         guard code == noErr else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(code)) }
         
         try self.init(sequence: sequence)
