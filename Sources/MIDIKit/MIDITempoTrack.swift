@@ -39,6 +39,11 @@ public struct MIDITempoTrack: Sendable, CustomStringConvertible, CustomDetailedS
         
         public var tempo: Double
         
+        public init(timestamp: MusicTimeStamp, tempo: Double) {
+            self.timestamp = timestamp
+            self.tempo = tempo
+        }
+        
     }
     
 }

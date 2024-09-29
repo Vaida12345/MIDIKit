@@ -15,36 +15,44 @@ import Charts
 import Accelerate
 
 
-//var container = try MIDIContainer(at: "/Users/vaida/Desktop/MIDIs/16 Regret : Humiliation.mid")
-//
-////// start by normalizing tempo
-////let refereceNoteLength = container.tracks[0].notes.deriveReferenceNoteLength()
-////
-////let tempo = 120 * 1/4 / refereceNoteLength
-////container.applyTempo(tempo: tempo)
-////
-////// deal with sustains
-////let sustains = container.tracks[0].sustains
-////
-////detailedPrint(sustains)
-////
-////DistributionView(values: sustains.map(\.duration))
-////    .frame(width: 800, height: 400)
-////    .render(to: .desktopDirectory.appending(path: "distribution.pdf"))
-//
-//for note in container.tracks[0].notes[0..<16] {
-//    print("MIDINote(onset: \(note.onset, format: .number.precision(.fractionLength(2))), offset: \(note.offset, format: .number.precision(.fractionLength(2))), note: \(note.note), velocity: \(note.velocity), channel: 0),")
-//}
+var container = try MIDIContainer(at: "/Users/vaida/Desktop/MIDIs/16 Regret : Humiliation.mid")
+
+let tempos: [MIDITempoTrack.Tempo] = [.init(timestamp: 0, tempo: 300), .init(timestamp: 10, tempo: 10)]
+container.adjustMIDINotesToVariadicTempo(tempos, currentTempo: 120)
+
+/*
+ │        │ ├─[0]: Note(range: 1.03 - 1.92, note: 54, velocity: 40)
+ │        │ ├─[1]: Note(range: 1.50 - 2.22, note: 61, velocity: 60)
+ │        │ ├─[2]: Note(range: 1.94 - 2.62, note: 54, velocity: 49)
+ │        │ ├─[3]: Note(range: 2.24 - 2.94, note: 61, velocity: 64)
+ */
+
+detailedPrint(container)
+
+try container.writeData(to: .desktopDirectory.appending(path: "vardic tempo.mid"))
 
 
-//StaffView(notes: MIDINotes.preview.map { StaffNote(note: $0) })
-//    .render(to: .desktopDirectory.appending(path: "preview.pdf"))
-
-
-var container = MIDIContainer()
-
-var track = MIDITrack(notes: [], sustains: [])
-track.notes = MIDINotes(notes: (1..<128).map({ MIDINote(onset: Double($0), offset: Double($0)+1, note: UInt8($0), velocity: 100, channel: 0) }))
-
-container.tracks.append(track)
-try container.writeData(to: .desktopDirectory.appending(path: "test.mid"))
+//func scaledTime(at timestamp: MusicTimeStamp, tempoEvents: [MIDITempoTrack.Tempo], constantTempo: Double) -> MusicTimeStamp {
+//    var lastTempoChangeTime: MusicTimeStamp = 0
+//    var lastTempo: Double = tempoEvents.first?.tempo ?? constantTempo
+//    var scaledTime: MusicTimeStamp = 0
+//    
+//    for tempoEvent in tempoEvents {
+//        if timestamp < tempoEvent.timestamp {
+//            break
+//        }
+//        
+//        let timeDifference = tempoEvent.timestamp - lastTempoChangeTime
+//        let scaledTimeSegment = timeDifference * constantTempo / lastTempo
+//        scaledTime += scaledTimeSegment
+//        
+//        lastTempoChangeTime = tempoEvent.timestamp
+//        lastTempo = tempoEvent.tempo
+//    }
+//    
+//    // Scale remaining time up to the note's timestamp
+//    let remainingTime = timestamp - lastTempoChangeTime
+//    scaledTime += remainingTime * constantTempo / lastTempo
+//    
+//    return scaledTime
+//    }
