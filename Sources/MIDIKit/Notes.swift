@@ -564,6 +564,7 @@ extension MIDINotes {
         }
     }
     
+    #if os(macOS)
     /// **DEBUG USE** Draw a histogram of the notes distances from direct previous notes.
     @MainActor public func drawDistanceDistribution(
         minimumNoteDistance: Double = Double(sign: .plus, exponent: -4, significand: 1)
@@ -587,5 +588,6 @@ extension MIDINotes {
             .frame(width: 800, height: 400)
             .render(to: FinderItem.desktopDirectory.appending(path: "frequency.pdf"))
     }
+    #endif
     
 }

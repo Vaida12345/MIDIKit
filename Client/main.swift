@@ -16,4 +16,4 @@ import Accelerate
 
 
 var container = try MIDIContainer(at: "/Users/vaida/Desktop/Ashes on The Fire - Shingeki no Kyojin.mid")
-print(container.tracks[0].notes.count)
+detailedPrint(container)
