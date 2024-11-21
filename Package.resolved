@@ -1,13 +1,49 @@
 {
-  "originHash" : "340cdaa115fa1601ec5a78ab9815b3c22f7b2d891b3ac1deffbd68270b27d4ee",
+  "originHash" : "ad338e8550098c542892dd02dc5a95a4a3fe33f038fed76d6d83b8d773db0aca",
   "pins" : [
+    {
+      "identity" : "concurrentstream",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Vaida12345/ConcurrentStream.git",
+      "state" : {
+        "revision" : "6a4a66b5e6ff72e68df8b720538db5cef0039312",
+        "version" : "0.1.0"
+      }
+    },
     {
       "identity" : "detaileddescription",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Vaida12345/DetailedDescription.git",
       "state" : {
-        "branch" : "main",
-        "revision" : "e43cc9d1ddcc403bfe9b120a0f7ae5791ba6038a"
+        "revision" : "eee79eadf9e9918150c88796e30a202e3f133cf7",
+        "version" : "1.0.0"
+      }
+    },
+    {
+      "identity" : "essentials",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Vaida12345/Essentials",
+      "state" : {
+        "revision" : "246636f475fd95bb67d8b703ad895efa6202f86b",
+        "version" : "1.0.1"
+      }
+    },
+    {
+      "identity" : "finderitem",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Vaida12345/FinderItem.git",
+      "state" : {
+        "revision" : "0071dac1987cb68b067957b455fccdd2b09c528a",
+        "version" : "1.0.2"
+      }
+    },
+    {
+      "identity" : "nativeimage",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Vaida12345/NativeImage.git",
+      "state" : {
+        "revision" : "7e51defc3ed3c0aa74e7bcc13101a0d60526a276",
+        "version" : "1.0.0"
       }
     }
   ],

@@ -224,7 +224,7 @@ public extension MIDIContainer {
     /// let tempo = 120 * 1/4 / referenceNoteLength
     /// container.applyTempo(tempo: tempo)
     /// ```
-    public mutating func applyTempo(tempo: Double) {
+    mutating func applyTempo(tempo: Double) {
         precondition(self.tempo.tempos.isEmpty || (self.tempo.tempos.count == 1 && self.tempo.tempos[0] == .init(timestamp: 0, tempo: 120)))
         
         if self.tempo.tempos.isEmpty {

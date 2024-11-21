@@ -5,10 +5,13 @@
 //  Created by Vaida on 8/26/24.
 //
 
-import Stratum
+import Essentials
+import FinderItem
+import ConcurrentStream
 import OSLog
 import DetailedDescription
 import Accelerate
+import NativeImage
 
 
 public struct MIDINotes: RandomAccessCollection, Sendable, Equatable, CustomDetailedStringConvertible, ExpressibleByArrayLiteral {

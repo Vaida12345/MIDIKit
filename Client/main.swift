@@ -5,7 +5,7 @@
 //  Created by Vaida on 8/23/24.
 //
 
-import Stratum
+import FinderItem
 import Foundation
 import MIDIKit
 import AudioToolbox

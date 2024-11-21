@@ -19,15 +19,17 @@ let package = Package(
             targets: ["MIDIKit"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/Vaida12345/DetailedDescription.git", branch: "main"),
-        .package(name: "Stratum",
-                 path: "~/Library/Mobile Documents/com~apple~CloudDocs/DataBase/Projects/Packages/Stratum")
+        .package(url: "https://github.com/Vaida12345/DetailedDescription.git", from: "1.0.0"),
+        .package(url: "https://github.com/Vaida12345/FinderItem.git", from: "1.0.0"),
+        .package(url: "https://github.com/Vaida12345/ConcurrentStream.git", from: "0.1.0"),
+        .package(url: "https://github.com/Vaida12345/NativeImage.git", from: "1.0.0"),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
-        .target(name: "MIDIKit", dependencies: ["DetailedDescription", "Stratum"], path: "Sources"),
+        .target(name: "MIDIKit", dependencies: ["DetailedDescription", "FinderItem", "ConcurrentStream", "NativeImage"], path: "Sources"),
         .executableTarget(name: "Client", dependencies: ["MIDIKit"], path: "Client"),
         .testTarget(name: "Tests", dependencies: ["MIDIKit"], path: "Tests"),
-    ]
+    ],
+    swiftLanguageModes: [.v5]
 )
