@@ -27,7 +27,12 @@ let package = Package(
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
-        .target(name: "MIDIKit", dependencies: ["DetailedDescription", "FinderItem", "ConcurrentStream", "NativeImage"], path: "Sources"),
+        .target(
+            name: "MIDIKit",
+            dependencies: ["DetailedDescription", "FinderItem", "ConcurrentStream", "NativeImage"],
+            path: "Sources",
+            resources: [.copy("Engine/Nice-Steinway-Lite-v3.0.sf2")]
+        ),
         .executableTarget(name: "Client", dependencies: ["MIDIKit"], path: "Client"),
         .testTarget(name: "Tests", dependencies: ["MIDIKit"], path: "Tests"),
     ],
