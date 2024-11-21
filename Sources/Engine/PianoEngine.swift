@@ -15,15 +15,15 @@ import FinderItem
 /// The engine handling all playbacks.
 public final class PianoEngine {
     
-    let engine = AVAudioEngine()
+    private let engine = AVAudioEngine()
     
-    let sampler = AVAudioUnitSampler()
+    private let sampler = AVAudioUnitSampler()
     
     /// beats per second is bpm / 60
-    let beatsPerSecond: Double = 2
+    private let beatsPerSecond: Double = 2
     
     /// The jobs are always sorted by the end date.
-    var currentJobs: Heap<Job> = Heap(.minHeap)
+    private var currentJobs: Heap<Job> = Heap(.minHeap)
     
     private var publisher: AnyCancellable?
     
@@ -80,7 +80,7 @@ public final class PianoEngine {
         sampler.sendController(73, withValue: 127, onChannel: 0)
         sampler.sendController(75, withValue: 127, onChannel: 0)
         
-        self.publisher = Timer.publish(every: 0.1, on: .current, in: .common) // on low frequency.
+        self.publisher = Timer.publish(every: 0.1, on: .main, in: .common) // on low frequency.
             .autoconnect()
             .sink { [weak self] date in
                 self?.checkForCompletedJobs(date: date)
@@ -98,7 +98,7 @@ public final class PianoEngine {
     }
     
     
-    struct Job: Equatable, Comparable {
+    private struct Job: Equatable, Comparable {
         
         let note: UInt8
         
