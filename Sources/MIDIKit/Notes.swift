@@ -397,8 +397,7 @@ extension MIDINotes {
     }
     
     /// Normalize by shrinking the length of notes as far as possible, while ensuring the offset are in the same sustain region.
-    public func normalizedLengthByShrinkingKeepingOffsetInSameRegion(sustains: MIDISustainEvents) -> MIDINotes {
-        let minimumLength: Double = 1/128
+    public func normalizedLengthByShrinkingKeepingOffsetInSameRegion(sustains: MIDISustainEvents, minimumLength: Double = 1/128) -> MIDINotes {
         let notes = self.notes.sorted(by: { $0.onset < $1.onset })
         
         return MIDINotes(notes: notes.enumerated().map { index, note in
