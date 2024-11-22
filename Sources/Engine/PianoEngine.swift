@@ -10,9 +10,11 @@ import Combine
 import Observation
 import AVFoundation
 import FinderItem
+import Synchronization
 
 
 /// The engine handling all playbacks.
+@available(macOS 15.0, iOS 18.0, tvOS 18.0, watchOS 10.0, *)
 public final class PianoEngine {
     
     private let engine = AVAudioEngine()
@@ -23,7 +25,7 @@ public final class PianoEngine {
     private let beatsPerSecond: Double = 2
     
     /// The jobs are always sorted by the end date.
-    private var currentJobs: Heap<Job> = Heap(.minHeap)
+    private let currentJobs = Mutex(Heap<Job>(.minHeap))
     
     private var publisher: AnyCancellable?
     
@@ -32,38 +34,51 @@ public final class PianoEngine {
     
     /// - Parameters:
     ///   - duration: Duration in beats
-    public func play(note: UInt8, duration: Double, velocity: UInt8) {
+    public func play(note: UInt8, duration: Double, velocity: UInt8) async {
         sampler.startNote(note, withVelocity: velocity, onChannel: 0)
-        currentJobs.append(Job(note: note, end: Date() + duration))
+        
+        currentJobs.withLock { jobs in
+            jobs.append(Job(note: note, end: Date() + duration))
+        }
     }
     
-    public func pushSustain() {
+    public func pushSustain() async {
         sampler.sendController(64, withValue: 127, onChannel: 0)
     }
     
-    public func popSustain() {
+    public func popSustain() async {
         sampler.sendController(64, withValue: 0, onChannel: 0)
     }
     
-    public func stopAll() {
-        let jobs = currentJobs
-        currentJobs = Heap(.minHeap)
+    public func stopAll() async {
+        let jobs = currentJobs.withLock { $0 }
+        currentJobs.withLock { jobs in
+            jobs = Heap(.minHeap)
+        }
         
         for job in jobs {
             sampler.stopNote(job.note, onChannel: 0)
         }
         
-        self.popSustain()
+        await self.popSustain()
     }
     
     private func checkForCompletedJobs(date: Date) {
-        guard let job = self.currentJobs.first else { return }
-        if date >= job.end {
-            sampler.stopNote(job.note, onChannel: 0)
+        let note: UInt8? = self.currentJobs.withLock { jobs in
+            guard let firstJob = jobs.first else { return nil }
             
-            self.currentJobs.removeFirst()
-            self.checkForCompletedJobs(date: date)
+            if date >= firstJob.end {
+                jobs.removeFirst()
+                
+                return firstJob.note
+            }
+            return nil
         }
+        
+        guard let note else { return }
+        
+        sampler.stopNote(note, onChannel: 0)
+        self.checkForCompletedJobs(date: date)
     }
     
     public init() {
