@@ -47,12 +47,21 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
         return sequence
     }
     
+    @available(*, deprecated, renamed: "write(to:)")
     public func writeData(to destination: FinderItem) throws {
         try destination.removeIfExists()
         let code = MusicSequenceFileCreate(self.makeSequence(), destination.url as CFURL, .midiType, .eraseFile, .max)
         guard code == noErr else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(code)) }
     }
     
+    /// Writes the MIDI as file to `destination`.
+    public func write(to destination: FinderItem) throws {
+        try destination.removeIfExists()
+        let code = MusicSequenceFileCreate(self.makeSequence(), destination.url as CFURL, .midiType, .eraseFile, .max)
+        guard code == noErr else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(code)) }
+    }
+    
+    /// Obtain the MIDI data.
     public func data() throws -> Data {
         var data: Unmanaged<CFData>?
         let code = MusicSequenceFileCreateData(self.makeSequence(), .midiType, .eraseFile, 0, &data)
