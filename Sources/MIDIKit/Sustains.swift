@@ -31,7 +31,7 @@ public struct MIDISustainEvents: RandomAccessCollection, Sendable, Equatable, Ex
         var right = self.count
         
         while left < right {
-            let mid = left + (right - left) / 2
+            let mid = (left + right) / 2
             if self[mid].onset > timeStamp {
                 right = mid
             } else {
@@ -43,6 +43,29 @@ public struct MIDISustainEvents: RandomAccessCollection, Sendable, Equatable, Ex
         // Check if 'left' is within bounds and return the element if it exists.
         if left < self.count {
             return self[left]
+        } else {
+            return nil
+        }
+    }
+    
+    /// Returns the last sustain whose offset is less than `timeStamp`.
+    ///
+    /// - Complexity: O(log *n*), binary search.
+    public func last(before timeStamp: MusicTimeStamp) -> Element? {
+        var left = 0
+        var right = self.count
+        
+        while left < right {
+            let mid = (left + right) / 2
+            if self[mid].offset < timeStamp {
+                left = mid + 1
+            } else {
+                right = mid
+            }
+        }
+        
+        if left > 0 {
+            return self[left - 1]
         } else {
             return nil
         }

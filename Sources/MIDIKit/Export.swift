@@ -17,7 +17,6 @@ extension MIDIContainer {
     /// - Parameters:
     ///   - destination: The destination uses `wav` format.
     public func export(to destination: FinderItem) async throws {
-        
         let audioEngine = AVAudioEngine()
         let sampler = AVAudioUnitSampler()
         audioEngine.attach(sampler)
@@ -55,7 +54,6 @@ extension MIDIContainer {
         sequencer.stop()
         audioEngine.stop()
     }
-    
 }
 
 
