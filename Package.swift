@@ -19,10 +19,10 @@ let package = Package(
             targets: ["MIDIKit"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/Vaida12345/DetailedDescription.git", from: "1.0.0"),
-        .package(url: "https://github.com/Vaida12345/FinderItem.git", from: "1.0.0"),
-        .package(url: "https://github.com/Vaida12345/ConcurrentStream.git", from: "0.1.0"),
-        .package(url: "https://github.com/Vaida12345/NativeImage.git", from: "1.0.0"),
+        .package(url: "https://github.com/Vaida12345/DetailedDescription", from: "1.0.0"),
+        .package(url: "https://github.com/Vaida12345/FinderItem", from: "1.0.0"),
+        .package(url: "https://github.com/Vaida12345/ConcurrentStream", from: "0.1.0"),
+        .package(url: "https://github.com/Vaida12345/NativeImage", from: "1.0.0"),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
