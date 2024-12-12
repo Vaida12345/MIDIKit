@@ -36,6 +36,7 @@ public final class PianoEngine {
     
     /// - Parameters:
     ///   - duration: Duration in beats. If `nil`, you need to manually stop the key using ``stop(note:)``.
+    @MainActor
     public func play(note: UInt8, duration: Double?, velocity: UInt8) async {
         sampler?.startNote(note, withVelocity: velocity, onChannel: 0)
         
@@ -49,18 +50,22 @@ public final class PianoEngine {
     /// Stop a note created by ``play(note:duration:velocity:)`` with `duration = nil`.
     ///
     /// You *must* balance the number of ``play(note:duration:velocity:)`` and ``stop(note:)``.
+    @MainActor
     public func stop(note: UInt8) async {
         sampler?.stopNote(note, onChannel: 0)
     }
     
+    @MainActor
     public func pushSustain() async {
         sampler?.sendController(64, withValue: 127, onChannel: 0)
     }
     
+    @MainActor
     public func popSustain() async {
         sampler?.sendController(64, withValue: 0, onChannel: 0)
     }
     
+    @MainActor
     public func stopAll() async {
         let jobs = currentJobs.withLock { $0 }
         currentJobs.withLock { jobs in
