@@ -25,9 +25,9 @@ extension Array {
 
 extension FinderItem.AsyncLoadableContent {
     
-    static var container: FinderItem.AsyncLoadableContent<MIDIContainer, any Error> {
+    public static var MIDIContainer: FinderItem.AsyncLoadableContent<MIDIContainer, any Error> {
         .init { source in
-            try MIDIContainer(at: source)
+            try MIDIKit.MIDIContainer(at: source)
         }
     }
     
