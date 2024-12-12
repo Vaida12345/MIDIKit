@@ -1,49 +1,49 @@
 {
-  "originHash" : "8e20a66cb82e5494533d0489008d1e2dad9e997682763d4cc91f0b38f8f35fbd",
+  "originHash" : "60265ed5c78a47528d6da1d111710e9d7706a293c1bc5df5bd266eb8775f639d",
   "pins" : [
     {
       "identity" : "concurrentstream",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Vaida12345/ConcurrentStream.git",
+      "location" : "https://www.github.com/Vaida12345/ConcurrentStream",
       "state" : {
-        "revision" : "6a4a66b5e6ff72e68df8b720538db5cef0039312",
-        "version" : "0.1.0"
+        "revision" : "1b00d06264105dfa9787a1b0fbe6cfd29e4cef80",
+        "version" : "0.1.1"
       }
     },
     {
       "identity" : "detaileddescription",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Vaida12345/DetailedDescription.git",
+      "location" : "https://www.github.com/Vaida12345/DetailedDescription",
       "state" : {
-        "revision" : "eee79eadf9e9918150c88796e30a202e3f133cf7",
-        "version" : "1.0.0"
+        "revision" : "5e051339f205c70dbe6f3db5b4285f0b7613de67",
+        "version" : "1.0.2"
       }
     },
     {
       "identity" : "essentials",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Vaida12345/Essentials",
+      "location" : "https://www.github.com/Vaida12345/Essentials",
       "state" : {
-        "revision" : "f2d242b5b4888386b780e2b54b9409b38afc3c9b",
-        "version" : "1.0.9"
+        "revision" : "61227bf3938002ce8709860c0520f46a5fd3fed5",
+        "version" : "1.0.10"
       }
     },
     {
       "identity" : "finderitem",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Vaida12345/FinderItem.git",
+      "location" : "https://www.github.com/Vaida12345/FinderItem",
       "state" : {
-        "revision" : "19c1bd2ae89418a96ce57464a0ae9875014a086d",
-        "version" : "1.0.4"
+        "revision" : "77d80ab005f426634ad7abb342cef801ddfa4269",
+        "version" : "1.0.5"
       }
     },
     {
       "identity" : "nativeimage",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Vaida12345/NativeImage.git",
+      "location" : "https://www.github.com/Vaida12345/NativeImage",
       "state" : {
-        "revision" : "7e51defc3ed3c0aa74e7bcc13101a0d60526a276",
-        "version" : "1.0.0"
+        "revision" : "0211385bf6bcfdb5412342831b1010f0e4930a22",
+        "version" : "1.0.1"
       }
     }
   ],
