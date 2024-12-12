@@ -5,6 +5,8 @@
 //  Created by Vaida on 9/9/24.
 //
 
+import FinderItem
+
 
 extension Array {
     
@@ -15,6 +17,17 @@ extension Array {
             body(i, &self[i])
             
             i &+= 1
+        }
+    }
+    
+}
+
+
+extension FinderItem.AsyncLoadableContent {
+    
+    static var container: FinderItem.AsyncLoadableContent<MIDIContainer, any Error> {
+        .init { source in
+            try MIDIContainer(at: source)
         }
     }
     

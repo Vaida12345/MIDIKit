@@ -16,7 +16,9 @@ import Accelerate
 import AVFAudio
 
 
-var container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/1-61 Piano Sonata No. 14, _Moonlight__ I. Adagio sostenuto (edited).mid")
-try await container.export(
-    to: .desktopDirectory.appending(path: "file.wav")
-)
+var container = MIDIContainer()
+var track = MIDITrack(notes: [MIDITrack.Note(onset: 0, offset: 1, note: 10, velocity: 10, channel: 0)])
+container.tracks.append(track)
+
+let exporter = MIDI2Exporter(container: container)
+try exporter.makeData().write(to: FinderItem.desktopDirectory/"test.midi2")
