@@ -32,30 +32,6 @@ public final class Chord: RandomAccessCollection {
     
     public typealias Element = ReferenceNote
     
-    private var maxNote: UInt8? {
-        var i = 0
-        var max: UInt8? = nil
-        while i < self.contents.count {
-            if max == nil || self.contents[i].note > max! {
-                max = self.contents[i].note
-            }
-            i &+= 1
-        }
-        return max
-    }
-    private var minNote: UInt8? {
-        var i = 0
-        var min: UInt8? = nil
-        while i < self.contents.count {
-            if min == nil || self.contents[i].note < min! {
-                min = self.contents[i].note
-            }
-            i &+= 1
-        }
-        return min
-    }
-    
-    
     private func append(contentsOf other: Chord) {
         self.contents = (self.contents + other.contents).sorted(by: { $0.onset < $1.onset })
         self.maxOffset = if self.maxOffset != nil && other.maxOffset != nil {
@@ -78,19 +54,14 @@ public final class Chord: RandomAccessCollection {
         
         func calMinDistance(_ lhs: Chord, to rhs: Chord) -> Double? {
             var minDistance: Double?
-            var minNoteDistance: Int?
             
             var i = 0
-            while i < lhs.count {
+            while i < lhs.endIndex {
                 var j = 0
-                while j < rhs.count {
+                while j < rhs.endIndex {
                     let distance = abs(lhs[i].onset - rhs[j].onset)
                     if minDistance == nil || distance < minDistance! {
                         minDistance = distance
-                    }
-                    let noteDistane = abs(Int(lhs[i].note) - Int(rhs[j].note))
-                    if minNoteDistance == nil || noteDistane < minNoteDistance! {
-                        minNoteDistance = noteDistane
                     }
                     
                     j &+= 1
@@ -99,12 +70,10 @@ public final class Chord: RandomAccessCollection {
                 i &+= 1
             }
             
-            return sqrt(pow(minDistance! / threshold, 2) + pow(Double(minNoteDistance!) / Double(spec.keysSpan), 2))
+            return minDistance!
         }
         
         func clustersCanMerge(_ lhs: Chord, _ rhs: Chord) -> Bool {
-            guard lhs.count + rhs.count < spec.maxCount else { return false }
-            guard Swift.max(lhs.maxNote!, rhs.maxNote!) - Swift.max(lhs.minNote!, rhs.minNote!) < spec.keysSpan else { return false }
             let maxOnset = Swift.max(lhs.contents.last!.onset, rhs.contents.last!.onset)
             guard lhs.maxOffset.isNil(or: { maxOnset < $0 }) && rhs.maxOffset.isNil(or: { maxOnset < $0 }) else { return false }
             
@@ -136,9 +105,9 @@ public final class Chord: RandomAccessCollection {
             
             // Step 3: Find the closest pair of clusters
             var i = 0
-            while i < clusters.count {
+            while i < clusters.endIndex {
                 var j = i &+ 1
-                while j < clusters.count && j < i + spec.maxCount {
+                while j < clusters.endIndex && j < i + 5 {
                     if clustersCanMerge(clusters[i], clusters[j]),
                        let minClusterDistance = calMinDistance(clusters[i], to: clusters[j]),
                        minClusterDistance < minDistance {
@@ -154,7 +123,7 @@ public final class Chord: RandomAccessCollection {
             }
             
             // Step 4: Merge clusters if the minimum distance is within the threshold
-            if let index1 = mergeIndex1, let index2 = mergeIndex2, minDistance <= 1 {
+            if let index1 = mergeIndex1, let index2 = mergeIndex2, minDistance <= threshold {
                 clusters[index1].append(contentsOf: clusters[index2])
                 clusters.remove(at: index2)
                 didMerge = true
@@ -166,11 +135,7 @@ public final class Chord: RandomAccessCollection {
     
     public struct Spec {
         
-        let keysSpan = 12 + 3
-        
         let duration: Double = 1/8
-        
-        let maxCount = 5
         
         public init() { }
         

@@ -24,29 +24,32 @@ public struct IndexedContainer {
     ///
     /// This method will
     /// - ensure the gaps between consecutive notes (in the initializer)
-    public mutating func normalize() {
-//        for (offset, current) in combinedNotes.enumerated() {
-//            
-//            // check if normalization is required.
-//            // It is not required if there isn't any note in its duration
-//            if offset == combinedNotes.count { continue }
-//            let next = combinedNotes[offset + 1]
-//            if next.onset >= current.offset { continue }
-//            
-//            
-//        }
+    public mutating func normalize() async {
+        let chords = Chord.makeChords(from: self)
+        let minimumLength: Double = 1/64 // the padding after sustain
         
-//        let chords = Chord.makeChords(from: self)
-//        for (offset, current) in chords.enumerated() {
-//
-//            // check if normalization is required.
-//            // It is not required if there isn't any note in its duration
-//            if offset == chords.count { continue }
-//            let next = chords[offset + 1]
-//            if next.maxOffset >= current.offset { continue }
-//
-//
-//        }
+        chords.forEach { offset, current in
+            // check if normalization is required.
+            // It is not required if there isn't any note in its duration
+            if offset == chords.count - 1 { return }
+            let next = chords[offset + 1]
+            let onset = next.min(of: \.onset)!
+            for note in current {
+                // ensure the sustain is correct
+                let onsetSustainRegion = sustains[at: note.onset]
+                let offsetSustainRegion = sustains[at: note.offset] ?? sustains.last(before: note.offset)
+             
+                if onsetSustainRegion == offsetSustainRegion || offsetSustainRegion == nil {
+                    // The length can be free.
+                    //                note.duration = minimumLength
+                    // context aware length. Check for next note
+                    note.offset = min(note.offset, onset)
+                } else {
+                    // the length must span to the found sustain.
+                    note.offset = max(offsetSustainRegion!.onset + minimumLength, note.offset)
+                }
+            }
+        }
     }
     
     public func makeContainer() -> MIDIContainer {
