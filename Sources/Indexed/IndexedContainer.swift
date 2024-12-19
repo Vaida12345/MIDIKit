@@ -26,7 +26,7 @@ public struct IndexedContainer {
     ///
     /// This method will
     /// - ensure the gaps between consecutive notes (in the initializer)
-    public mutating func normalize() async {
+    public mutating func normalize(preserve: PreserveSettings = .acousticResult) async {
         let chords = Chord.makeChords(from: self)
         let margin: Double = 1/16 // the padding after sustain
         
@@ -68,7 +68,6 @@ public struct IndexedContainer {
                             //                note.duration = minimumLength
                             // context aware length. Check for next note
                             note.offset = min(note.offset, nextOnset)
-                            note.channel = 0
                         } else if onsetNextIndex! == offsetSustainIndex! {
                             // the length must span to the found sustain.
                             
@@ -76,16 +75,16 @@ public struct IndexedContainer {
                             let maximum = nextOnset
                             if minimum < maximum {
                                 note.offset = clamp(note.offset, min: minimum, max: maximum)
-                                note.channel = 1
                             } else {
-                                note.offset = minimum
-                                note.channel = 2
+                                note.offset = switch preserve {
+                                case .acousticResult: minimum
+                                case .notesDisplay: maximum
+                                }
                             }
                         } else {
                             // The note has spanned at least three sustains, consider this a duration error.
                             
                             note.offset = nextOnset
-                            note.channel = 3
                         }
                     } else {
                         // An sustain was found for offset, but not onset
@@ -97,16 +96,16 @@ public struct IndexedContainer {
                             let maximum = nextOnset
                             if minimum < maximum {
                                 note.offset = clamp(note.offset, min: minimum, max: maximum)
-                                note.channel = 4
                             } else {
-                                note.offset = minimum
-                                note.channel = 5
+                                note.offset = switch preserve {
+                                case .acousticResult: minimum
+                                case .notesDisplay: maximum
+                                }
                             }
                         } else {
                             // The note has spanned at least three sustains, consider this a duration error.
                             
                             note.offset = nextOnset
-                            note.channel = 6
                         }
                     }
                 } else if let onsetSustainIndex {
@@ -115,45 +114,40 @@ public struct IndexedContainer {
                         // spanned exacted half region.
                         if let offsetNext = sustains.first(after: note.offset), let offsetPrevious {
                             if nextOnset < offsetNext.onset && nextOnset > offsetPrevious.onset {
-                                note.channel = 7
                                 // crop anyway
                                 note.offset = nextOnset
                             } else {
-                                note.channel = 8
+                                
                             }
                         } else {
-                            note.channel = 9
+                            
                         }
                     } else {
                         // The note has spanned at least three sustains, consider this a duration error.
                         
                         note.offset = nextOnset
-                        note.channel = 10
                     }
                 } else {
                     // do not change it, this is the initial chord, or its offset is too far from the previous sustain.
                     // nether onset nor offset was found
                     if onsetNextIndex != nil && onsetNextIndex == sustains.firstIndex(after: note.offset) {
                         // They are within the same non-sustained region. keep it as-is.
-                        note.channel = 11
                     } else if onsetNextIndex == offsetPreviousIndex {
                         // spanned exacted one region.
                         if let offsetNext = sustains.first(after: note.offset), let offsetPrevious {
                             if nextOnset < offsetNext.onset && nextOnset > offsetPrevious.onset {
-                                note.channel = 12
                                 // crop anyway
                                 note.offset = nextOnset
                             } else {
-                                note.channel = 13
+                                
                             }
                         } else {
-                            note.channel = 14
+                            
                         }
                     } else {
                         // The note has spanned at least three sustains, consider this a duration error.
                         
                         note.offset = nextOnset
-                        note.channel = 15
                     }
                 }
             }
@@ -188,6 +182,13 @@ public struct IndexedContainer {
         
         self.notes = dictionary
         self.combinedNotes = IndexedNotes(contents: notes)
+    }
+    
+    public enum PreserveSettings {
+        /// Ensuring the sustains are correct for best acoustic results.
+        case acousticResult
+        /// Focusing chords, minimise chords overlapping.
+        case notesDisplay
     }
     
 }
