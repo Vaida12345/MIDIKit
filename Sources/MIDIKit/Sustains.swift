@@ -26,7 +26,7 @@ public struct MIDISustainEvents: RandomAccessCollection, Sendable, Equatable, Ex
     /// Returns the first sustain whose onset is greater than `timeStamp`.
     ///
     /// - Complexity: O(log *n*), binary search.
-    public func first(after timeStamp: MusicTimeStamp) -> Element? {
+    public func firstIndex(after timeStamp: MusicTimeStamp) -> Index? {
         var left = 0
         var right = self.count
         
@@ -42,16 +42,23 @@ public struct MIDISustainEvents: RandomAccessCollection, Sendable, Equatable, Ex
         // After the loop, 'left' is the index of the first element greater than the value, if it exists.
         // Check if 'left' is within bounds and return the element if it exists.
         if left < self.count {
-            return self[left]
+            return left
         } else {
             return nil
         }
     }
     
+    /// Returns the first sustain whose onset is greater than `timeStamp`.
+    ///
+    /// - Complexity: O(log *n*), binary search.
+    public func first(after timeStamp: MusicTimeStamp) -> Element? {
+        self.firstIndex(after: timeStamp).map { self[$0] }
+    }
+    
     /// Returns the last sustain whose offset is less than `timeStamp`.
     ///
     /// - Complexity: O(log *n*), binary search.
-    public func last(before timeStamp: MusicTimeStamp) -> Element? {
+    public func lastIndex(before timeStamp: MusicTimeStamp) -> Index? {
         var left = 0
         var right = self.count
         
@@ -65,10 +72,42 @@ public struct MIDISustainEvents: RandomAccessCollection, Sendable, Equatable, Ex
         }
         
         if left > 0 {
-            return self[left - 1]
+            return left - 1
         } else {
             return nil
         }
+    }
+    
+    /// Returns the sustain at the given time stamp.
+    ///
+    /// This structure assumes that there are no overlapping timestamps.
+    ///
+    /// - Complexity: O(log *n*), binary search.
+    public func index(at timeStamp: MusicTimeStamp) -> Index? {
+        var low = 0
+        var high = self.count - 1
+        
+        while low <= high {
+            let mid = (low + high) / 2
+            let interval = self[mid]
+            
+            if timeStamp >= interval.onset && timeStamp < interval.offset {
+                return mid
+            } else if timeStamp < interval.onset {
+                high = mid - 1
+            } else {
+                low = mid + 1
+            }
+        }
+        
+        return nil
+    }
+    
+    /// Returns the last sustain whose offset is less than `timeStamp`.
+    ///
+    /// - Complexity: O(log *n*), binary search.
+    public func last(before timeStamp: MusicTimeStamp) -> Element? {
+        self.lastIndex(before: timeStamp).map { self[$0] }
     }
     
     /// - Complexity: O(*n* log *n*), sorting.

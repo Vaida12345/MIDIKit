@@ -5,6 +5,8 @@
 //  Created by Vaida on 12/19/24.
 //
 
+import Essentials
+
 
 /// Container supporting efficient lookup.
 public struct IndexedContainer {
@@ -26,27 +28,133 @@ public struct IndexedContainer {
     /// - ensure the gaps between consecutive notes (in the initializer)
     public mutating func normalize() async {
         let chords = Chord.makeChords(from: self)
-        let minimumLength: Double = 1/64 // the padding after sustain
+        let margin: Double = 1/16 // the padding after sustain
         
-        chords.forEach { offset, current in
+        chords.forEach { __index, chord in
             // check if normalization is required.
             // It is not required if there isn't any note in its duration
-            if offset == chords.count - 1 { return }
-            let next = chords[offset + 1]
-            let onset = next.min(of: \.onset)!
-            for note in current {
+            if __index == chords.count - 1 { return }
+            let nextOnset = chords[__index + 1].min(of: \.onset)!
+            for note in chord {
                 // ensure the sustain is correct
-                let onsetSustainRegion = sustains[at: note.onset]
-                let offsetSustainRegion = sustains[at: note.offset] ?? sustains.last(before: note.offset)
-             
-                if onsetSustainRegion == offsetSustainRegion || offsetSustainRegion == nil {
-                    // The length can be free.
-                    //                note.duration = minimumLength
-                    // context aware length. Check for next note
-                    note.offset = min(note.offset, onset)
+                let onsetSustainIndex = sustains.index(at: note.onset)
+                let onsetSustainRegion = onsetSustainIndex.map { sustains[$0] }
+                let offsetPreviousIndex = sustains.lastIndex(before: note.offset)
+                let offsetPrevious = offsetPreviousIndex.map { sustains[$0] }
+                let onsetNextIndex = sustains.firstIndex(after: note.onset)
+                let offsetSustainRegion: MIDISustainEvent?
+                let offsetSustainIndex: Int?
+                if let region = sustains.index(at: note.offset) {
+                    offsetSustainIndex = region
+                    offsetSustainRegion = sustains[region]
+                } else if let offsetPrevious, offsetPrevious.offset > note.offset - margin, note.onset <= offsetPrevious.offset { // Within margin, treat as offset sustain
+                    offsetSustainRegion = offsetPrevious
+                    offsetSustainIndex = offsetPreviousIndex
                 } else {
-                    // the length must span to the found sustain.
-                    note.offset = max(offsetSustainRegion!.onset + minimumLength, note.offset)
+                    offsetSustainRegion = nil
+                    offsetSustainIndex = nil
+                }
+                
+                if let offsetSustainRegion {
+                    // An sustain was found for offset, or within margin
+                    
+                    if let onsetSustainRegion {
+                        // An sustain was found for offset & onset
+                        
+                        if onsetSustainRegion == offsetSustainRegion {
+                            // The onset and offset are in the same sustain region.
+                            
+                            // The length can be free.
+                            //                note.duration = minimumLength
+                            // context aware length. Check for next note
+                            note.offset = min(note.offset, nextOnset)
+                            note.channel = 0
+                        } else if onsetNextIndex! == offsetSustainIndex! {
+                            // the length must span to the found sustain.
+                            
+                            let minimum = note.offset < offsetSustainRegion.onset + margin ? offsetSustainRegion.onset : offsetSustainRegion.onset + margin
+                            let maximum = nextOnset
+                            if minimum < maximum {
+                                note.offset = clamp(note.offset, min: minimum, max: maximum)
+                                note.channel = 1
+                            } else {
+                                note.offset = minimum
+                                note.channel = 2
+                            }
+                        } else {
+                            // The note has spanned at least three sustains, consider this a duration error.
+                            
+                            note.offset = nextOnset
+                            note.channel = 3
+                        }
+                    } else {
+                        // An sustain was found for offset, but not onset
+                        
+                        if onsetNextIndex! == offsetSustainIndex! {
+                            // the length must span to the found sustain.
+                            
+                            let minimum = note.offset < offsetSustainRegion.onset + margin ? offsetSustainRegion.onset : offsetSustainRegion.onset + margin
+                            let maximum = nextOnset
+                            if minimum < maximum {
+                                note.offset = clamp(note.offset, min: minimum, max: maximum)
+                                note.channel = 4
+                            } else {
+                                note.offset = minimum
+                                note.channel = 5
+                            }
+                        } else {
+                            // The note has spanned at least three sustains, consider this a duration error.
+                            
+                            note.offset = nextOnset
+                            note.channel = 6
+                        }
+                    }
+                } else if let onsetSustainIndex {
+                    // An sustain was found for onset, but not offset
+                    if onsetSustainIndex == offsetPreviousIndex {
+                        // spanned exacted half region.
+                        if let offsetNext = sustains.first(after: note.offset), let offsetPrevious {
+                            if nextOnset < offsetNext.onset && nextOnset > offsetPrevious.onset {
+                                note.channel = 7
+                                // crop anyway
+                                note.offset = nextOnset
+                            } else {
+                                note.channel = 8
+                            }
+                        } else {
+                            note.channel = 9
+                        }
+                    } else {
+                        // The note has spanned at least three sustains, consider this a duration error.
+                        
+                        note.offset = nextOnset
+                        note.channel = 10
+                    }
+                } else {
+                    // do not change it, this is the initial chord, or its offset is too far from the previous sustain.
+                    // nether onset nor offset was found
+                    if onsetNextIndex != nil && onsetNextIndex == sustains.firstIndex(after: note.offset) {
+                        // They are within the same non-sustained region. keep it as-is.
+                        note.channel = 11
+                    } else if onsetNextIndex == offsetPreviousIndex {
+                        // spanned exacted one region.
+                        if let offsetNext = sustains.first(after: note.offset), let offsetPrevious {
+                            if nextOnset < offsetNext.onset && nextOnset > offsetPrevious.onset {
+                                note.channel = 12
+                                // crop anyway
+                                note.offset = nextOnset
+                            } else {
+                                note.channel = 13
+                            }
+                        } else {
+                            note.channel = 14
+                        }
+                    } else {
+                        // The note has spanned at least three sustains, consider this a duration error.
+                        
+                        note.offset = nextOnset
+                        note.channel = 15
+                    }
                 }
             }
         }
@@ -58,7 +166,8 @@ public struct IndexedContainer {
     }
     
     
-    public init(container: MIDIContainer) async {
+    /// - Parameter minimumConsecutiveNoteGap: The default value is `1/128`. The minimum length of individual note from La campanella in G-Sharp Minor by Lang Lang is 0.013 beat, which is around 1/64 beat.
+    public init(container: MIDIContainer, minimumConsecutiveNoteGap: Double = 1/128) async {
         self.sustains = MIDISustainEvents(sustains: container.tracks.flatMap(\.sustains))
         let notes = container.tracks.flatMap(\.notes).map(ReferenceNote.init)
         let grouped = Dictionary(grouping: notes, by: \.note)
@@ -70,7 +179,7 @@ public struct IndexedContainer {
             for i in 0..<contents.count {
                 // ensures non-overlapping
                 if i > contents.count - 1 {
-                    contents[i].offset = min(contents[i].offset, contents[i + 1].onset - IndexedContainer.spec.minimumConsecutiveNoteGap)
+                    contents[i].offset = min(contents[i].offset, contents[i + 1].onset - minimumConsecutiveNoteGap)
                 }
             }
             
@@ -79,21 +188,6 @@ public struct IndexedContainer {
         
         self.notes = dictionary
         self.combinedNotes = IndexedNotes(contents: notes)
-    }
-    
-    
-    /// Unless specified otherwise, all measurements are in beats.
-    public struct NormalizationSpec {
-        
-        /// The default value is 1/128 beat
-        ///
-        /// The minimum length of individual note from La campanella in G-Sharp Minor by Lang Lang is 0.013 beat, which is around 1/64 beat.
-        public let minimumConsecutiveNoteGap: Double = 1/128
-        
-    }
-    
-    static var spec: NormalizationSpec {
-        NormalizationSpec()
     }
     
 }
