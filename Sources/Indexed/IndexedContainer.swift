@@ -181,7 +181,7 @@ public struct IndexedContainer {
         }
         
         self.notes = dictionary
-        self.combinedNotes = IndexedNotes(contents: notes)
+        self.combinedNotes = IndexedNotes(contents: notes.sorted(by: { $0.onset < $1.onset }))
     }
     
     public enum PreserveSettings {
