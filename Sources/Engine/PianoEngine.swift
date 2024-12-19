@@ -40,10 +40,11 @@ public final class PianoEngine {
     @MainActor
     public func play(note: UInt8, duration: Double?, velocity: UInt8) async {
         sampler?.startNote(note, withVelocity: velocity, onChannel: 0)
+        let bps: Double = 2
         
         if let duration {
             currentJobs.withLock { jobs in
-                jobs.append(Job(note: note, end: Date() + duration))
+                jobs.append(Job(note: note, end: Date() + duration / bps))
             }
         }
     }
