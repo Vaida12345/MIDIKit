@@ -10,12 +10,12 @@
 public struct IndexedContainer {
     
     /// Key: 21...108
-    var notes: [UInt8 : IndexedNotes]
+    public var notes: [UInt8 : IndexedNotes]
     
     /// The `combinedNotes` and `notes` share the same reference.
-    var combinedNotes: IndexedNotes
+    public var combinedNotes: IndexedNotes
     
-    var sustains: MIDISustainEvents
+    public var sustains: MIDISustainEvents
     
     
     /// Normalize the MIDI Container.

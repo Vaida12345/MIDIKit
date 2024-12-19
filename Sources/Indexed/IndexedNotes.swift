@@ -10,7 +10,7 @@ import AudioToolbox
 
 public struct IndexedNotes: RandomAccessCollection {
     
-    var contents: [ReferenceNote]
+    public var contents: [ReferenceNote]
     
     public var startIndex: Int {
         0
