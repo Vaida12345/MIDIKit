@@ -125,7 +125,7 @@ public final class PianoEngine {
         sampler!.sendController(73, withValue: 127, onChannel: 0)
         sampler!.sendController(75, withValue: 127, onChannel: 0)
         
-        self.publisher = Timer.publish(every: 0.1, on: .main, in: .common) // on low frequency.
+        self.publisher = Timer.publish(every: 0.01, on: .main, in: .common) // on low frequency.
             .autoconnect()
             .sink { [weak self] date in
                 self?.checkForCompletedJobs(date: date)
