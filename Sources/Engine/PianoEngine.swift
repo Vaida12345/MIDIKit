@@ -11,6 +11,7 @@ import Observation
 import AVFoundation
 import FinderItem
 import Synchronization
+import Essentials
 
 
 /// The engine handling all playbacks.

@@ -363,8 +363,6 @@ extension MIDINotes {
                 clusters.remove(at: index2)
                 didMerge = true
             }
-            
-//            print("iter")
         }
         
         return clusters
