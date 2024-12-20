@@ -20,6 +20,8 @@ public struct IndexedContainer {
     
     public var sustains: MIDISustainEvents
     
+    public var average: RunningAverage
+    
     
     /// Normalize the MIDI Container.
     ///
@@ -28,6 +30,8 @@ public struct IndexedContainer {
     /// This method will
     /// - ensure the gaps between consecutive notes (in the initializer)
     public func normalize(preserve: PreserveSettings = .acousticResult) async throws {
+        guard !self.combinedNotes.isEmpty else { return }
+        
         let chords = await Chord.makeChords(from: self)
         let margin: Double = 1/16 // the padding after sustain
         
@@ -54,6 +58,22 @@ public struct IndexedContainer {
                 } else {
                     offsetSustainRegion = nil
                     offsetSustainIndex = nil
+                }
+                
+                /// note has spanned at least three sustains
+                func setExcessiveSpan() {
+                    guard preserve == .acousticResult else {
+                        // The note has spanned at least three sustains, consider this a duration error.
+                        note.offset = nextOnset
+                        return
+                    }
+                    
+                    let average = self.average[at: note.onset]!
+                    if chord.contains(where: { $0.note < average.note }) {
+                        // maybe this is the left hand, leave it. For example, Moonlight I.
+                    } else {
+                        note.offset = nextOnset
+                    }
                 }
                 
                 if let offsetSustainRegion {
@@ -83,9 +103,7 @@ public struct IndexedContainer {
                                 }
                             }
                         } else {
-                            // The note has spanned at least three sustains, consider this a duration error.
-                            
-                            note.offset = nextOnset
+                            setExcessiveSpan()
                         }
                     } else {
                         // An sustain was found for offset, but not onset
@@ -104,9 +122,7 @@ public struct IndexedContainer {
                                 }
                             }
                         } else {
-                            // The note has spanned at least three sustains, consider this a duration error.
-                            
-                            note.offset = nextOnset
+                            setExcessiveSpan()
                         }
                     }
                 } else if let onsetSustainIndex {
@@ -124,9 +140,7 @@ public struct IndexedContainer {
                             
                         }
                     } else {
-                        // The note has spanned at least three sustains, consider this a duration error.
-                        
-                        note.offset = nextOnset
+                        setExcessiveSpan()
                     }
                 } else {
                     // do not change it, this is the initial chord, or its offset is too far from the previous sustain.
@@ -146,9 +160,7 @@ public struct IndexedContainer {
                             
                         }
                     } else {
-                        // The note has spanned at least three sustains, consider this a duration error.
-                        
-                        note.offset = nextOnset
+                        setExcessiveSpan()
                     }
                 }
             }
@@ -164,7 +176,11 @@ public struct IndexedContainer {
     /// - Parameter minimumConsecutiveNoteGap: The default value is `1/128`. The minimum length of individual note from La campanella in G-Sharp Minor by Lang Lang is 0.013 beat, which is around 1/64 beat.
     public init(container: MIDIContainer, minimumConsecutiveNoteGap: Double = 1/128) async {
         self.sustains = MIDISustainEvents(sustains: container.tracks.flatMap(\.sustains))
+        
         let notes = container.tracks.flatMap(\.notes).map(ReferenceNote.init)
+        let combinedNotes = IndexedNotes(contents: notes.sorted(by: { $0.onset < $1.onset }))
+        async let average = await RunningAverage(combinedNotes: combinedNotes)
+        
         let grouped = Dictionary(grouping: notes, by: \.note)
         
         var dictionary: [UInt8 : IndexedNotes] = [:]
@@ -182,7 +198,8 @@ public struct IndexedContainer {
         }
         
         self.notes = dictionary
-        self.combinedNotes = IndexedNotes(contents: notes.sorted(by: { $0.onset < $1.onset }))
+        self.combinedNotes = combinedNotes
+        self.average = await average
     }
     
     public enum PreserveSettings {

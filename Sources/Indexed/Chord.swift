@@ -10,6 +10,8 @@ import DetailedDescription
 
 
 /// chords are keys that needs to be pressed at the same time.
+///
+/// Currently it represents notes that *two hands* can play simultaneously. The algorithm for obtain chord for individual hand exists in a previous commit.
 public final class Chord: RandomAccessCollection {
     
     var contents: [ReferenceNote]
@@ -74,6 +76,7 @@ public final class Chord: RandomAccessCollection {
         }
         
         func clustersCanMerge(_ lhs: Chord, _ rhs: Chord) -> Bool {
+            guard lhs.count &+ rhs.count < spec.maxNoteCount else { return false }
             let maxOnset = Swift.max(lhs.contents.last!.onset, rhs.contents.last!.onset)
             guard lhs.maxOffset.isNil(or: { maxOnset < $0 }) && rhs.maxOffset.isNil(or: { maxOnset < $0 }) else { return false }
             
@@ -142,6 +145,11 @@ public final class Chord: RandomAccessCollection {
         let contextLength: Int = 15
         
         let clusterMaxDistance: Int = 5
+        
+        /// Max number of notes in one chord.
+        ///
+        /// 10 finders, 10 notes.
+        let maxNoteCount = 10
         
         public init() { }
         

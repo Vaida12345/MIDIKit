@@ -15,7 +15,7 @@ import Charts
 import Accelerate
 import AVFAudio
 
-let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/14 Ballade No. 1 in G minor, Op. 23.mid")
+let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/1-61 Piano Sonata No. 14, _Moonlight__ I. Adagio sostenuto.mid")
 let date = Date()
 var indexed = await container.indexed()
 //let chords = Chord.makeChords(from: indexed)
