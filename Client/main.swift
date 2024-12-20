@@ -16,8 +16,8 @@ import Accelerate
 import AVFAudio
 
 let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/14 Ballade No. 1 in G minor, Op. 23.mid")
-var indexed = await container.indexed()
 let date = Date()
+var indexed = await container.indexed()
 //let chords = Chord.makeChords(from: indexed)
 //detailedPrint(chords)
 //print(date.distanceToNow())
