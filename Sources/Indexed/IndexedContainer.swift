@@ -83,10 +83,9 @@ public struct IndexedContainer {
                                 }
                             }
                         } else {
-                            if preserve != .acousticResult {
-                                // The note has spanned at least three sustains, consider this a duration error.
-                                note.offset = nextOnset
-                            }
+                            // The note has spanned at least three sustains, consider this a duration error.
+                            
+                            note.offset = nextOnset
                         }
                     } else {
                         // An sustain was found for offset, but not onset
@@ -105,10 +104,9 @@ public struct IndexedContainer {
                                 }
                             }
                         } else {
-                            if preserve != .acousticResult {
-                                // The note has spanned at least three sustains, consider this a duration error.
-                                note.offset = nextOnset
-                            }
+                            // The note has spanned at least three sustains, consider this a duration error.
+                            
+                            note.offset = nextOnset
                         }
                     }
                 } else if let onsetSustainIndex {
@@ -126,10 +124,9 @@ public struct IndexedContainer {
                             
                         }
                     } else {
-                        if preserve != .acousticResult {
-                            // The note has spanned at least three sustains, consider this a duration error.
-                            note.offset = nextOnset
-                        }
+                        // The note has spanned at least three sustains, consider this a duration error.
+                        
+                        note.offset = nextOnset
                     }
                 } else {
                     // do not change it, this is the initial chord, or its offset is too far from the previous sustain.
@@ -149,10 +146,9 @@ public struct IndexedContainer {
                             
                         }
                     } else {
-                        if preserve != .acousticResult {
-                            // The note has spanned at least three sustains, consider this a duration error.
-                            note.offset = nextOnset
-                        }
+                        // The note has spanned at least three sustains, consider this a duration error.
+                        
+                        note.offset = nextOnset
                     }
                 }
             }
