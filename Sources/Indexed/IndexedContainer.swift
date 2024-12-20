@@ -28,15 +28,15 @@ public struct IndexedContainer {
     /// This method will
     /// - ensure the gaps between consecutive notes (in the initializer)
     public func normalize(preserve: PreserveSettings = .acousticResult) async throws {
-        let chords = Chord.makeChords(from: self)
+        let chords = await Chord.makeChords(from: self)
         let margin: Double = 1/16 // the padding after sustain
         
-        try await chords.stream.forEach { __index, chord in
+        chords.forEach { __index, chord in
             // check if normalization is required.
             // It is not required if there isn't any note in its duration
             if __index == chords.count - 1 { return }
             let nextOnset = chords[__index + 1].min(of: \.onset)!
-            try await chord.stream.forEach { _, note in
+            chord.forEach { _, note in
                 // ensure the sustain is correct
                 let onsetSustainIndex = sustains.index(at: note.onset)
                 let onsetSustainRegion = onsetSustainIndex.map { sustains[$0] }

@@ -48,7 +48,7 @@ public final class Chord: RandomAccessCollection {
     public static func makeChords(
         from container: IndexedContainer,
         spec: Spec = Spec()
-    ) -> [Chord] {
+    ) async -> [Chord] {
         guard !container.combinedNotes.isEmpty else { return [] }
         let threshold = spec.duration
         
@@ -82,6 +82,7 @@ public final class Chord: RandomAccessCollection {
         
         
         // Step 1: Start by initializing each value as its own cluster
+        nonisolated(unsafe)
         var clusters: [Chord] = []
         for i in 21...108 {
             var notes = container.notes[UInt8(i)]?.makeIterator()
@@ -96,18 +97,17 @@ public final class Chord: RandomAccessCollection {
         clusters.sort(by: { $0.first!.onset < $1.first!.onset })
         
         // Step 2: Perform the clustering process
-        var didMerge = true
-        while didMerge {
-            didMerge = false
+        var startIndex = 0
+        while startIndex < clusters.endIndex {
             var minDistance = Double.greatestFiniteMagnitude
             var mergeIndex1: Int?
             var mergeIndex2: Int?
             
             // Step 3: Find the closest pair of clusters
-            var i = 0
-            while i < clusters.endIndex {
+            var i = startIndex
+            while i < Swift.min(clusters.endIndex, startIndex + spec.contextLength) {
                 var j = i &+ 1
-                while j < clusters.endIndex && j < i + 5 {
+                while j < clusters.endIndex && j < i + spec.clusterMaxDistance {
                     if clustersCanMerge(clusters[i], clusters[j]),
                        let minClusterDistance = calMinDistance(clusters[i], to: clusters[j]),
                        minClusterDistance < minDistance {
@@ -126,7 +126,8 @@ public final class Chord: RandomAccessCollection {
             if let index1 = mergeIndex1, let index2 = mergeIndex2, minDistance <= threshold {
                 clusters[index1].append(contentsOf: clusters[index2])
                 clusters.remove(at: index2)
-                didMerge = true
+            } else {
+                startIndex &+= 1
             }
         }
         
@@ -136,6 +137,11 @@ public final class Chord: RandomAccessCollection {
     public struct Spec {
         
         let duration: Double = 1/8
+        
+        /// Assuming the mergable clusters are near each other, this is the length of pairs checked.
+        let contextLength: Int = 15
+        
+        let clusterMaxDistance: Int = 5
         
         public init() { }
         
