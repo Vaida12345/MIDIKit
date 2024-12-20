@@ -6,6 +6,7 @@
 //
 
 import Essentials
+import ConcurrentStream
 
 
 /// Container supporting efficient lookup.
@@ -26,16 +27,16 @@ public struct IndexedContainer {
     ///
     /// This method will
     /// - ensure the gaps between consecutive notes (in the initializer)
-    public mutating func normalize(preserve: PreserveSettings = .acousticResult) async {
+    public func normalize(preserve: PreserveSettings = .acousticResult) async throws {
         let chords = Chord.makeChords(from: self)
         let margin: Double = 1/16 // the padding after sustain
         
-        chords.forEach { __index, chord in
+        try await chords.stream.forEach { __index, chord in
             // check if normalization is required.
             // It is not required if there isn't any note in its duration
             if __index == chords.count - 1 { return }
             let nextOnset = chords[__index + 1].min(of: \.onset)!
-            for note in chord {
+            try await chord.stream.forEach { _, note in
                 // ensure the sustain is correct
                 let onsetSustainIndex = sustains.index(at: note.onset)
                 let onsetSustainRegion = onsetSustainIndex.map { sustains[$0] }

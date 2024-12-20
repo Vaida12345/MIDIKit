@@ -21,7 +21,8 @@ let date = Date()
 //let chords = Chord.makeChords(from: indexed)
 //detailedPrint(chords)
 //print(date.distanceToNow())
-await indexed.normalize()
+try await indexed.normalize()
+print(date.distanceToNow())
 
 
 //var result = MIDIContainer()
