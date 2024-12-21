@@ -73,7 +73,7 @@ public struct IndexedContainer {
                     }
                     
                     let average = self.average[at: note.onset]!
-                    if chord.contains(where: { $0.note < average.note }) {
+                    if note.note < average.note {
                         // maybe this is the left hand, leave it. For example, Moonlight I.
                     } else {
                         setNoteOffset(nextOnset)
