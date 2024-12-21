@@ -16,7 +16,8 @@ import Accelerate
 import AVFAudio
 
 
-let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/1-61 Piano Sonata No. 14, _Moonlight__ I. Adagio sostenuto.mid")
+let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Up (Piano Only).mid")
+//let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/1-61 Piano Sonata No. 14, _Moonlight__ I. Adagio sostenuto.mid")
 //let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Secret Base.mid")
 let date = Date()
 var indexed = await container.indexed()
@@ -24,7 +25,7 @@ var indexed = await container.indexed()
 //print(date.distanceToNow())
 try await indexed.normalize(preserve: .notesDisplay)
 var indexedContainer = indexed.makeContainer()
-flushAverage(container: indexed, track: &indexedContainer.tracks[0])
+//flushAverage(container: indexed, track: &indexedContainer.tracks[0])
 print(date.distanceToNow())
 try indexedContainer.write(to: .desktopDirectory/"file.mid")
 

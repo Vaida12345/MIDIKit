@@ -93,6 +93,7 @@ public struct IndexedContainer {
                             //                note.duration = minimumLength
                             // context aware length. Check for next note
                             setNoteOffset(min(note.offset, nextOnset))
+                            note.channel = 0
                         } else if onsetNextIndex! == offsetSustainIndex! {
                             // the length must span to the found sustain.
                             
@@ -100,11 +101,13 @@ public struct IndexedContainer {
                             let maximum = nextOnset
                             if minimum < maximum {
                                 setNoteOffset(clamp(note.offset, min: minimum, max: maximum))
+                                note.channel = 1
                             } else {
                                 switch preserve {
                                 case .acousticResult: setNoteOffset(minimum)
                                 case .notesDisplay: setNoteOffset(maximum)
                                 }
+                                note.channel = 2
                             }
                         } else {
                             setExcessiveSpan()
@@ -119,52 +122,67 @@ public struct IndexedContainer {
                             let maximum = nextOnset
                             if minimum < maximum {
                                 setNoteOffset(clamp(note.offset, min: minimum, max: maximum))
+                                note.channel = 3
                             } else {
                                 switch preserve {
                                 case .acousticResult: setNoteOffset(minimum)
                                 case .notesDisplay: setNoteOffset(maximum)
                                 }
+                                note.channel = 4
                             }
                         } else {
+                            note.channel = 5
                             setExcessiveSpan()
                         }
                     }
                 } else if let onsetSustainIndex {
                     // An sustain was found for onset, but not offset
-                    if onsetSustainIndex == offsetPreviousIndex {
+                    if let offsetPreviousIndex, onsetSustainIndex <= offsetPreviousIndex {
                         // spanned exacted half region.
-                        if let offsetNext = sustains.first(after: note.offset), let offsetPrevious {
-                            if nextOnset < offsetNext.onset && nextOnset > offsetPrevious.onset {
+                        if let offsetNext = sustains.first(after: note.offset), let offsetPrevious,
+                            nextOnset < offsetNext.onset && nextOnset > offsetPrevious.onset {
                                 // crop anyway
+                                note.channel = 6
                                 setNoteOffset(nextOnset)
-                            } else {
-                                
-                            }
+                        } else if let onsetNextIndex, onsetNextIndex < offsetPreviousIndex {
+                            note.channel = 7
+                            setExcessiveSpan()
                         } else {
-                            
+                            setExcessiveSpan()
+                            note.channel = 8
                         }
                     } else {
+                        note.channel = 10
                         setExcessiveSpan()
                     }
                 } else {
                     // do not change it, this is the initial chord, or its offset is too far from the previous sustain.
                     // nether onset nor offset was found
                     if onsetNextIndex != nil && onsetNextIndex == sustains.firstIndex(after: note.offset) {
-                        // They are within the same non-sustained region. keep it as-is.
+                        switch preserve {
+                        case .acousticResult:
+                            // They are within the same non-sustained region. keep it as-is.
+                            break
+                        case .notesDisplay:
+                            setNoteOffset(nextOnset)
+                        }
+                        note.channel = 11
                     } else if onsetNextIndex == offsetPreviousIndex {
                         // spanned exacted one region.
                         if let offsetNext = sustains.first(after: note.offset), let offsetPrevious {
                             if nextOnset < offsetNext.onset && nextOnset > offsetPrevious.onset {
                                 // crop anyway
                                 setNoteOffset(nextOnset)
+                                note.channel = 12
                             } else {
-                                
+                                note.channel = 13
                             }
                         } else {
-                            
+                            note.channel = 14
                         }
                     } else {
                         setExcessiveSpan()
+                        note.channel = 15
                     }
                 }
             }
