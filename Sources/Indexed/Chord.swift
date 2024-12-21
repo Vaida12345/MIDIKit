@@ -7,6 +7,7 @@
 
 import Foundation
 import DetailedDescription
+import Accelerate
 
 
 /// chords are keys that needs to be pressed at the same time.
@@ -56,6 +57,7 @@ public final class Chord: RandomAccessCollection {
         
         func calMinDistance(_ lhs: Chord, to rhs: Chord) -> Double? {
             var minDistance: Double?
+            var minNoteDistance: Int?
             
             var i = 0
             while i < lhs.endIndex {
@@ -65,6 +67,13 @@ public final class Chord: RandomAccessCollection {
                     if minDistance == nil || distance < minDistance! {
                         minDistance = distance
                     }
+                    var noteDistance = abs(Int(lhs[i].note) - Int(rhs[j].note))
+                    if noteDistance == 12 {
+                        noteDistance = 0 // special case
+                    }
+                    if minNoteDistance == nil || noteDistance < minNoteDistance! {
+                        minNoteDistance = noteDistance
+                    }
                     
                     j &+= 1
                 }
@@ -72,11 +81,18 @@ public final class Chord: RandomAccessCollection {
                 i &+= 1
             }
             
-            return minDistance!
+            let lhsAverage = lhs.contents.average(of: \.duration)!
+            let rhsAverage = rhs.contents.average(of: \.duration)!
+            let diff = abs(lhsAverage - rhsAverage)
+            let normalizedDiff = diff / Swift.max(lhsAverage, rhsAverage)
+            
+            let features: [Double] = [minDistance! / threshold, Double(minNoteDistance!) / Double(spec.keysSpan), normalizedDiff]
+            return sqrt(vDSP.dot(features, features))
         }
         
         func clustersCanMerge(_ lhs: Chord, _ rhs: Chord) -> Bool {
             guard lhs.contents.count &+ rhs.contents.count < spec.maxNoteCount else { return false }
+            guard Swift.max(lhs.max(of: \.note)!, rhs.max(of: \.note)!) - Swift.min(lhs.min(of: \.note)!, rhs.min(of: \.note)!) < spec.keysSpan else { return false }
             let maxOnset = Swift.max(lhs.contents.last!.onset, rhs.contents.last!.onset)
             guard lhs.maxOffset.isNil(or: { maxOnset < $0 }) && rhs.maxOffset.isNil(or: { maxOnset < $0 }) else { return false }
             
@@ -100,20 +116,23 @@ public final class Chord: RandomAccessCollection {
         clusters.sort(by: { $0.first!.onset < $1.first!.onset })
         
         // Step 2: Perform the clustering process
-        var startIndex = 0
-        while startIndex < clusters.endIndex {
+        var didMerge = true
+        let root3 = sqrt(3)
+        while didMerge {
+            didMerge = false
             var minDistance = Double.greatestFiniteMagnitude
             var mergeIndex1: Int?
             var mergeIndex2: Int?
             
             // Step 3: Find the closest pair of clusters
-            var i = startIndex
-            while i < Swift.min(clusters.endIndex, startIndex + spec.contextLength) {
+            var i = 0
+            while i < clusters.endIndex {
                 var j = i &+ 1
                 while j < clusters.endIndex && j < i + spec.clusterMaxDistance {
                     if clustersCanMerge(clusters[i], clusters[j]),
                        let minClusterDistance = calMinDistance(clusters[i], to: clusters[j]),
                        minClusterDistance < minDistance {
+                        
                         minDistance = minClusterDistance
                         mergeIndex1 = i
                         mergeIndex2 = j
@@ -126,11 +145,10 @@ public final class Chord: RandomAccessCollection {
             }
             
             // Step 4: Merge clusters if the minimum distance is within the threshold
-            if let index1 = mergeIndex1, let index2 = mergeIndex2, minDistance <= threshold {
+            if let index1 = mergeIndex1, let index2 = mergeIndex2, minDistance < root3 {
                 clusters[index1].append(contentsOf: clusters[index2])
                 clusters.remove(at: index2)
-            } else {
-                startIndex &+= 1
+                didMerge = true
             }
         }
         
@@ -144,12 +162,16 @@ public final class Chord: RandomAccessCollection {
         /// Assuming the mergable clusters are near each other, this is the length of pairs checked.
         let contextLength: Int = 15
         
-        let clusterMaxDistance: Int = 5
+        /// Max distance to look ahead for another note in one cluster.
+        let clusterMaxDistance: Int = 8
         
         /// Max number of notes in one chord.
         ///
-        /// 10 finders, 10 notes.
-        let maxNoteCount = 10
+        /// 5 finders per hand, 5 notes.
+        let maxNoteCount = 5
+        
+        /// The max span of a hand, 7+2 white notes should be enough
+        let keysSpan = 12 + 3
         
         public init() { }
         
@@ -179,6 +201,30 @@ extension Optional {
         case .some(let wrapped):
             return predicate(wrapped)
         }
+    }
+    
+}
+
+
+extension RandomAccessCollection where Index == Int {
+    
+    /// The max `member` of this collection.
+    ///
+    /// This is equivalent to
+    /// ```swift
+    /// self.map(member).max()
+    /// ```
+    /// But more efficient.
+    @inlinable
+    public func average<T, E>(of member: (Element) throws(E) -> T) throws(E) -> T? where E: Error, T: BinaryFloatingPoint {
+        var i = self.startIndex
+        var cumulative: T = 0
+        while i < self.endIndex {
+            let current = try member(self[i])
+            cumulative += current
+            i &+= 1
+        }
+        return cumulative / T(self.count)
     }
     
 }
