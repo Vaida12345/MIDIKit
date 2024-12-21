@@ -25,21 +25,23 @@ public struct RunningAverage {
     ) async {
         var contents: [Element] = []
         combinedNotes.forEach { index, note in
-            var notesMin: Int = Int(note.note)
-            var notesMax: Int = Int(note.note)
-            var j = index
-            while j < combinedNotes.endIndex, combinedNotes[j].onset < note.onset + runningLength {
-                let new = Int(combinedNotes[j].note)
-                if notesMin > new {
-                    notesMin = new
-                } else if notesMax < new {
-                    notesMax = new
+            var notesMin = note.note
+            var notesMax = note.note
+            var j = combinedNotes.lastIndex(before: note.onset - runningLength * 2) ?? 0
+            while j < combinedNotes.endIndex, combinedNotes[j].onset < note.onset + runningLength / 2 {
+                if combinedNotes[j].offset > note.onset - runningLength / 2 {
+                    let new = combinedNotes[j].note
+                    if notesMin > new {
+                        notesMin = new
+                    } else if notesMax < new {
+                        notesMax = new
+                    }
                 }
                 
                 j &+= 1
             }
             
-            contents.append(Element(onset: note.onset, note: UInt8((notesMin + notesMax) / 2)))
+            contents.append(Element(onset: note.onset, note: (notesMin + notesMax) / 2))
         }
         
         self.contents = contents
@@ -74,9 +76,9 @@ public struct RunningAverage {
     
     public struct Element {
         
-        let onset: Double
+        public let onset: Double
         
-        let note: UInt8
+        public let note: UInt8
         
     }
     

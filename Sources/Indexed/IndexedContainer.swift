@@ -60,11 +60,15 @@ public struct IndexedContainer {
                     offsetSustainIndex = nil
                 }
                 
+                func setNoteOffset(_ value: Double) {
+                    note.offset = max(value, note.onset + 1/64)
+                }
+                
                 /// note has spanned at least three sustains
                 func setExcessiveSpan() {
                     guard preserve == .acousticResult else {
                         // The note has spanned at least three sustains, consider this a duration error.
-                        note.offset = nextOnset
+                        setNoteOffset(nextOnset)
                         return
                     }
                     
@@ -72,7 +76,7 @@ public struct IndexedContainer {
                     if chord.contains(where: { $0.note < average.note }) {
                         // maybe this is the left hand, leave it. For example, Moonlight I.
                     } else {
-                        note.offset = nextOnset
+                        setNoteOffset(nextOnset)
                     }
                 }
                 
@@ -88,18 +92,18 @@ public struct IndexedContainer {
                             // The length can be free.
                             //                note.duration = minimumLength
                             // context aware length. Check for next note
-                            note.offset = min(note.offset, nextOnset)
+                            setNoteOffset(min(note.offset, nextOnset))
                         } else if onsetNextIndex! == offsetSustainIndex! {
                             // the length must span to the found sustain.
                             
                             let minimum = note.offset < offsetSustainRegion.onset + margin ? offsetSustainRegion.onset : offsetSustainRegion.onset + margin
                             let maximum = nextOnset
                             if minimum < maximum {
-                                note.offset = clamp(note.offset, min: minimum, max: maximum)
+                                setNoteOffset(clamp(note.offset, min: minimum, max: maximum))
                             } else {
-                                note.offset = switch preserve {
-                                case .acousticResult: minimum
-                                case .notesDisplay: maximum
+                                switch preserve {
+                                case .acousticResult: setNoteOffset(minimum)
+                                case .notesDisplay: setNoteOffset(maximum)
                                 }
                             }
                         } else {
@@ -114,11 +118,11 @@ public struct IndexedContainer {
                             let minimum = note.offset < offsetSustainRegion.onset + margin ? offsetSustainRegion.onset : offsetSustainRegion.onset + margin
                             let maximum = nextOnset
                             if minimum < maximum {
-                                note.offset = clamp(note.offset, min: minimum, max: maximum)
+                                setNoteOffset(clamp(note.offset, min: minimum, max: maximum))
                             } else {
-                                note.offset = switch preserve {
-                                case .acousticResult: minimum
-                                case .notesDisplay: maximum
+                                switch preserve {
+                                case .acousticResult: setNoteOffset(minimum)
+                                case .notesDisplay: setNoteOffset(maximum)
                                 }
                             }
                         } else {
@@ -132,7 +136,7 @@ public struct IndexedContainer {
                         if let offsetNext = sustains.first(after: note.offset), let offsetPrevious {
                             if nextOnset < offsetNext.onset && nextOnset > offsetPrevious.onset {
                                 // crop anyway
-                                note.offset = nextOnset
+                                setNoteOffset(nextOnset)
                             } else {
                                 
                             }
@@ -152,7 +156,7 @@ public struct IndexedContainer {
                         if let offsetNext = sustains.first(after: note.offset), let offsetPrevious {
                             if nextOnset < offsetNext.onset && nextOnset > offsetPrevious.onset {
                                 // crop anyway
-                                note.offset = nextOnset
+                                setNoteOffset(nextOnset)
                             } else {
                                 
                             }

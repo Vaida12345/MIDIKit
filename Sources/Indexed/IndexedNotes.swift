@@ -31,7 +31,7 @@ public struct IndexedNotes: RandomAccessCollection {
     }
     
     
-    /// Returns the first sustain whose onset is greater than `timeStamp`.
+    /// Returns the first note whose onset is greater than `timeStamp`.
     ///
     /// - Complexity: O(log *n*), binary search.
     public func first(after timeStamp: MusicTimeStamp) -> Element? {
@@ -56,10 +56,10 @@ public struct IndexedNotes: RandomAccessCollection {
         }
     }
     
-    /// Returns the last sustain whose offset is less than `timeStamp`.
+    /// Returns the last note whose offset is less than `timeStamp`.
     ///
     /// - Complexity: O(log *n*), binary search.
-    public func last(before timeStamp: MusicTimeStamp) -> Element? {
+    public func lastIndex(before timeStamp: MusicTimeStamp) -> Index? {
         var left = 0
         var right = self.count
         
@@ -73,19 +73,25 @@ public struct IndexedNotes: RandomAccessCollection {
         }
         
         if left > 0 {
-            return self[left - 1]
+            return left - 1
         } else {
             return nil
         }
     }
-
     
-    /// Returns the sustain at the given time stamp.
-    ///
-    /// This structure assumes that there are no overlapping timestamps.
+    /// Returns the last note whose offset is less than `timeStamp`.
     ///
     /// - Complexity: O(log *n*), binary search.
-    public subscript(at timeStamp: MusicTimeStamp) -> Element? {
+    @inlinable
+    public func last(before timeStamp: MusicTimeStamp) -> Element? {
+        self.lastIndex(before: timeStamp).map { self.contents[$0] }
+    }
+
+    
+    /// Returns the sustain at the given time stamp. The returned sequence is sorted, same as `self`.
+    ///
+    /// - Complexity: O(log *n*), binary search.
+    public subscript(at timeStamp: MusicTimeStamp) -> [Element] {
         var low = 0
         var high = self.count - 1
         
@@ -93,16 +99,65 @@ public struct IndexedNotes: RandomAccessCollection {
             let mid = (low + high) / 2
             let interval = self[mid]
             
-            if timeStamp >= interval.onset && timeStamp < interval.offset {
-                return interval
-            } else if timeStamp < interval.onset {
+            if interval.offset < timeStamp {
+                low = mid + 1
+            } else if interval.onset > timeStamp {
                 high = mid - 1
             } else {
-                low = mid + 1
+                // Point lies in this interval, move left to find the first occurrence
+                high = mid - 1
             }
         }
         
-        return nil
+        var result: [Element] = []
+        // Check all intervals starting from the found position
+        for i in low..<self.contents.count {
+            let interval = self.contents[i]
+            if interval.onset > timeStamp {
+                break
+            }
+            if interval.offset >= timeStamp {
+                result.append(interval)
+            }
+        }
+        
+        return result
+    }
+    
+    /// Returns the sustain at the given time stamp. The returned sequence is sorted, same as `self`.
+    ///
+    /// - Complexity: O(log *n*), binary search.
+    public func range(_ range: ClosedRange<MusicTimeStamp>) -> [Element] {
+        var low = 0
+        var high = self.count - 1
+        
+        while low <= high {
+            let mid = (low + high) / 2
+            let interval = self[mid]
+            
+            if interval.offset < range.lowerBound {
+                low = mid + 1
+            } else if interval.onset > range.upperBound {
+                high = mid - 1
+            } else {
+                // Point lies in this interval, move left to find the first occurrence
+                high = mid - 1
+            }
+        }
+        
+        var result: [Element] = []
+        // Check all intervals starting from the found position
+        for i in low..<self.contents.count {
+            let interval = self.contents[i]
+            if interval.onset > range.upperBound {
+                break
+            }
+            if interval.offset >= range.upperBound {
+                result.append(interval)
+            }
+        }
+        
+        return result
     }
     
     public typealias Element = ReferenceNote

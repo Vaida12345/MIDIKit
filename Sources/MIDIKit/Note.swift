@@ -31,6 +31,8 @@ public struct MIDINote: Sendable, Equatable {
     }
     
     public init(onset: MusicTimeStamp, offset: MusicTimeStamp, note: UInt8, velocity: UInt8, channel: UInt8 = 0, releaseVelocity: UInt8 = 0) {
+        precondition(channel <= 15)
+        
         self.onset = onset
         self.offset = offset
         self.note = note

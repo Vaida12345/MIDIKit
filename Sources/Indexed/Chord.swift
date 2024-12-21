@@ -8,6 +8,7 @@
 import Foundation
 import DetailedDescription
 import Accelerate
+import Essentials
 
 
 /// chords are keys that needs to be pressed at the same time.
@@ -19,6 +20,10 @@ public final class Chord: RandomAccessCollection {
     
     /// The max offset in beats. This is determined by the onset of next consecutive note.
     var maxOffset: Double?
+    
+    var preferredHand: Hand?
+    
+    public var hand: Hand?
     
     public var startIndex: Int { 0 }
     public var endIndex: Int { contents.count }
@@ -48,6 +53,7 @@ public final class Chord: RandomAccessCollection {
         }
     }
     
+    /// Each returned chord is guaranteed to be non-empty.
     public static func makeChords(
         from container: IndexedContainer,
         spec: Spec = Spec()
@@ -69,7 +75,12 @@ public final class Chord: RandomAccessCollection {
                     }
                     var noteDistance = abs(Int(lhs[i].note) - Int(rhs[j].note))
                     if noteDistance == 12 {
-                        noteDistance = 0 // special case
+                        // sometimes, notes with 7 notes apart should be played together, check for this special case.
+                        let notes = container.combinedNotes.range(Swift.min(lhs[i].onset, rhs[j].onset) ... Swift.max(lhs[i].onset, rhs[j].onset))
+                        
+                        if Swift.min(lhs[i].note, rhs[j].note) == notes.min(of: \.note) || Swift.max(lhs[i].note, rhs[j].note) == notes.max(of: \.note) {
+                            noteDistance = 0 // special case
+                        }
                     }
                     if minNoteDistance == nil || noteDistance < minNoteDistance! {
                         minNoteDistance = noteDistance
@@ -152,11 +163,126 @@ public final class Chord: RandomAccessCollection {
             }
         }
         
-        return clusters.sorted(on: { $0.first!.onset }, by: <)
+        let chords = clusters.sorted(on: { $0.first!.onset }, by: <)
+        chords.forEach { _, chord in
+            let mapped = chord.map { chord in
+                (chord, container.average[at: chord.onset]!.note)
+            }
+            if mapped.allSatisfy({ $0.0.note < $0.1 - spec.groupsMinimumMargin }) {
+                chord.preferredHand = .left
+            } else if mapped.allSatisfy({ $0.0.note > $0.1 + spec.groupsMinimumMargin }) {
+                chord.preferredHand = .right
+            }
+        }
+        
+        struct Chords: RandomAccessCollection, ExpressibleByArrayLiteral {
+            
+            var contents: [Chord]
+            var maxOffset: Double
+            var preferredHand: Hand?
+            
+            var startIndex: Int { 0 }
+            var endIndex: Int { contents.count }
+            
+            init(arrayLiteral elements: Chord...) {
+                self.contents = elements
+                self.maxOffset = elements.min(of: { $0.maxOffset ?? .greatestFiniteMagnitude }) ?? .greatestFiniteMagnitude
+                
+                if elements.allSatisfy({ $0.preferredHand == .left }) {
+                    self.preferredHand = .left
+                } else if elements.allSatisfy({ $0.preferredHand == .right }) {
+                    self.preferredHand = .right
+                }
+            }
+            
+            subscript(position: Int) -> Chord {
+                self.contents[position]
+            }
+            
+        }
+        
+        /// Group by their maxOffset.
+        let groups = chords.grouped(of: Chords.self) { i, chord, currentGroup, newGroup in
+            if chord.max(of: \.onset)! < currentGroup.maxOffset,
+               currentGroup.contents.reduce(0, { $0 + $1.count }) + chord.contents.count < spec.maxNoteCount {
+                if currentGroup.preferredHand.isNil(or: { chord.preferredHand == $0 }) {
+                    // okay, same hand
+                } else {
+                    currentGroup.preferredHand = nil
+                }
+                
+                currentGroup.contents.append(chord)
+                currentGroup.maxOffset = Swift.min(currentGroup.maxOffset, chord.maxOffset ?? .greatestFiniteMagnitude)
+            } else {
+                newGroup(&currentGroup)
+                currentGroup = [chord]
+            }
+        }
+        groups.forEach { index, group in
+            // now, each group must be played by a single hand.
+            
+            for note in group.flatten() {
+                note.velocity = UInt8(index % 10) * 12 + 1
+            }
+            
+            if group.count == 1 {
+                let chord = group[0]
+                
+                if let hand = chord.preferredHand {
+                    chord.hand = hand
+                    for note in chord {
+                        note.channel = hand == .left ? 0 : 10
+                    }
+                } else {
+                    let averageOnset = chord.average(of: \.onset)!
+                    let average = container.average[at: averageOnset]!.note
+                    let isLeftHand = chord.contains(where: { $0.note <= average })
+                    
+                    chord.hand = isLeftHand ? .left : .right
+                    
+                    for note in chord {
+                        note.channel = isLeftHand ? 0 : 10
+                    }
+                }
+            } else {
+                if let hand = group.preferredHand {
+                    for chord in group {
+                        chord.hand = hand
+                        for note in chord {
+                            note.channel = hand == .left ? 0 : 10
+                        }
+                    }
+                } else {
+                    let min = group.min(of: { $0.min(of: \.note)! })!
+                    let max = group.max(of: { $0.max(of: \.note)! })!
+                    for chord in group {
+                        if chord.contains(where: { $0.note == max }) {
+                            chord.hand = .right
+                            for note in chord {
+                                note.channel = 10
+                            }
+                        } else if chord.contains(where: { $0.note == min }) {
+                            chord.hand = .left
+                            for note in chord {
+                                note.channel = 0
+                            }
+                        } else {
+                            // hand reachability?
+                            for note in chord {
+                                note.channel = 15
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        return chords
     }
     
     public struct Spec {
         
+        /// The maximum distance apart to be considered within the same chord.
         let duration: Double = 1/8
         
         /// Assuming the mergable clusters are near each other, this is the length of pairs checked.
@@ -173,8 +299,16 @@ public final class Chord: RandomAccessCollection {
         /// The max span of a hand, 7+2 white notes should be enough
         let keysSpan = 12 + 3
         
+        /// The minimum distance for the group from average to be considered significant enough to change hand.
+        let groupsMinimumMargin: UInt8 = 2
+        
         public init() { }
         
+    }
+    
+    public enum Hand {
+        case left
+        case right
     }
     
 }
@@ -186,20 +320,8 @@ extension Chord: CustomDetailedStringConvertible {
         descriptor.container {
             descriptor.sequence(for: \.contents)
             descriptor.optional(for: \.maxOffset)
-        }
-    }
-    
-}
-
-
-extension Optional {
-    
-    func isNil(or predicate: (Wrapped) -> Bool) -> Bool {
-        switch self {
-        case .none:
-            return true
-        case .some(let wrapped):
-            return predicate(wrapped)
+            descriptor.optional(for: \.preferredHand)
+            descriptor.optional(for: \.hand)
         }
     }
     
@@ -208,23 +330,41 @@ extension Optional {
 
 extension RandomAccessCollection where Index == Int {
     
-    /// The max `member` of this collection.
+    /// Custom grouping of `source`.
     ///
-    /// This is equivalent to
+    /// Example:
     /// ```swift
-    /// self.map(member).max()
+    ///  Array.grouping(chords) { i, chord, currentGroup, newGroup in
+    ///    if let firstChord = currentGroup.first {
+    ///        if chord.min(of: \.onset)! - firstChord.max(of: \.onset)! < spec.duration {
+    ///            currentGroup.append(chord)
+    ///        } else {
+    ///            newGroup(&currentGroup)
+    ///            currentGroup = [chord]
+    ///        }
+    ///    } else {
+    ///        currentGroup = [chord]
+    ///    }
+    /// }
     /// ```
-    /// But more efficient.
-    @inlinable
-    public func average<T, E>(of member: (Element) throws(E) -> T) throws(E) -> T? where E: Error, T: BinaryFloatingPoint {
+    public func grouped<C>(
+        of type: C.Type = [Element].self,
+        update: (_ i: Int, _ element: Element, _ currentGroup: inout C, _ newGroup: (_ currentGroup: inout C) -> Void) -> Void
+    ) -> [C] where C: RandomAccessCollection & ExpressibleByArrayLiteral, C.Element == Element {
+        var groups: [C] = []
+        var currentGroup: C = []
+        
         var i = self.startIndex
-        var cumulative: T = 0
         while i < self.endIndex {
-            let current = try member(self[i])
-            cumulative += current
+            update(i, self[i], &currentGroup) { currentGroup in
+                groups.append(currentGroup)
+                currentGroup = []
+            }
+            
             i &+= 1
         }
-        return cumulative / T(self.count)
+        
+        groups.append(currentGroup)
+        return groups
     }
-    
 }
