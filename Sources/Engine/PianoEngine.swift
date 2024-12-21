@@ -29,7 +29,6 @@ public final class PianoEngine {
     /// Plays the node.
     ///
     /// This function dispatch the job to a music queue. Hence this function is cheap.
-    @MainActor
     public func play(note: UInt8, velocity: UInt8) {
         sampler?.startNote(note, withVelocity: velocity, onChannel: 0)
     }
@@ -37,7 +36,6 @@ public final class PianoEngine {
     /// Stop a note created by ``play(note:velocity:)``.
     ///
     /// This function dispatch the job to a music queue. Hence this function is cheap.
-    @MainActor
     public func stop(note: UInt8) {
         sampler?.stopNote(note, onChannel: 0)
     }
@@ -45,7 +43,6 @@ public final class PianoEngine {
     /// Starts the sustain.
     ///
     /// This function dispatch the job to a music queue. Hence this function is cheap.
-    @MainActor
     public func pushSustain() {
         sampler?.sendController(64, withValue: 127, onChannel: 0)
     }
@@ -53,13 +50,11 @@ public final class PianoEngine {
     /// Stops the sustain.
     ///
     /// This function dispatch the job to a music queue. Hence this function is cheap.
-    @MainActor
     public func popSustain() {
         sampler?.sendController(64, withValue: 0, onChannel: 0)
     }
     
     /// Stops all notes and sustains.
-    @MainActor
     public func stopAll() async {
         for note in 21...108 {
             self.stop(note: UInt8(note))
