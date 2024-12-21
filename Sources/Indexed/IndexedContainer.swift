@@ -206,6 +206,17 @@ public struct IndexedContainer {
         self.average = await average
     }
     
+    public func copy() -> IndexedContainer {
+        IndexedContainer(notes: self.notes, combinedNotes: self.combinedNotes, sustains: self.sustains, average: self.average)
+    }
+    
+    internal init(notes: [UInt8 : IndexedNotes], combinedNotes: IndexedNotes, sustains: MIDISustainEvents, average: RunningAverage) {
+        self.notes = notes
+        self.combinedNotes = combinedNotes
+        self.sustains = sustains
+        self.average = average
+    }
+    
     public enum PreserveSettings {
         /// Ensuring the sustains are correct for best acoustic results.
         case acousticResult
