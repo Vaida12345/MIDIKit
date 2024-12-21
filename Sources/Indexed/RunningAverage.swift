@@ -20,7 +20,7 @@ public struct RunningAverage {
     ///
     /// - Parameter runningLength: The default value is `4` beats, that is one measure in a 4/4 sheet.
     init(
-        combinedNotes: IndexedNotes,
+        combinedNotes: CombinedNotes,
         runningLength: Double = 4
     ) async {
         var contents: [Element] = []

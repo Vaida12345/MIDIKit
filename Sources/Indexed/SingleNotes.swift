@@ -1,5 +1,5 @@
 //
-//  IndexedNotes.swift
+//  SingleNotes.swift
 //  PianoVisualizer
 //
 //  Created by Vaida on 11/25/24.
@@ -8,7 +8,7 @@
 import AudioToolbox
 
 
-public struct IndexedNotes: RandomAccessCollection {
+public struct SingleNotes: RandomAccessCollection {
     
     public var contents: [ReferenceNote]
     
@@ -88,10 +88,12 @@ public struct IndexedNotes: RandomAccessCollection {
     }
 
     
-    /// Returns the sustain at the given time stamp. The returned sequence is sorted, same as `self`.
+    /// Returns the sustain at the given time stamp.
+    ///
+    /// This structure assumes that there are no overlapping timestamps.
     ///
     /// - Complexity: O(log *n*), binary search.
-    public subscript(at timeStamp: MusicTimeStamp) -> [Element] {
+    public subscript(at timeStamp: MusicTimeStamp) -> Element? {
         var low = 0
         var high = self.count - 1
         
@@ -99,65 +101,16 @@ public struct IndexedNotes: RandomAccessCollection {
             let mid = (low + high) / 2
             let interval = self[mid]
             
-            if interval.offset < timeStamp {
-                low = mid + 1
-            } else if interval.onset > timeStamp {
+            if timeStamp >= interval.onset && timeStamp < interval.offset {
+                return interval
+            } else if timeStamp < interval.onset {
                 high = mid - 1
             } else {
-                // Point lies in this interval, move left to find the first occurrence
-                high = mid - 1
-            }
-        }
-        
-        var result: [Element] = []
-        // Check all intervals starting from the found position
-        for i in low..<self.contents.count {
-            let interval = self.contents[i]
-            if interval.onset > timeStamp {
-                break
-            }
-            if interval.offset >= timeStamp {
-                result.append(interval)
-            }
-        }
-        
-        return result
-    }
-    
-    /// Returns the sustain at the given time stamp. The returned sequence is sorted, same as `self`.
-    ///
-    /// - Complexity: O(log *n*), binary search.
-    public func range(_ range: ClosedRange<MusicTimeStamp>) -> [Element] {
-        var low = 0
-        var high = self.count - 1
-        
-        while low <= high {
-            let mid = (low + high) / 2
-            let interval = self[mid]
-            
-            if interval.offset < range.lowerBound {
                 low = mid + 1
-            } else if interval.onset > range.upperBound {
-                high = mid - 1
-            } else {
-                // Point lies in this interval, move left to find the first occurrence
-                high = mid - 1
             }
         }
         
-        var result: [Element] = []
-        // Check all intervals starting from the found position
-        for i in low..<self.contents.count {
-            let interval = self.contents[i]
-            if interval.onset > range.upperBound {
-                break
-            }
-            if interval.offset >= range.upperBound {
-                result.append(interval)
-            }
-        }
-        
-        return result
+        return nil
     }
     
     public typealias Element = ReferenceNote

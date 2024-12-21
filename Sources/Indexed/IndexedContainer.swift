@@ -13,10 +13,10 @@ import ConcurrentStream
 public struct IndexedContainer {
     
     /// Key: 21...108
-    public var notes: [UInt8 : IndexedNotes]
+    public var notes: [UInt8 : SingleNotes]
     
     /// The `combinedNotes` and `notes` share the same reference.
-    public var combinedNotes: IndexedNotes
+    public var combinedNotes: CombinedNotes
     
     public var sustains: MIDISustainEvents
     
@@ -182,12 +182,12 @@ public struct IndexedContainer {
         self.sustains = MIDISustainEvents(sustains: container.tracks.flatMap(\.sustains))
         
         let notes = container.tracks.flatMap(\.notes).map(ReferenceNote.init)
-        let combinedNotes = IndexedNotes(contents: notes.sorted(by: { $0.onset < $1.onset }))
+        let combinedNotes = CombinedNotes(contents: notes.sorted(by: { $0.onset < $1.onset }))
         async let average = await RunningAverage(combinedNotes: combinedNotes)
         
         let grouped = Dictionary(grouping: notes, by: \.note)
         
-        var dictionary: [UInt8 : IndexedNotes] = [:]
+        var dictionary: [UInt8 : SingleNotes] = [:]
         dictionary.reserveCapacity(88)
         for i in 21...108 {
             let contents = grouped[UInt8(i)]?.sorted { $0.onset < $1.onset } ?? []
@@ -198,7 +198,7 @@ public struct IndexedContainer {
                 }
             }
             
-            dictionary[UInt8(i)] = IndexedNotes(contents: contents)
+            dictionary[UInt8(i)] = SingleNotes(contents: contents)
         }
         
         self.notes = dictionary
@@ -210,7 +210,7 @@ public struct IndexedContainer {
         IndexedContainer(notes: self.notes, combinedNotes: self.combinedNotes, sustains: self.sustains, average: self.average)
     }
     
-    internal init(notes: [UInt8 : IndexedNotes], combinedNotes: IndexedNotes, sustains: MIDISustainEvents, average: RunningAverage) {
+    internal init(notes: [UInt8 : SingleNotes], combinedNotes: CombinedNotes, sustains: MIDISustainEvents, average: RunningAverage) {
         self.notes = notes
         self.combinedNotes = combinedNotes
         self.sustains = sustains
