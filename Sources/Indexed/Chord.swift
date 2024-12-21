@@ -81,6 +81,7 @@ public final class Chord: RandomAccessCollection {
         func clustersCanMerge(_ lhs: Chord, _ rhs: Chord) -> Bool {
             let maxOnset = Swift.max(lhs.contents.last!.onset, rhs.contents.last!.onset)
             guard lhs.maxOffset.isNil(or: { maxOnset < $0 }) && rhs.maxOffset.isNil(or: { maxOnset < $0 }) else { return false }
+            guard Swift.max(lhs.contents.max(of: \.onset)!, lhs.contents.max(of: \.onset)!) - Swift.min(lhs.contents.min(of: \.onset)!, lhs.contents.min(of: \.onset)!) < spec.clusterWidth else { return false }
             
             return true
         }
@@ -140,8 +141,11 @@ public final class Chord: RandomAccessCollection {
     
     public struct Spec {
         
-        /// The maximum distance apart to be considered within the same chord.
+        /// The maximum distance apart of any two elements to be considered within the same chord.
         let duration: Double = 1/8
+        
+        /// The max width of one single cluster.
+        let clusterWidth: Double = 1/2
         
         /// Assuming the mergable clusters are near each other, this is the length of pairs checked.
         let contextLength: Int = 15
