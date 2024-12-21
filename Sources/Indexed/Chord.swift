@@ -76,7 +76,7 @@ public final class Chord: RandomAccessCollection {
         }
         
         func clustersCanMerge(_ lhs: Chord, _ rhs: Chord) -> Bool {
-            guard lhs.count &+ rhs.count < spec.maxNoteCount else { return false }
+            guard lhs.contents.count &+ rhs.contents.count < spec.maxNoteCount else { return false }
             let maxOnset = Swift.max(lhs.contents.last!.onset, rhs.contents.last!.onset)
             guard lhs.maxOffset.isNil(or: { maxOnset < $0 }) && rhs.maxOffset.isNil(or: { maxOnset < $0 }) else { return false }
             

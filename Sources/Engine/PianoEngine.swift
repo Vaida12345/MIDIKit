@@ -26,35 +26,46 @@ public final class PianoEngine {
     
     private var sampler: AVAudioUnitSampler?
     
-    
+    /// Plays the node.
+    ///
+    /// This function dispatch the job to a music queue. Hence this function is cheap.
     @MainActor
-    public func play(note: UInt8, velocity: UInt8) async {
+    public func play(note: UInt8, velocity: UInt8) {
         sampler?.startNote(note, withVelocity: velocity, onChannel: 0)
     }
     
     /// Stop a note created by ``play(note:velocity:)``.
+    ///
+    /// This function dispatch the job to a music queue. Hence this function is cheap.
     @MainActor
-    public func stop(note: UInt8) async {
+    public func stop(note: UInt8) {
         sampler?.stopNote(note, onChannel: 0)
     }
     
+    /// Starts the sustain.
+    ///
+    /// This function dispatch the job to a music queue. Hence this function is cheap.
     @MainActor
-    public func pushSustain() async {
+    public func pushSustain() {
         sampler?.sendController(64, withValue: 127, onChannel: 0)
     }
     
+    /// Stops the sustain.
+    ///
+    /// This function dispatch the job to a music queue. Hence this function is cheap.
     @MainActor
-    public func popSustain() async {
+    public func popSustain() {
         sampler?.sendController(64, withValue: 0, onChannel: 0)
     }
     
+    /// Stops all notes and sustains.
     @MainActor
     public func stopAll() async {
         for note in 21...108 {
-            await self.stop(note: UInt8(note))
+            self.stop(note: UInt8(note))
         }
         
-        await self.popSustain()
+        self.popSustain()
     }
     
     /// A lightweight init. You can safely call it inside any `View` initializer.
@@ -70,10 +81,7 @@ public final class PianoEngine {
     /// Starts the engine.
     ///
     /// This method must be called before any other methods.
-    ///
-    /// - Parameters:
-    ///   - durationTracked: The auto stop of notes by passing `duration` only works when `durationTracked`.
-    public func start(durationTracked: Bool = true) async throws {
+    public func start() async throws {
         self.engine = AVAudioEngine()
         self.sampler = AVAudioUnitSampler()
         
