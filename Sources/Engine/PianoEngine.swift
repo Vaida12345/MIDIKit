@@ -55,7 +55,9 @@ public final class PianoEngine {
     }
     
     /// Stops all notes and sustains.
-    public func stopAll() async {
+    ///
+    /// This function dispatch the job to a music queue. Hence this function is cheap.
+    public func stopAll() {
         for note in 21...108 {
             self.stop(note: UInt8(note))
         }
