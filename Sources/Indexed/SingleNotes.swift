@@ -30,11 +30,10 @@ public struct SingleNotes: RandomAccessCollection {
         self.contents[position]
     }
     
-    
     /// Returns the first note whose onset is greater than `timeStamp`.
     ///
     /// - Complexity: O(log *n*), binary search.
-    public func first(after timeStamp: MusicTimeStamp) -> Element? {
+    public func firstIndex(after timeStamp: MusicTimeStamp) -> Index? {
         var left = 0
         var right = self.count
         
@@ -50,10 +49,17 @@ public struct SingleNotes: RandomAccessCollection {
         // After the loop, 'left' is the index of the first element greater than the value, if it exists.
         // Check if 'left' is within bounds and return the element if it exists.
         if left < self.count {
-            return self[left]
+            return left
         } else {
             return nil
         }
+    }
+    
+    /// Returns the first note whose onset is greater than `timeStamp`.
+    ///
+    /// - Complexity: O(log *n*), binary search.
+    public func first(after timeStamp: MusicTimeStamp) -> Element? {
+        self.firstIndex(after: timeStamp).map { self.contents[$0] }
     }
     
     /// Returns the last note whose offset is less than `timeStamp`.
@@ -86,14 +92,8 @@ public struct SingleNotes: RandomAccessCollection {
     public func last(before timeStamp: MusicTimeStamp) -> Element? {
         self.lastIndex(before: timeStamp).map { self.contents[$0] }
     }
-
     
-    /// Returns the sustain at the given time stamp.
-    ///
-    /// This structure assumes that there are no overlapping timestamps.
-    ///
-    /// - Complexity: O(log *n*), binary search.
-    public subscript(at timeStamp: MusicTimeStamp) -> Element? {
+    public func index(at timeStamp: Double) -> Index? {
         var low = 0
         var high = self.count - 1
         
@@ -102,7 +102,7 @@ public struct SingleNotes: RandomAccessCollection {
             let interval = self[mid]
             
             if timeStamp >= interval.onset && timeStamp < interval.offset {
-                return interval
+                return mid
             } else if timeStamp < interval.onset {
                 high = mid - 1
             } else {
@@ -111,6 +111,17 @@ public struct SingleNotes: RandomAccessCollection {
         }
         
         return nil
+    }
+
+    
+    /// Returns the sustain at the given time stamp.
+    ///
+    /// This structure assumes that there are no overlapping timestamps.
+    ///
+    /// - Complexity: O(log *n*), binary search.
+    @inlinable
+    public subscript(at timeStamp: MusicTimeStamp) -> Element? {
+        self.index(at: timeStamp).map { self.contents[$0] }
     }
     
     public typealias Element = ReferenceNote

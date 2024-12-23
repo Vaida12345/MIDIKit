@@ -226,6 +226,8 @@ public extension MIDIContainer {
     
     /// Apply the tempo.
     ///
+    /// - Precondition: This function assumes the container is in constant tempo.
+    ///
     /// ```swift
     /// // start by normalizing tempo
     /// let referenceNoteLength = container.tracks[0].notes.deriveReferenceNoteLength()

@@ -67,6 +67,7 @@ public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertibl
         return musicTrack
     }
     
+    @inlinable
     public mutating func appendNotes(from rhs: MIDITrack) {
         self.notes.append(contentsOf: rhs.notes)
     }

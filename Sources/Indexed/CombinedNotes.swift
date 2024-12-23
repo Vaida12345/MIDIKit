@@ -79,6 +79,29 @@ public struct CombinedNotes: RandomAccessCollection {
         }
     }
     
+    /// Returns the last note whose onset is less than `timeStamp`.
+    ///
+    /// - Complexity: O(log *n*), binary search.
+    public func lastIndex(onsetBefore timeStamp: MusicTimeStamp) -> Index? {
+        var left = 0
+        var right = self.count
+        
+        while left < right {
+            let mid = (left + right) / 2
+            if self[mid].onset < timeStamp {
+                left = mid + 1
+            } else {
+                right = mid
+            }
+        }
+        
+        if left > 0 {
+            return left - 1
+        } else {
+            return nil
+        }
+    }
+    
     /// Returns the last note whose offset is less than `timeStamp`.
     ///
     /// - Complexity: O(log *n*), binary search.
