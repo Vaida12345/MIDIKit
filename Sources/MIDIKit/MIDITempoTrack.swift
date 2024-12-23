@@ -12,7 +12,7 @@ import AVFoundation
 
 public struct MIDITempoTrack: Sendable, CustomStringConvertible, CustomDetailedStringConvertible, Equatable {
     
-    public var events: [MIDITrack.MetaEvent]
+    public var events: [MIDIMetaEvent]
     
     public var tempos: [Tempo]
     

@@ -16,20 +16,26 @@ import Accelerate
 import AVFAudio
 
 
-let container = try MIDIContainer(at: "/Users/vaida/Desktop/The Winter.mid")
+let date = Date()
+let container = try await MIDIContainer(at: "/Users/vaida/Desktop/04 The Winter.mid").indexed()
+//let reference = try await MIDIContainer(at: "/Users/vaida/Desktop/04 The Winter.mid").indexed()
 //let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/1-61 Piano Sonata No. 14, _Moonlight__ I. Adagio sostenuto.mid")
 //let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Secret Base.mid")
-let date = Date()
-var indexed = await container.indexed()
 //detailedPrint(chords)
 //print(date.distanceToNow())
-//try await indexed.normalize(preserve: .notesDisplay)
+//try await container.normalize(preserve: .notesDisplay)
 //var indexedContainer = indexed.makeContainer()
 //flushAverage(container: indexed, track: &indexedContainer.tracks[0])
 //try indexedContainer.write(to: .desktopDirectory/"file.mid")
 
-let features = await indexed.keyFeatures(interval: 1/4)
-try features.makeContainer().write(to: .desktopDirectory/"file.mid")
+//await container.align(to: reference)
+//try container.makeContainer().write(to: .desktopDirectory/"file.mid")
+
+let features = await container.keyFeatures()
+var featureContainer = features.makeContainer()
+let pivots = features.pivots()
+//pivots.append(to: &featureContainer.tracks[0])
+try featureContainer.write(to: .desktopDirectory/"file.mid")
 
 
 //var result = MIDIContainer()
