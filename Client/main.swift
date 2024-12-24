@@ -17,7 +17,7 @@ import AVFAudio
 
 
 let date = Date()
-let container = try await MIDIContainer(at: "/Users/vaida/Desktop/04 The Winter.mid").indexed()
+//let container = try await MIDIContainer(at: "/Users/vaida/Desktop/04 The Winter.mid").indexed()
 //let reference = try await MIDIContainer(at: "/Users/vaida/Desktop/04 The Winter.mid").indexed()
 //let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/1-61 Piano Sonata No. 14, _Moonlight__ I. Adagio sostenuto.mid")
 //let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Secret Base.mid")
@@ -31,11 +31,11 @@ let container = try await MIDIContainer(at: "/Users/vaida/Desktop/04 The Winter.
 //await container.align(to: reference)
 //try container.makeContainer().write(to: .desktopDirectory/"file.mid")
 
-let features = await container.keyFeatures()
-var featureContainer = features.makeContainer()
-let pivots = features.pivots()
-//pivots.append(to: &featureContainer.tracks[0])
-try featureContainer.write(to: .desktopDirectory/"file.mid")
+//let features = await container.keyFeatures()
+//var featureContainer = features.makeContainer()
+//let pivots = features.pivots()
+////pivots.append(to: &featureContainer.tracks[0])
+//try featureContainer.write(to: .desktopDirectory/"file.mid")
 
 
 //var result = MIDIContainer()
@@ -49,5 +49,8 @@ try featureContainer.write(to: .desktopDirectory/"file.mid")
 //
 //result.tracks.append(track)
 //try result.write(to: .desktopDirectory/"file.mid")
+
+//let engine = AVAudioEngine()
+//let sampler = AVAudioUnitSampler()
 
 print(date.distanceToNow())

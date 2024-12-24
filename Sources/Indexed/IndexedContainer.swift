@@ -216,7 +216,7 @@ public struct IndexedContainer {
                 }
             }
             
-            dictionary[UInt8(i)] = SingleNotes(contents: contents)
+            dictionary[UInt8(i)] = SingleNotes(contents)
         }
         
         self.notes = dictionary
