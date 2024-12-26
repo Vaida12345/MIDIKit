@@ -77,10 +77,8 @@ public final class PianoEngine {
     /// Starts the engine.
     ///
     /// This method must be called before any other methods.
-    ///
-    /// - Experiment: Consecutive calls may cause deadlock, use
     public func start() async throws {
-        if let engine {
+        if engine != nil {
             try self.resume()
         } else {
             self.engine = AVAudioEngine()

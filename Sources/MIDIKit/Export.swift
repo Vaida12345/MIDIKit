@@ -16,9 +16,12 @@ extension MIDIContainer {
     ///
     /// - Parameters:
     ///   - destination: The destination uses `wav` format.
+    ///
+    /// - throws: Any operational error, or `CancellationError` when cancelled.
     public func export(to destination: FinderItem) async throws {
         let audioEngine = AVAudioEngine()
         let sampler = AVAudioUnitSampler()
+        
         audioEngine.attach(sampler)
         audioEngine.connect(sampler, to: audioEngine.mainMixerNode, format: nil)
         
@@ -39,8 +42,15 @@ extension MIDIContainer {
         sequencer.prepareToPlay()
         try sequencer.start()
         
+        defer {
+            sequencer.stop()
+            audioEngine.stop()
+            audioEngine.disableManualRenderingMode()
+        }
+        
         // Render to audio file
         while audioEngine.manualRenderingSampleTime < AVAudioFramePosition(sequencer.duration * audioFormat.sampleRate) {
+            try Task.checkCancellation()
             let buffer = AVAudioPCMBuffer(pcmFormat: audioEngine.manualRenderingFormat, frameCapacity: 4096)!
             let status = try audioEngine.renderOffline(4096, to: buffer)
             
@@ -50,9 +60,6 @@ extension MIDIContainer {
                 throw NSError(domain: "MIDIExport", code: -1, userInfo: [NSLocalizedDescriptionKey: "Error during rendering."])
             }
         }
-        
-        sequencer.stop()
-        audioEngine.stop()
     }
 }
 
