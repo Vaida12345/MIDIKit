@@ -101,6 +101,8 @@ public final class PianoEngine {
     /// Stops the engine.
     ///
     /// This method stops the audio engine and the audio hardware, and releases any allocated resources for the ``start()`` method. When your app doesn’t need to play audio, consider pausing or stopping the engine to minimize power consumption.
+    ///
+    /// To restart the engine, call ``start()``.
     public func stop() {
         self.engine?.stop()
         if let sampler {
@@ -111,6 +113,8 @@ public final class PianoEngine {
     }
     
     /// Resumes the engine.
+    ///
+    /// This is the counterpart for ``pause()``.
     public func resume() throws {
         try engine?.start()
     }
@@ -119,7 +123,7 @@ public final class PianoEngine {
     ///
     /// This method stops the audio engine and the audio hardware, but doesn’t deallocate the resources for the ``start()`` method. When your app doesn’t need to play audio, consider pausing or stopping the engine to minimize power consumption.
     ///
-    /// You resume the audio engine by invoking ``start()``.
+    /// You resume the audio engine by invoking ``start()`` or ``resume()``.
     public func pause() {
         self.engine?.pause()
     }
