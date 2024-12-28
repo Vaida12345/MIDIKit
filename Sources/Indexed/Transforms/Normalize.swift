@@ -177,11 +177,15 @@ extension IndexedContainer {
     }
     
     
-    public enum PreserveSettings {
+    public enum PreserveSettings: String, Equatable, Identifiable, CaseIterable {
         /// Ensuring the sustains are correct for best acoustic results.
-        case acousticResult
+        case acousticResult = "Acoustic Result"
         /// Focusing chords, minimise chords overlapping.
-        case notesDisplay
+        case notesDisplay = "Notes Display"
+        
+        public var id: String {
+            self.rawValue
+        }
     }
     
 }
