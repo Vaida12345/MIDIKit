@@ -16,7 +16,7 @@ extension IndexedContainer {
     ///
     /// This method will
     /// - ensure the gaps between consecutive notes (in the initializer)
-    public func normalize(preserve: PreserveSettings = .acousticResult) async throws {
+    public func normalize(preserve: PreserveSettings = .acousticResult) async {
         guard !self.combinedNotes.isEmpty else { return }
         
         let chords = await Chord.makeChords(from: self)
@@ -180,7 +180,7 @@ extension IndexedContainer {
     public enum PreserveSettings: String, Equatable, Identifiable, CaseIterable {
         /// Ensuring the sustains are correct for best acoustic results.
         case acousticResult = "Acoustic Result"
-        /// Focusing chords, minimise chords overlapping.
+        /// Focusing on chords, minimize chords overlapping.
         case notesDisplay = "Notes Display"
         
         public var id: String {
