@@ -12,207 +12,80 @@ import ConcurrentStream
 /// Container supporting efficient lookup.
 public struct IndexedContainer {
     
+    /// The notes grouped by the key.
+    ///
     /// Key: 21...108
-    public var notes: [UInt8 : SingleNotes]
+    public let notes: [UInt8 : SingleNotes]
     
+    /// The sorted notes.
+    ///
     /// The `combinedNotes` and `notes` share the same reference.
-    public var combinedNotes: CombinedNotes
+    public let combinedNotes: CombinedNotes
     
-    public var sustains: MIDISustainEvents
+    /// The sustain events.
+    public let sustains: MIDISustainEvents
     
-    public var average: RunningAverage
+    /// The running average.
+    public let average: RunningAverage
+    
+    /// The stored parameter for methods that returns a new ``IndexedContainer``.
+    internal let parameters: Parameters
     
     
-    /// Normalize the MIDI Container.
-    ///
-    /// This method is for MIDIs generated using PianoTranscription.
-    ///
-    /// This method will
-    /// - ensure the gaps between consecutive notes (in the initializer)
-    public func normalize(preserve: PreserveSettings = .acousticResult) async throws {
-        guard !self.combinedNotes.isEmpty else { return }
-        
-        let chords = await Chord.makeChords(from: self)
-        let margin: Double = 1/16 // the padding after sustain
-        
-        chords.forEach { __index, chord in
-            // check if normalization is required.
-            // It is not required if there isn't any note in its duration
-            if __index == chords.count - 1 { return }
-            let nextOnset = chords[__index + 1].min(of: \.onset)!
-            chord.forEach { _, note in
-                // ensure the sustain is correct
-                let onsetSustainIndex = sustains.index(at: note.onset)
-                let onsetSustainRegion = onsetSustainIndex.map { sustains[$0] }
-                let offsetPreviousIndex = sustains.lastIndex(before: note.offset)
-                let offsetPrevious = offsetPreviousIndex.map { sustains[$0] }
-                let onsetNextIndex = sustains.firstIndex(after: note.onset)
-                let offsetSustainRegion: MIDISustainEvent?
-                let offsetSustainIndex: Int?
-                if let region = sustains.index(at: note.offset) {
-                    offsetSustainIndex = region
-                    offsetSustainRegion = sustains[region]
-                } else if let offsetPrevious, offsetPrevious.offset > note.offset - margin, note.onset <= offsetPrevious.offset { // Within margin, treat as offset sustain
-                    offsetSustainRegion = offsetPrevious
-                    offsetSustainIndex = offsetPreviousIndex
-                } else {
-                    offsetSustainRegion = nil
-                    offsetSustainIndex = nil
-                }
-                
-                func setNoteOffset(_ value: Double) {
-                    note.offset = max(value, note.onset + 1/64)
-                }
-                
-                /// note has spanned at least three sustains
-                func setExcessiveSpan() {
-                    guard preserve == .acousticResult else {
-                        // The note has spanned at least three sustains, consider this a duration error.
-                        setNoteOffset(nextOnset)
-                        return
-                    }
-                    
-                    let average = self.average[at: note.onset]!
-                    if note.note < average.note {
-                        // maybe this is the left hand, leave it. For example, Moonlight I.
-                    } else {
-                        setNoteOffset(nextOnset)
-                    }
-                }
-                
-                if let offsetSustainRegion {
-                    // An sustain was found for offset, or within margin
-                    
-                    if let onsetSustainRegion {
-                        // An sustain was found for offset & onset
-                        
-                        if onsetSustainRegion == offsetSustainRegion {
-                            // The onset and offset are in the same sustain region.
-                            
-                            // The length can be free.
-                            //                note.duration = minimumLength
-                            // context aware length. Check for next note
-                            setNoteOffset(min(note.offset, nextOnset))
-                            note.channel = 0
-                        } else if onsetNextIndex! == offsetSustainIndex! {
-                            // the length must span to the found sustain.
-                            
-                            let minimum = note.offset < offsetSustainRegion.onset + margin ? offsetSustainRegion.onset : offsetSustainRegion.onset + margin
-                            let maximum = nextOnset
-                            if minimum < maximum {
-                                setNoteOffset(clamp(note.offset, min: minimum, max: maximum))
-                                note.channel = 1
-                            } else {
-                                switch preserve {
-                                case .acousticResult: setNoteOffset(minimum)
-                                case .notesDisplay: setNoteOffset(maximum)
-                                }
-                                note.channel = 2
-                            }
-                        } else {
-                            setExcessiveSpan()
-                        }
-                    } else {
-                        // An sustain was found for offset, but not onset
-                        
-                        if onsetNextIndex! == offsetSustainIndex! {
-                            // the length must span to the found sustain.
-                            
-                            let minimum = note.offset < offsetSustainRegion.onset + margin ? offsetSustainRegion.onset : offsetSustainRegion.onset + margin
-                            let maximum = nextOnset
-                            if minimum < maximum {
-                                setNoteOffset(clamp(note.offset, min: minimum, max: maximum))
-                                note.channel = 3
-                            } else {
-                                switch preserve {
-                                case .acousticResult: setNoteOffset(minimum)
-                                case .notesDisplay: setNoteOffset(maximum)
-                                }
-                                note.channel = 4
-                            }
-                        } else {
-                            note.channel = 5
-                            setExcessiveSpan()
-                        }
-                    }
-                } else if let onsetSustainIndex {
-                    // An sustain was found for onset, but not offset
-                    if let offsetPreviousIndex, onsetSustainIndex <= offsetPreviousIndex {
-                        // spanned exacted half region.
-                        if let offsetNext = sustains.first(after: note.offset), let offsetPrevious,
-                            nextOnset < offsetNext.onset && nextOnset > offsetPrevious.onset {
-                                // crop anyway
-                                note.channel = 6
-                                setNoteOffset(nextOnset)
-                        } else if let onsetNextIndex, onsetNextIndex < offsetPreviousIndex {
-                            note.channel = 7
-                            setExcessiveSpan()
-                        } else {
-                            setExcessiveSpan()
-                            note.channel = 8
-                        }
-                    } else {
-                        note.channel = 10
-                        setExcessiveSpan()
-                    }
-                } else {
-                    // do not change it, this is the initial chord, or its offset is too far from the previous sustain.
-                    // nether onset nor offset was found
-                    if onsetNextIndex != nil && onsetNextIndex == sustains.firstIndex(after: note.offset) {
-                        switch preserve {
-                        case .acousticResult:
-                            // They are within the same non-sustained region. keep it as-is.
-                            break
-                        case .notesDisplay:
-                            setNoteOffset(nextOnset)
-                        }
-                        note.channel = 11
-                    } else if onsetNextIndex == offsetPreviousIndex {
-                        // spanned exacted one region.
-                        if let offsetNext = sustains.first(after: note.offset), let offsetPrevious {
-                            if nextOnset < offsetNext.onset && nextOnset > offsetPrevious.onset {
-                                // crop anyway
-                                setNoteOffset(nextOnset)
-                                note.channel = 12
-                            } else {
-                                note.channel = 13
-                            }
-                        } else {
-                            note.channel = 14
-                        }
-                    } else {
-                        setExcessiveSpan()
-                        note.channel = 15
-                    }
-                }
-            }
-        }
-    }
-    
+    /// Converts the indexed container back to ``MIDIContainer``.
     public func makeContainer() -> MIDIContainer {
         let track = MIDITrack(notes: MIDINotes(notes: self.combinedNotes.map(\.content)), sustains: self.sustains)
         return MIDIContainer(tracks: [track])
     }
     
     
-    /// - Parameter minimumConsecutiveNoteGap: The default value is `1/128`. The minimum length of individual note from La campanella in G-Sharp Minor by Lang Lang is 0.013 beat, which is around 1/64 beat.
-    public init(container: MIDIContainer, minimumConsecutiveNoteGap: Double = 1/128) async {
+    /// - Parameters:
+    ///   - notes: The source notes. The notes are referenced and not copied. The other properties will be calculated accordingly.
+    ///   - sustains: The source sustain events.
+    ///   - runningLength: The length for calculating the running average. The default value is `4` beats, that is one measure in a 4/4 sheet.
+    ///
+    /// Any methods that returns a new ``IndexedContainer`` will use the parameters set in the initializer.
+    public init(
+        notes: [UInt8 : SingleNotes],
+        sustains: MIDISustainEvents,
+        runningLength: Double = 4
+    ) async {
+        self.notes = notes
+        self.sustains = sustains
+        self.combinedNotes = CombinedNotes(contents: notes.values.flatten().sorted(on: \.onset, by: <))
+        
+        let average = await RunningAverage(combinedNotes: combinedNotes, runningLength: runningLength)
+        self.average = average
+        self.parameters = Parameters(runningLength: runningLength)
+    }
+    
+    /// - Parameters:
+    ///   - container: The source container.
+    ///   - minimumConsecutiveNotesGap: The minimum gap between two consecutive notes. The default value is `1/128`. The minimum length of individual note from La campanella in G-Sharp Minor by Lang Lang is 0.013 beat, which is around 1/64 beat.
+    ///   - runningLength: The length for calculating the running average. The default value is `4` beats, that is one measure in a 4/4 sheet.
+    ///
+    /// Any methods that returns a new ``IndexedContainer`` will use the parameters set in the initializer.
+    public init(
+        container: MIDIContainer,
+        minimumConsecutiveNotesGap: Double = 1/128,
+        runningLength: Double = 4
+    ) async {
         self.sustains = MIDISustainEvents(sustains: container.tracks.flatMap(\.sustains))
         
         let notes = container.tracks.flatMap(\.notes).map(ReferenceNote.init)
         let combinedNotes = CombinedNotes(contents: notes.sorted(by: { $0.onset < $1.onset }))
-        async let average = await RunningAverage(combinedNotes: combinedNotes)
+        async let average = await RunningAverage(combinedNotes: combinedNotes, runningLength: runningLength)
         
         let grouped = Dictionary(grouping: notes, by: \.note)
         
         var dictionary: [UInt8 : SingleNotes] = [:]
         dictionary.reserveCapacity(88)
         for i in 21...108 {
-            let contents = grouped[UInt8(i)]?.sorted { $0.onset < $1.onset } ?? []
+            guard let contents = grouped[UInt8(i)]?.sorted(by: { $0.onset < $1.onset }) else { continue }
             for i in 0..<contents.count {
                 // ensures non-overlapping
                 if i > contents.count - 1 {
-                    contents[i].offset = min(contents[i].offset, contents[i + 1].onset - minimumConsecutiveNoteGap)
+                    contents[i].offset = min(contents[i].offset, contents[i + 1].onset - minimumConsecutiveNotesGap)
                 }
             }
             
@@ -222,13 +95,15 @@ public struct IndexedContainer {
         self.notes = dictionary
         self.combinedNotes = combinedNotes
         self.average = await average
+        self.parameters = Parameters(runningLength: runningLength)
     }
     
-    public enum PreserveSettings {
-        /// Ensuring the sustains are correct for best acoustic results.
-        case acousticResult
-        /// Focusing chords, minimise chords overlapping.
-        case notesDisplay
+    
+    /// The stored parameter for methods that returns a new ``IndexedContainer``.
+    struct Parameters {
+        
+        let runningLength: Double
+        
     }
     
 }
@@ -236,8 +111,22 @@ public struct IndexedContainer {
 
 extension MIDIContainer {
     
-    public func indexed() async -> IndexedContainer {
-        await IndexedContainer(container: self)
+    /// Converts the container to ``IndexedContainer``.
+    ///
+    /// - Parameters:
+    ///   - minimumConsecutiveNotesGap: The minimum gap between two consecutive notes. The default value is `1/128`. The minimum length of individual note from La campanella in G-Sharp Minor by Lang Lang is 0.013 beat, which is around 1/64 beat.
+    ///   - runningLength: The length for calculating the running average. The default value is `4` beats, that is one measure in a 4/4 sheet.
+    ///
+    /// Any methods that returns a new ``IndexedContainer`` will use the parameters set in the initializer.
+    public func indexed(
+        minimumConsecutiveNotesGap: Double = 1/128,
+        runningLength: Double = 4
+    ) async -> IndexedContainer {
+        await IndexedContainer(
+            container: self,
+            minimumConsecutiveNotesGap: minimumConsecutiveNotesGap,
+            runningLength: runningLength
+        )
     }
     
 }

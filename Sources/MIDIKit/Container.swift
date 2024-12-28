@@ -36,7 +36,7 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
                 MusicTrackNewMetaEvent(tempoTrack, event.timestamp, pointer)
             }
         }
-        for tempo in tempo.tempos {
+        for tempo in tempo {
             MusicTrackNewExtendedTempoEvent(tempoTrack, tempo.timestamp, tempo.tempo)
         }
         
@@ -236,12 +236,12 @@ public extension MIDIContainer {
     /// container.applyTempo(tempo: tempo)
     /// ```
     mutating func applyTempo(tempo: Double) {
-        precondition(self.tempo.tempos.isEmpty || (self.tempo.tempos.count == 1 && self.tempo.tempos[0] == .init(timestamp: 0, tempo: 120)))
+        precondition(self.tempo.isEmpty || (self.tempo.count == 1 && self.tempo[0] == .init(timestamp: 0, tempo: 120)))
         
-        if self.tempo.tempos.isEmpty {
-            self.tempo.tempos.append(MIDITempoTrack.Tempo(timestamp: 0, tempo: tempo))
+        if self.tempo.isEmpty {
+            self.tempo.contents.append(MIDITempoTrack.Tempo(timestamp: 0, tempo: tempo))
         } else {
-            self.tempo.tempos[0].tempo = tempo
+            self.tempo[0].tempo = tempo
         }
         
         let factor = tempo / 120
@@ -292,22 +292,23 @@ public extension MIDIContainer {
         
         
         self.tracks.forEach { index, track in
-            track.notes.forEach { _, note in
-                note.onset = scaledTime(at: note.onset, tempoEvents: self.tempo.tempos, constantTempo: constantTempo)
-                note.offset = scaledTime(at: note.offset, tempoEvents: self.tempo.tempos, constantTempo: constantTempo)
+            track.notes.notes.forEach { _, note in
+                note.onset = scaledTime(at: note.onset, tempoEvents: self.tempo.contents, constantTempo: constantTempo)
+                note.offset = scaledTime(at: note.offset, tempoEvents: self.tempo.contents, constantTempo: constantTempo)
             }
             
-            track.sustains.forEach { _, sustain in
-                sustain.onset = scaledTime(at: sustain.onset, tempoEvents: self.tempo.tempos, constantTempo: constantTempo)
-                sustain.offset = scaledTime(at: sustain.offset, tempoEvents: self.tempo.tempos, constantTempo: constantTempo)
+            track.sustains.sustains.forEach { _, sustain in
+                sustain.onset = scaledTime(at: sustain.onset, tempoEvents: self.tempo.contents, constantTempo: constantTempo)
+                sustain.offset = scaledTime(at: sustain.offset, tempoEvents: self.tempo.contents, constantTempo: constantTempo)
             }
         }
         
-        self.tempo.tempos = [MIDITempoTrack.Tempo(timestamp: 0, tempo: constantTempo)]
+        self.tempo.contents = [MIDITempoTrack.Tempo(timestamp: 0, tempo: constantTempo)]
     }
     
     /// - Parameters:
     ///   - tempos: The timestamps are defined in *currentTempo*. Such values will be scaled in the results.
+    ///   - currentTempo: The current tempo of the container. The tempo is 120 by default, or can be access via `self.tempo`
     mutating func adjustMIDINotesToVariadicTempo(_ tempos: [MIDITempoTrack.Tempo], currentTempo: Double) {
         guard !tempos.isEmpty else { return }
         
@@ -350,7 +351,7 @@ public extension MIDIContainer {
             }
         }
         
-        self.tempo.tempos = tempos.map {
+        self.tempo.contents = tempos.map {
             MIDITempoTrack.Tempo(timestamp: scaledTime(at: $0.timestamp, tempoEvents: tempos, constantTempo: currentTempo), tempo: $0.tempo)
         }
     }

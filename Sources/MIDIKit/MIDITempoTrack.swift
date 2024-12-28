@@ -10,11 +10,11 @@ import DetailedDescription
 import AVFoundation
 
 
-public struct MIDITempoTrack: Sendable, CustomStringConvertible, CustomDetailedStringConvertible, Equatable {
+public struct MIDITempoTrack: Sendable, CustomStringConvertible, CustomDetailedStringConvertible, Equatable, ArrayRepresentable {
     
     public var events: [MIDIMetaEvent]
     
-    public var tempos: [Tempo]
+    public var contents: [Tempo]
     
     
     public mutating func setTimeSignature(beatsPerMeasure: UInt8, beatsPerNote: UInt8) {
@@ -33,7 +33,11 @@ public struct MIDITempoTrack: Sendable, CustomStringConvertible, CustomDetailedS
     
     public init(events: [MIDITrack.MetaEvent], tempos: [Tempo]) {
         self.events = events
-        self.tempos = tempos
+        self.contents = tempos
+    }
+    
+    public init(_ contents: [Element]) {
+        self.init(events: [], tempos: contents)
     }
     
     
@@ -43,10 +47,12 @@ public struct MIDITempoTrack: Sendable, CustomStringConvertible, CustomDetailedS
     
     public func detailedDescription(using descriptor: DetailedDescription.Descriptor<MIDITempoTrack>) -> any DescriptionBlockProtocol {
         descriptor.container {
-            descriptor.sequence(for: \.tempos)
+            descriptor.sequence(for: \.contents)
             descriptor.sequence(for: \.events)
         }
     }
+    
+    public typealias Element = Tempo
     
     public struct Tempo: Sendable, Equatable {
         
@@ -58,7 +64,6 @@ public struct MIDITempoTrack: Sendable, CustomStringConvertible, CustomDetailedS
             self.timestamp = timestamp
             self.tempo = tempo
         }
-        
     }
     
 }
