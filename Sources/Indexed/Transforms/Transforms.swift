@@ -56,17 +56,34 @@ extension IndexedContainer {
             var range: ClosedRange<Int>? = nil
             
             while i > 0 {
+                var isInCloseProximity: Bool {
+                    let next = i &+ 1
+                    guard next < notes.count else { return false }
+                    let distance = notes[next].onset - notes[i].offset
+                    return distance < 1/2 // 8th note
+                }
+                
                 if notes[i].velocity < threshold {
                     // update range
                     if range != nil {
-                        range = i...range!.upperBound
+                        if isInCloseProximity {
+                            range = i...range!.upperBound
+                        } else {
+                            range = nil
+                        }
                     } else {
                         range = i...i
                     }
                 } else if let _range = range {
-                    // apply range
-                    notes[i].offset = notes[_range.upperBound].offset
-                    notes.removeSubrange(_range)
+                    if isInCloseProximity {
+                        // apply range
+                        notes[i].offset = notes[_range.upperBound].offset
+                        notes.removeSubrange(_range)
+                        range = nil
+                    } else {
+                        range = nil
+                    }
+                } else {
                     range = nil
                 }
                 
