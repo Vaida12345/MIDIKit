@@ -82,11 +82,9 @@ public struct IndexedContainer {
         dictionary.reserveCapacity(88)
         for i in 21...108 {
             guard let contents = grouped[UInt8(i)]?.sorted(by: { $0.onset < $1.onset }) else { continue }
-            for i in 0..<contents.count {
+            for i in 0..<contents.count - 1 {
                 // ensures non-overlapping
-                if i > contents.count - 1 {
-                    contents[i].offset = min(contents[i].offset, contents[i + 1].onset - minimumConsecutiveNotesGap)
-                }
+                contents[i].offset = min(contents[i].offset, contents[i + 1].onset - minimumConsecutiveNotesGap)
             }
             
             dictionary[UInt8(i)] = SingleNotes(contents)
