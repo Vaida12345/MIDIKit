@@ -170,7 +170,7 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
                 
                 MusicEventIteratorNextEvent(iterator)
             }
-            midiTrack.sustains = MIDISustainEvents(sustains: sustains)
+            midiTrack.sustains = MIDISustainEvents(sustains)
             
             return midiTrack
         }
@@ -292,12 +292,12 @@ public extension MIDIContainer {
         
         
         self.tracks.forEach { index, track in
-            track.notes.notes.forEach { _, note in
+            track.notes.forEach { _, note in
                 note.onset = scaledTime(at: note.onset, tempoEvents: self.tempo.contents, constantTempo: constantTempo)
                 note.offset = scaledTime(at: note.offset, tempoEvents: self.tempo.contents, constantTempo: constantTempo)
             }
             
-            track.sustains.sustains.forEach { _, sustain in
+            track.sustains.forEach { _, sustain in
                 sustain.onset = scaledTime(at: sustain.onset, tempoEvents: self.tempo.contents, constantTempo: constantTempo)
                 sustain.offset = scaledTime(at: sustain.offset, tempoEvents: self.tempo.contents, constantTempo: constantTempo)
             }

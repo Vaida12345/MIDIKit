@@ -34,4 +34,14 @@ public extension ArrayRepresentable {
         self.init(elements)
     }
     
+    @inlinable
+    mutating func forEach(body: (_ index: Index, _ element: inout Element) -> Void) {
+        var i = 0
+        while i < self.endIndex {
+            body(i, &self[i])
+            
+            i &+= 1
+        }
+    }
+    
 }

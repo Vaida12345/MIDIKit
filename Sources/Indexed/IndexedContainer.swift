@@ -15,7 +15,7 @@ public struct IndexedContainer {
     /// The notes grouped by the key.
     ///
     /// Key: 21...108
-    public let notes: [UInt8 : SingleNotes]
+    public let notes: [UInt8 : DisjointNotes]
     
     /// The sorted notes.
     ///
@@ -34,7 +34,7 @@ public struct IndexedContainer {
     
     /// Converts the indexed container back to ``MIDIContainer``.
     public func makeContainer() -> MIDIContainer {
-        let track = MIDITrack(notes: MIDINotes(notes: self.combinedNotes.map(\.content)), sustains: self.sustains)
+        let track = MIDITrack(notes: MIDINotes(self.combinedNotes.map(\.content)), sustains: self.sustains)
         return MIDIContainer(tracks: [track])
     }
     
@@ -46,13 +46,13 @@ public struct IndexedContainer {
     ///
     /// Any methods that returns a new ``IndexedContainer`` will use the parameters set in the initializer.
     public init(
-        notes: [UInt8 : SingleNotes],
+        notes: [UInt8 : DisjointNotes],
         sustains: MIDISustainEvents,
         runningLength: Double = 4
     ) async {
         self.notes = notes
         self.sustains = sustains
-        self.combinedNotes = CombinedNotes(contents: notes.values.flatten().sorted(on: \.onset, by: <))
+        self.combinedNotes = CombinedNotes(notes.values.flatten().sorted(on: \.onset, by: <))
         
         let average = await RunningAverage(combinedNotes: combinedNotes, runningLength: runningLength)
         self.average = average
@@ -70,15 +70,15 @@ public struct IndexedContainer {
         minimumConsecutiveNotesGap: Double = 1/128,
         runningLength: Double = 4
     ) async {
-        self.sustains = MIDISustainEvents(sustains: container.tracks.flatMap(\.sustains))
+        self.sustains = MIDISustainEvents(container.tracks.flatMap(\.sustains))
         
         let notes = container.tracks.flatMap(\.notes).map(ReferenceNote.init)
-        let combinedNotes = CombinedNotes(contents: notes.sorted(by: { $0.onset < $1.onset }))
+        let combinedNotes = CombinedNotes(notes.sorted(by: { $0.onset < $1.onset }))
         async let average = await RunningAverage(combinedNotes: combinedNotes, runningLength: runningLength)
         
         let grouped = Dictionary(grouping: notes, by: \.note)
         
-        var dictionary: [UInt8 : SingleNotes] = [:]
+        var dictionary: [UInt8 : DisjointNotes] = [:]
         dictionary.reserveCapacity(88)
         for i in 21...108 {
             guard let contents = grouped[UInt8(i)]?.sorted(by: { $0.onset < $1.onset }) else { continue }
@@ -87,7 +87,7 @@ public struct IndexedContainer {
                 contents[i].offset = min(contents[i].offset, contents[i + 1].onset - minimumConsecutiveNotesGap)
             }
             
-            dictionary[UInt8(i)] = SingleNotes(contents)
+            dictionary[UInt8(i)] = DisjointNotes(contents)
         }
         
         self.notes = dictionary

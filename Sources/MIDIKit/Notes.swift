@@ -14,56 +14,26 @@ import Accelerate
 import NativeImage
 
 
-public struct MIDINotes: RandomAccessCollection, Sendable, Equatable, CustomDetailedStringConvertible, ExpressibleByArrayLiteral {
+/// MIDI Notes are not sorted.
+public struct MIDINotes: ArrayRepresentable, Sendable, Equatable, CustomDetailedStringConvertible {
     
-    var notes: [MIDITrack.Note]
-    
-    public var startIndex: Int {
-        self.notes.startIndex
-    }
-    
-    public var endIndex: Int {
-        self.notes.endIndex
-    }
+    public var contents: [MIDITrack.Note]
     
     public mutating func append(contentsOf: MIDINotes) {
-        self.notes.append(contentsOf: contentsOf.notes)
+        self.contents.append(contentsOf: contentsOf.contents)
     }
     
     public mutating func append(_ note: Note) {
-        self.notes.append(note)
-    }
-    
-    public mutating func forEach(body: (_ index: Index, _ element: inout Element) -> Void) {
-        self.notes.forEach(body: body)
-    }
-    
-    public init(notes: [MIDITrack.Note] = []) {
-        self.notes = notes
-    }
-    
-    public init(arrayLiteral elements: Element...) {
-        self.notes = elements
+        self.contents.append(note)
     }
     
     /// The range of note value.
     public var noteRange: (min: UInt8, max: UInt8)? {
         guard !self.isEmpty else { return nil }
-        let notes = self.notes.map(\.note)
+        let notes = self.contents.map(\.note)
         
         return (notes.min()!, notes.max()!)
     }
-    
-    public subscript(position: Int) -> Note {
-        get {
-            self.notes[position]
-        }
-        set {
-            self.notes[position] = newValue
-        }
-    }
-    
-    public typealias Index = Int
     
     public typealias Note = MIDITrack.Note
     
@@ -71,7 +41,7 @@ public struct MIDINotes: RandomAccessCollection, Sendable, Equatable, CustomDeta
     
     
     public func detailedDescription(using descriptor: DetailedDescription.Descriptor<MIDINotes>) -> any DescriptionBlockProtocol {
-        descriptor.sequence(for: \.notes)
+        descriptor.sequence(for: \.contents)
     }
     
     public static let preview: MIDINotes = [
@@ -92,6 +62,11 @@ public struct MIDINotes: RandomAccessCollection, Sendable, Equatable, CustomDeta
         MIDINote(onset: 6.17, offset: 6.84, note: 54, velocity: 65, channel: 0),
         MIDINote(onset: 6.47, offset: 7.18, note: 62, velocity: 66, channel: 0)
     ]
+    
+    
+    public init(_ contents: [MIDITrack.Note]) {
+        self.contents = contents
+    }
     
 }
 
@@ -128,7 +103,7 @@ extension MIDINotes {
         
         let _lhsGroup = Task {
             var group : [UInt8 : [Matching]] = [:]
-            for note in self.notes {
+            for note in self.contents {
                 group[note.note, default: []].append(Matching(note: note, missingPenalty: missingPenalty))
             }
             return group
@@ -136,7 +111,7 @@ extension MIDINotes {
         
         let _rhsGroup = Task {
             var group : [UInt8 : [Matching]] = [:]
-            for note in rhs.notes {
+            for note in rhs.contents {
                 group[note.note, default: []].append(Matching(note: note, missingPenalty: missingPenalty))
             }
             return group
@@ -260,7 +235,7 @@ extension MIDINotes {
         var low = MIDINotes()
         var high = MIDINotes()
         
-        for note in self.notes {
+        for note in self.contents {
             if note.note >= key {
                 high.append(note)
             } else {
@@ -328,7 +303,7 @@ extension MIDINotes {
         
         
         // Step 1: Start by initializing each value as its own cluster
-        var clusters = self.map({ MIDINotes(notes: [$0]) })
+        var clusters = self.map({ MIDINotes([$0]) })
         
         // Step 2: Perform the clustering process
         var didMerge = true
@@ -396,9 +371,9 @@ extension MIDINotes {
     
     /// Normalize by shrinking the length of notes as far as possible, while ensuring the offset are in the same sustain region.
     public func normalizedLengthByShrinkingKeepingOffsetInSameRegion(sustains: MIDISustainEvents, minimumLength: Double = 1/128) -> MIDINotes {
-        let notes = self.notes.sorted(by: { $0.onset < $1.onset })
+        let notes = self.contents.sorted(by: { $0.onset < $1.onset })
         
-        return MIDINotes(notes: notes.enumerated().map { index, note in
+        return MIDINotes(notes.enumerated().map { index, note in
             var note = note
             let onsetSustainRegion = sustains[at: note.onset]
             let offsetSustainRegion = sustains[at: note.offset]
@@ -443,7 +418,7 @@ extension MIDINotes {
     ///
     /// - Complexity: O(*n* log *n*), sorting.
     public func identifyGaps(tolerance: Double) -> [MIDINotes] {
-        let notes = self.notes.sorted(by: { $0.onset < $1.onset })
+        let notes = self.contents.sorted(by: { $0.onset < $1.onset })
         
         var groups: [[Element]] = []
         var currentGroup: [Element] = []
@@ -476,7 +451,7 @@ extension MIDINotes {
         
         groups.append(currentGroup)
         
-        return groups.map { MIDINotes(notes: $0) }
+        return groups.map { MIDINotes($0) }
     }
     
     
@@ -503,12 +478,12 @@ extension MIDINotes {
     public func deriveReferenceNoteLength(
         minimumNoteDistance: Double = Double(sign: .plus, exponent: -4, significand: 1)
     ) -> Double {
-        let distances = [Double](unsafeUninitializedCapacity: self.notes.count - 1) { buffer, initializedCount in
+        let distances = [Double](unsafeUninitializedCapacity: self.contents.count - 1) { buffer, initializedCount in
             initializedCount = 0
             
             var i = 1
-            while i < self.notes.count {
-                let distance = self.notes[i].onset - self.notes[i-1].onset
+            while i < self.contents.count {
+                let distance = self.contents[i].onset - self.contents[i-1].onset
                 if distance >= minimumNoteDistance {
                     buffer[initializedCount] = distance
                     initializedCount &+= 1
@@ -569,12 +544,12 @@ extension MIDINotes {
     @MainActor public func drawDistanceDistribution(
         minimumNoteDistance: Double = Double(sign: .plus, exponent: -4, significand: 1)
     ) {
-        let distances = [Double](unsafeUninitializedCapacity: self.notes.count - 1) { buffer, initializedCount in
+        let distances = [Double](unsafeUninitializedCapacity: self.contents.count - 1) { buffer, initializedCount in
             initializedCount = 0
             
             var i = 1
-            while i < self.notes.count {
-                let distance = self.notes[i].onset - self.notes[i-1].onset
+            while i < self.contents.count {
+                let distance = self.contents[i].onset - self.contents[i-1].onset
                 if distance >= minimumNoteDistance {
                     buffer[initializedCount] = distance
                     initializedCount &+= 1

@@ -9,7 +9,7 @@ import Foundation
 import AudioToolbox
 
 
-public final class ReferenceNote: Equatable {
+public final class ReferenceNote: Equatable, Interval {
     
     public var content: MIDINote
     

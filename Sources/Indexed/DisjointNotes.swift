@@ -1,5 +1,5 @@
 //
-//  CombinedNotes.swift
+//  DisjointNotes.swift
 //  PianoVisualizer
 //
 //  Created by Vaida on 11/25/24.
@@ -8,10 +8,11 @@
 import AudioToolbox
 
 
-public struct CombinedNotes: OverlappingIntervals {
+public struct DisjointNotes: DisjointIntervals {
     
     public var contents: [ReferenceNote]
     
+    @inlinable
     public init(_ contents: [ReferenceNote]) {
         self.contents = contents
     }

@@ -141,12 +141,12 @@ public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertibl
         guard !self.notes.isEmpty else { return [] }
         
         let upperBound = self.notes.map(\.offset).max()!
-        let sustains = groupings(self.sustains.sustains, upperBound: upperBound, feature: \.onset)
-        let notes = groupings(self.notes.notes, upperBound: upperBound, feature: \.onset)
+        let sustains = groupings(self.sustains.contents, upperBound: upperBound, feature: \.onset)
+        let notes = groupings(self.notes.contents, upperBound: upperBound, feature: \.onset)
         
         assert(notes.count == sustains.count)
         
-        return zip(notes, sustains).map({ MIDIMeasure(notes: MIDINotes(notes: $0.0), sustains: MIDISustainEvents(sustains: $0.1)) })
+        return zip(notes, sustains).map({ MIDIMeasure(notes: MIDINotes($0.0), sustains: MIDISustainEvents($0.1)) })
     }
     
     /// Returns the **inferred** measures of the track.
@@ -156,8 +156,8 @@ public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertibl
     
     
     public init(notes: [Note] = [], sustains: [SustainEvent] = [], metaEvents: [MetaEvent] = []) {
-        self.notes = Notes(notes: notes)
-        self.sustains = MIDISustainEvents(sustains: sustains)
+        self.notes = Notes(notes)
+        self.sustains = MIDISustainEvents(sustains)
         self.metaEvents = metaEvents
     }
     
@@ -185,6 +185,20 @@ public struct MIDITrack: CustomStringConvertible, CustomDetailedStringConvertibl
             descriptor.sequence(for: \.notes)
             descriptor.sequence(for: \.sustains)
             descriptor.sequence(for: \.metaEvents)
+        }
+    }
+    
+}
+
+
+public extension Array<MIDITrack> {
+    
+    mutating func forEach(body: (_ index: Index, _ element: inout Element) -> Void) {
+        var i = 0
+        while i < self.endIndex {
+            body(i, &self[i])
+            
+            i &+= 1
         }
     }
     

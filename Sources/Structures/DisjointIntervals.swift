@@ -1,27 +1,23 @@
 //
-//  SingleNotes.swift
-//  PianoVisualizer
+//  DisjointIntervals.swift
+//  MIDIKit
 //
-//  Created by Vaida on 11/25/24.
+//  Created by Vaida on 1/3/25.
 //
 
-import AudioToolbox
+/// Intervals whose `onset` and `offset` cannot overlap.
+public protocol DisjointIntervals: SortedIntervals {
+    
+}
 
 
-public struct SingleNotes: ArrayRepresentable {
+extension DisjointIntervals {
     
-    public var contents: [ReferenceNote]
-    
-    @inlinable
-    public init(_ contents: [ReferenceNote]) {
-        self.contents = contents
-    }
-    
-    /// Returns the first note whose onset is greater than `timeStamp`.
+    /// Returns the first interval whose onset is greater than `timeStamp`.
     ///
     /// - Complexity: O(log *n*), binary search.
     @inlinable
-    public func firstIndex(after timeStamp: MusicTimeStamp) -> Index? {
+    public func firstIndex(after timeStamp: Double) -> Index? {
         var left = 0
         var right = self.count
         
@@ -43,19 +39,19 @@ public struct SingleNotes: ArrayRepresentable {
         }
     }
     
-    /// Returns the first note whose onset is greater than `timeStamp`.
+    /// Returns the first interval whose onset is greater than `timeStamp`.
     ///
     /// - Complexity: O(log *n*), binary search.
     @inlinable
-    public func first(after timeStamp: MusicTimeStamp) -> Element? {
+    public func first(after timeStamp: Double) -> Element? {
         self.firstIndex(after: timeStamp).map { self.contents[$0] }
     }
     
-    /// Returns the last note whose offset is less than `timeStamp`.
+    /// Returns the last interval whose offset is less than `timeStamp`.
     ///
     /// - Complexity: O(log *n*), binary search.
     @inlinable
-    public func lastIndex(before timeStamp: MusicTimeStamp) -> Index? {
+    public func lastIndex(before timeStamp: Double) -> Index? {
         var left = 0
         var right = self.count
         
@@ -75,14 +71,17 @@ public struct SingleNotes: ArrayRepresentable {
         }
     }
     
-    /// Returns the last note whose offset is less than `timeStamp`.
+    /// Returns the last interval whose offset is less than `timeStamp`.
     ///
     /// - Complexity: O(log *n*), binary search.
     @inlinable
-    public func last(before timeStamp: MusicTimeStamp) -> Element? {
+    public func last(before timeStamp: Double) -> Element? {
         self.lastIndex(before: timeStamp).map { self.contents[$0] }
     }
     
+    /// Returns the interval at the given time stamp, bounds inclusive.
+    ///
+    /// - Complexity: O(log *n*), binary search.
     @inlinable
     public func index(at timeStamp: Double) -> Index? {
         var low = 0
@@ -92,7 +91,7 @@ public struct SingleNotes: ArrayRepresentable {
             let mid = (low + high) / 2
             let interval = self[mid]
             
-            if timeStamp >= interval.onset && timeStamp < interval.offset {
+            if timeStamp >= interval.onset && timeStamp <= interval.offset {
                 return mid
             } else if timeStamp < interval.onset {
                 high = mid - 1
@@ -104,8 +103,21 @@ public struct SingleNotes: ArrayRepresentable {
         return nil
     }
     
+    /// Returns the interval at the given time stamp, bounds inclusive.
+    ///
+    /// This structure assumes that there are no overlapping timestamps.
+    ///
+    /// - Complexity: O(log *n*), binary search.
     @inlinable
-    public func nearestIndex(to timeStamp: MusicTimeStamp) -> Index? {
+    public subscript(at timeStamp: Double) -> Element? {
+        self.index(at: timeStamp).map { self.contents[$0] }
+    }
+    
+    /// Returns the nearest interval to  the given time stamp.
+    ///
+    /// - Complexity: O(log *n*), binary search.
+    @inlinable
+    public func nearestIndex(to timeStamp: Double) -> Index? {
         guard !self.isEmpty else { return nil }
         
         var left = 0
@@ -138,11 +150,17 @@ public struct SingleNotes: ArrayRepresentable {
         }
     }
     
+    /// Returns the nearest interval to  the given time stamp.
+    ///
+    /// - Complexity: O(log *n*), binary search.
     @inlinable
     public func nearest(to timeStamp: Double) -> Element? {
         self.nearestIndex(to: timeStamp).map { self[$0] }
     }
     
+    /// Returns the nearest interval to  the given time stamp.
+    ///
+    /// - Complexity: O(log *n*), binary search.
     func nearest(
         to timestamp: Double,
         isValid: (Element) -> Bool
@@ -186,16 +204,5 @@ public struct SingleNotes: ArrayRepresentable {
         }
     }
     
-    /// Returns the sustain at the given time stamp.
-    ///
-    /// This structure assumes that there are no overlapping timestamps.
-    ///
-    /// - Complexity: O(log *n*), binary search.
-    @inlinable
-    public subscript(at timeStamp: MusicTimeStamp) -> Element? {
-        self.index(at: timeStamp).map { self.contents[$0] }
-    }
-    
-    public typealias Element = ReferenceNote
     
 }

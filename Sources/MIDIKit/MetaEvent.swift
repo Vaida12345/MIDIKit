@@ -93,3 +93,17 @@ extension MIDIMetaEvent: CustomStringConvertible {
     }
     
 }
+
+
+public extension Array<MIDIMetaEvent> {
+    
+    mutating func forEach(body: (_ index: Index, _ element: inout Element) -> Void) {
+        var i = 0
+        while i < self.endIndex {
+            body(i, &self[i])
+            
+            i &+= 1
+        }
+    }
+    
+}

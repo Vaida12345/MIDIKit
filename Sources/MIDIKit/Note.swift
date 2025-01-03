@@ -9,7 +9,7 @@ import Foundation
 import AudioToolbox
 
 
-public struct MIDINote: Sendable, Equatable {
+public struct MIDINote: Sendable, Equatable, Interval {
     
     /// The onset, in beats.
     public var onset: MusicTimeStamp

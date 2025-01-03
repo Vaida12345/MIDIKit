@@ -48,7 +48,7 @@ extension IndexedContainer {
     ///
     /// - Returns: A new ``IndexedContainer`` initialized using the parameters used in the initializer for this instance.
     public func removingArtifacts(threshold: UInt8) async -> IndexedContainer {
-        var contents: [UInt8 : SingleNotes] = [:]
+        var contents: [UInt8 : DisjointNotes] = [:]
         contents.reserveCapacity(self.notes.count)
         
         for index in (21 as UInt8)...108 {
@@ -90,7 +90,7 @@ extension IndexedContainer {
                 
                 i &-= 1
             }
-            contents[index] = SingleNotes(notes)
+            contents[index] = DisjointNotes(notes)
         }
         
         return await IndexedContainer(notes: contents, sustains: self.sustains, runningLength: self.parameters.runningLength)
