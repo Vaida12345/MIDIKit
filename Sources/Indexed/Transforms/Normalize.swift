@@ -20,40 +20,41 @@ extension IndexedContainer {
         guard !self.combinedNotes.isEmpty else { return }
         
         let chords = await Chord.makeChords(from: self)
-        let margin: Double = 1/16 // the padding after sustain
+        let margin: Double = 3/16 // the padding after sustain
+        let minimumLength: Double = 1/64
         
-        chords.forEach {
-            __index,
-            chord in
+        chords.forEach { __index, chord in
+            
             // check if normalization is required.
             // It is not required if there isn't any note in its duration
             if __index == chords.count - 1 { return }
             let nextNote = chords[__index + 1].min(of: \.onset)!
-            chord.forEach {
-                _,
-                note in
-#if DEBUG
-                defer {
-                    print(note)
-                }
-#endif
+            chord.forEach { _, note in
+                
                 // ensure the sustain is correct
                 // The naming ignores the keyword `sustainRegion`,.
                 let onsetIndex = sustains.index(at: note.onset)
                 let onsetNextIndex = sustains.firstIndex(after: note.onset)
                 let offsetIndex: Int?
                 let offsetPreviousIndex = sustains.lastIndex(before: note.offset)
+                let offsetNextIndex = sustains.firstIndex(after: note.offset)
                 
                 let onset = onsetIndex.map { sustains[$0] }
                 let offset: MIDISustainEvent?
                 let offsetPrevious = offsetPreviousIndex.map { sustains[$0] }
+                let offsetNext = offsetNextIndex.map {sustains[$0] }
                 
                 if let region = sustains.index(at: note.offset) {
                     offsetIndex = region
                     offset = sustains[region]
                 } else if let offsetPrevious,
                           offsetPrevious.offset > note.offset - margin,
+                          offsetNext.isNil(or: { note.offset < $0.onset }),
                           note.onset <= offsetPrevious.offset { // Within margin, treat as offset sustain
+                    offset = offsetPrevious
+                    offsetIndex = offsetPreviousIndex
+                } else if let offsetPrevious, let offsetNext = sustains.first(after: note.offset),
+                          offsetNext.onset - offsetPrevious.offset < margin * 2 { // the gap between sustains is extremely small, treat the offset as error
                     offset = offsetPrevious
                     offsetIndex = offsetPreviousIndex
                 } else {
@@ -96,7 +97,7 @@ extension IndexedContainer {
                 } else {
                     // neither onset nor offset was found
                     
-                    if onsetNextIndex != nil && onsetNextIndex == sustains.firstIndex(after: note.offset) {
+                    if onsetNextIndex != nil && onsetNextIndex == offsetNextIndex {
                         // there does not exist any sustains in the note region
                         switch preserve {
                         case .acousticResult:
@@ -129,7 +130,7 @@ extension IndexedContainer {
                 }
                 
                 func setNoteOffset(_ value: Double, channel: UInt8) {
-                    note.offset = max(value, note.onset + 1/64)
+                    note.offset = max(value, note.onset + minimumLength)
                     debugChannel(channel)
                 }
                 
@@ -157,18 +158,16 @@ extension IndexedContainer {
                 
                 /// note length must span to the found sustain.
                 func span(_ sustain: MIDISustainEvents.Element) {
-                    
-                    let nextSustainRegionStart = note.offset < sustain.onset + margin ? sustain.onset : sustain.onset + margin
-                    if nextSustainRegionStart < nextNote {
+                    if sustain.onset < nextNote {
                         setNoteOffset(
-                            clamp(note.offset, min: nextSustainRegionStart, max: nextNote),
+                            clamp(note.offset, min: sustain.onset + minimumLength, max: nextNote),
                             channel: 1
                         )
                     } else {
                         switch preserve {
                         case .acousticResult:
                             setNoteOffset(
-                                clamp(note.offset, min: nextSustainRegionStart),
+                                sustain.onset + minimumLength, // ensure it is as short as possible
                                 channel: 2
                             )
                         case .notesDisplay: setNoteOffset(

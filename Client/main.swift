@@ -17,6 +17,6 @@ defer {
 }
 
 
-let container = try await MIDIContainer(at: "'/Users/vaida/Music/Piano Transcription/Hungarian Rhapsody No. 2 in C-sharp minor.mid'").indexed()
+let container = try await MIDIContainer(at: "'/Users/vaida/Music/Piano Transcription/09 Variations on the Kanon.mid'").indexed()
 await container.normalize(preserve: .acousticResult)
 try container.makeContainer().write(to: .desktopDirectory/"MIDIs"/"file.mid")
