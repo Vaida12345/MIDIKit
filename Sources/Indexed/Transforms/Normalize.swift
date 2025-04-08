@@ -16,7 +16,7 @@ extension IndexedContainer {
     ///
     /// This method will
     /// - ensure the gaps between consecutive notes (in the initializer)
-    public func normalize(preserve: PreserveSettings = .acousticResult) async {
+    public func normalize(preserve: PreserveSettings) async {
         guard !self.combinedNotes.isEmpty else { return }
         
         let chords = await Chord.makeChords(from: self)
@@ -28,6 +28,11 @@ extension IndexedContainer {
             if __index == chords.count - 1 { return }
             let nextOnset = chords[__index + 1].min(of: \.onset)!
             chord.forEach { _, note in
+#if DEBUG
+                defer {
+                    print(note)
+                }
+#endif
                 // ensure the sustain is correct
                 let onsetSustainIndex = sustains.index(at: note.onset)
                 let onsetSustainRegion = onsetSustainIndex.map { sustains[$0] }
@@ -53,6 +58,9 @@ extension IndexedContainer {
                 
                 /// note has spanned at least three sustains
                 func setExcessiveSpan() {
+#if DEBUG
+                    note.channel = 4
+#endif
                     guard preserve == .acousticResult else {
                         // The note has spanned at least three sustains, consider this a duration error.
                         setNoteOffset(nextOnset)
@@ -80,21 +88,27 @@ extension IndexedContainer {
                             //                note.duration = minimumLength
                             // context aware length. Check for next note
                             setNoteOffset(min(note.offset, nextOnset))
+#if DEBUG
                             note.channel = 0
+#endif
                         } else if onsetNextIndex! == offsetSustainIndex! {
+                            // The onset and offset and in adjacent sustain regions.
                             // the length must span to the found sustain.
                             
-                            let minimum = note.offset < offsetSustainRegion.onset + margin ? offsetSustainRegion.onset : offsetSustainRegion.onset + margin
-                            let maximum = nextOnset
-                            if minimum < maximum {
-                                setNoteOffset(clamp(note.offset, min: minimum, max: maximum))
+                            let nextSustainRegionStart = note.offset < offsetSustainRegion.onset + margin ? offsetSustainRegion.onset : offsetSustainRegion.onset + margin
+                            if nextSustainRegionStart < nextOnset {
+                                setNoteOffset(clamp(note.offset, min: nextSustainRegionStart, max: nextOnset))
+#if DEBUG
                                 note.channel = 1
+#endif
                             } else {
                                 switch preserve {
-                                case .acousticResult: setNoteOffset(minimum)
-                                case .notesDisplay: setNoteOffset(maximum)
+                                case .acousticResult: setNoteOffset(nextSustainRegionStart)
+                                case .notesDisplay: setNoteOffset(nextOnset)
                                 }
+#if DEBUG
                                 note.channel = 2
+#endif
                             }
                         } else {
                             setExcessiveSpan()
@@ -103,22 +117,19 @@ extension IndexedContainer {
                         // An sustain was found for offset, but not onset
                         
                         if onsetNextIndex! == offsetSustainIndex! {
+                            // Sustain not found for offset, but the next sustain region is the offset sustain region
                             // the length must span to the found sustain.
                             
-                            let minimum = note.offset < offsetSustainRegion.onset + margin ? offsetSustainRegion.onset : offsetSustainRegion.onset + margin
-                            let maximum = nextOnset
-                            if minimum < maximum {
-                                setNoteOffset(clamp(note.offset, min: minimum, max: maximum))
-                                note.channel = 3
-                            } else {
-                                switch preserve {
-                                case .acousticResult: setNoteOffset(minimum)
-                                case .notesDisplay: setNoteOffset(maximum)
-                                }
-                                note.channel = 4
-                            }
+                            let nextSustainRegionStart = note.offset < offsetSustainRegion.onset + margin ? offsetSustainRegion.onset : offsetSustainRegion.onset + margin
+                            
+                            setNoteOffset(nextSustainRegionStart)
+#if DEBUG
+                            note.channel = 3
+#endif
                         } else {
+#if DEBUG
                             note.channel = 5
+#endif
                             setExcessiveSpan()
                         }
                     }
@@ -129,17 +140,25 @@ extension IndexedContainer {
                         if let offsetNext = sustains.first(after: note.offset), let offsetPrevious,
                            nextOnset < offsetNext.onset && nextOnset > offsetPrevious.onset {
                             // crop anyway
+#if DEBUG
                             note.channel = 6
+#endif
                             setNoteOffset(nextOnset)
                         } else if let onsetNextIndex, onsetNextIndex < offsetPreviousIndex {
+#if DEBUG
                             note.channel = 7
+#endif
                             setExcessiveSpan()
                         } else {
                             setExcessiveSpan()
+#if DEBUG
                             note.channel = 8
+#endif
                         }
                     } else {
+#if DEBUG
                         note.channel = 10
+#endif
                         setExcessiveSpan()
                     }
                 } else {
@@ -153,23 +172,33 @@ extension IndexedContainer {
                         case .notesDisplay:
                             setNoteOffset(nextOnset)
                         }
+#if DEBUG
                         note.channel = 11
+#endif
                     } else if onsetNextIndex == offsetPreviousIndex {
                         // spanned exacted one region.
                         if let offsetNext = sustains.first(after: note.offset), let offsetPrevious {
                             if nextOnset < offsetNext.onset && nextOnset > offsetPrevious.onset {
                                 // crop anyway
                                 setNoteOffset(nextOnset)
+#if DEBUG
                                 note.channel = 12
+#endif
                             } else {
+#if DEBUG
                                 note.channel = 13
+#endif
                             }
                         } else {
+#if DEBUG
                             note.channel = 14
+#endif
                         }
                     } else {
                         setExcessiveSpan()
+#if DEBUG
                         note.channel = 15
+#endif
                     }
                 }
             }
