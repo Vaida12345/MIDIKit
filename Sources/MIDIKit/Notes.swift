@@ -44,24 +44,7 @@ public struct MIDINotes: ArrayRepresentable, Sendable, Equatable, CustomDetailed
         descriptor.sequence(for: \.contents)
     }
     
-    public static let preview: MIDINotes = [
-        MIDINote(onset: 1.03, offset: 1.92, note: 54, velocity: 40, channel: 0),
-        MIDINote(onset: 1.50, offset: 2.22, note: 61, velocity: 60, channel: 0),
-        MIDINote(onset: 1.94, offset: 2.62, note: 54, velocity: 49, channel: 0),
-        MIDINote(onset: 2.24, offset: 2.94, note: 61, velocity: 64, channel: 0),
-        MIDINote(onset: 2.64, offset: 3.28, note: 54, velocity: 59, channel: 0),
-        MIDINote(onset: 2.96, offset: 3.60, note: 61, velocity: 71, channel: 0),
-        MIDINote(onset: 3.31, offset: 3.96, note: 54, velocity: 71, channel: 0),
-        MIDINote(onset: 3.63, offset: 4.24, note: 61, velocity: 83, channel: 0),
-        MIDINote(onset: 3.98, offset: 4.66, note: 54, velocity: 73, channel: 0),
-        MIDINote(onset: 4.27, offset: 4.96, note: 61, velocity: 80, channel: 0),
-        MIDINote(onset: 4.68, offset: 5.36, note: 54, velocity: 71, channel: 0),
-        MIDINote(onset: 4.99, offset: 12.32, note: 61, velocity: 74, channel: 0),
-        MIDINote(onset: 5.38, offset: 6.16, note: 54, velocity: 70, channel: 0),
-        MIDINote(onset: 5.77, offset: 6.46, note: 62, velocity: 61, channel: 0),
-        MIDINote(onset: 6.17, offset: 6.84, note: 54, velocity: 65, channel: 0),
-        MIDINote(onset: 6.47, offset: 7.18, note: 62, velocity: 66, channel: 0)
-    ]
+    public static let preview: MIDINotes = MIDINotes((21...108).map { MIDINote(onset: Double($0) - 21, offset: Double($0) - 20, note: $0, velocity: $0, channel: 0) })
     
     
     public init(_ contents: [MIDITrack.Note]) {
