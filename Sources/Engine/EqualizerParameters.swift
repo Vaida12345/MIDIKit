@@ -11,7 +11,7 @@ import Observation
 @Observable
 public final class EqualizerParameters: Equatable {
     
-    var bands = [
+    public var bands = [
         Band(description: "32", frequency: 32),
         Band(description: "64", frequency: 64),
         Band(description: "125", frequency: 128),
@@ -24,17 +24,19 @@ public final class EqualizerParameters: Equatable {
         Band(description: "16K", frequency: 16384)
     ]
     
-    var globalGain: Float = 0
+    public var globalGain: Float = 0
     
     
-    public func update(engine: PianoEngine) {
+    public func update(_ bands: Array<Band>, to engine: PianoEngine) {
         for (index, band) in bands.enumerated() {
             let eq = engine.equalizer?.bands[index]
             eq?.frequency = band.frequency
             eq?.bandwidth = 1
             eq?.gain = band.gain
         }
-        
+    }
+    
+    public func update(_ globalGain: Float, to engine: PianoEngine) {
         engine.equalizer?.globalGain = globalGain
     }
     
@@ -48,7 +50,7 @@ public final class EqualizerParameters: Equatable {
     }
     
     
-    struct Band: Identifiable, Equatable {
+    public struct Band: Identifiable, Equatable {
         
         let description: String
         
@@ -57,7 +59,7 @@ public final class EqualizerParameters: Equatable {
         var gain: Float = 0
         
         
-        var id: String {
+        public var id: String {
             description
         }
     }
