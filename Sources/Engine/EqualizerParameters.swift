@@ -31,8 +31,9 @@ public final class EqualizerParameters: Equatable {
         for (index, band) in bands.enumerated() {
             let eq = engine.equalizer?.bands[index]
             eq?.frequency = band.frequency
-            eq?.bandwidth = 1
+            eq?.bandwidth = 0.5
             eq?.gain = band.gain
+            eq?.bypass = false
         }
     }
     
