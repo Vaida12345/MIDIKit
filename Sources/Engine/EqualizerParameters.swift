@@ -1,0 +1,65 @@
+//
+//  EqualizerParameters.swift
+//  MIDIKit
+//
+//  Created by Vaida on 4/25/25.
+//
+
+import Observation
+
+
+@Observable
+public final class EqualizerParameters: Equatable {
+    
+    var bands = [
+        Band(description: "32", frequency: 32),
+        Band(description: "64", frequency: 64),
+        Band(description: "125", frequency: 128),
+        Band(description: "250", frequency: 256),
+        Band(description: "500", frequency: 512),
+        Band(description: "1K", frequency: 1024),
+        Band(description: "2K", frequency: 2048),
+        Band(description: "4K", frequency: 4096),
+        Band(description: "8K", frequency: 8192),
+        Band(description: "16K", frequency: 16384)
+    ]
+    
+    var globalGain: Float = 0
+    
+    
+    public func update(engine: PianoEngine) {
+        for (index, band) in bands.enumerated() {
+            let eq = engine.equalizer?.bands[index]
+            eq?.frequency = band.frequency
+            eq?.bandwidth = 1
+            eq?.gain = band.gain
+        }
+        
+        engine.equalizer?.globalGain = globalGain
+    }
+    
+    
+    public init() {
+        
+    }
+    
+    public static func == (_ lhs: EqualizerParameters, _ rhs: EqualizerParameters) -> Bool {
+        lhs.bands == rhs.bands && lhs.globalGain == rhs.globalGain
+    }
+    
+    
+    struct Band: Identifiable, Equatable {
+        
+        let description: String
+        
+        let frequency: Float
+        
+        var gain: Float = 0
+        
+        
+        var id: String {
+            description
+        }
+    }
+    
+}

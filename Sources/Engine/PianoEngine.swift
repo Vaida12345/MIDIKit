@@ -25,6 +25,12 @@ public final class PianoEngine {
     
     private var sampler: AVAudioUnitSampler?
     
+    /// The main equalizer.
+    ///
+    /// The equalizer has 10 empty bands. Use this property to set the bands.
+    public var equalizer: AVAudioUnitEQ?
+    
+    
     /// Plays the node.
     ///
     /// This function dispatch the job to a music queue. Hence this function is cheap.
@@ -81,20 +87,28 @@ public final class PianoEngine {
         if engine != nil {
             try self.resume()
         } else {
-            self.engine = AVAudioEngine()
-            self.sampler = AVAudioUnitSampler()
+            let engine = AVAudioEngine()
+            let sampler = AVAudioUnitSampler()
+            let equalizer = AVAudioUnitEQ(numberOfBands: 10)
             
-            engine!.attach(sampler!)
-            engine!.connect(sampler!, to: engine!.mainMixerNode, format: nil)
+            self.engine = engine
+            self.sampler = sampler
+            self.equalizer = equalizer
             
-            try engine!.start()
+            // player → EQ → main mixer → output
+            engine.attach(sampler)
+            engine.attach(equalizer)
+            engine.connect(sampler,   to: equalizer,            format: nil)
+            engine.connect(equalizer, to: engine.mainMixerNode, format: nil)
             
-            sampler!.sendController(72, withValue: 127, onChannel: 0)
-            sampler!.sendController(73, withValue: 127, onChannel: 0)
-            sampler!.sendController(75, withValue: 127, onChannel: 0)
+            try engine.start()
+            
+            sampler.sendController(72, withValue: 127, onChannel: 0)
+            sampler.sendController(73, withValue: 127, onChannel: 0)
+            sampler.sendController(75, withValue: 127, onChannel: 0)
             
             let soundBankURL = Bundle.module.url(forResource: "Nice-Steinway-Lite-v3.0", withExtension: "sf2")!
-            try sampler!.loadSoundBankInstrument(at: soundBankURL, program: 0, bankMSB: 0x79, bankLSB: 0x00)
+            try sampler.loadSoundBankInstrument(at: soundBankURL, program: 0, bankMSB: 0x79, bankLSB: 0x00)
         }
     }
     
