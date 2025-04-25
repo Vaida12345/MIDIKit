@@ -5,26 +5,16 @@
 //  Created by Vaida on 4/25/25.
 //
 
+import Foundation
 import Observation
 
 
 @Observable
 public final class EqualizerParameters: Equatable {
     
-    public var bands = [
-        Band(description: "32", frequency: 32),
-        Band(description: "64", frequency: 64),
-        Band(description: "125", frequency: 128),
-        Band(description: "250", frequency: 256),
-        Band(description: "500", frequency: 512),
-        Band(description: "1K", frequency: 1024),
-        Band(description: "2K", frequency: 2048),
-        Band(description: "4K", frequency: 4096),
-        Band(description: "8K", frequency: 8192),
-        Band(description: "16K", frequency: 16384)
-    ]
+    public var bands: [Band]
     
-    public var globalGain: Float = 0
+    public var globalGain: Float
     
     
     public func update(_ bands: Array<Band>, to engine: PianoEngine) {
@@ -43,7 +33,27 @@ public final class EqualizerParameters: Equatable {
     
     
     public init() {
+        var bands = [
+            Band(description: "32", frequency: 32),
+            Band(description: "64", frequency: 64),
+            Band(description: "125", frequency: 128),
+            Band(description: "250", frequency: 256),
+            Band(description: "500", frequency: 512),
+            Band(description: "1K", frequency: 1024),
+            Band(description: "2K", frequency: 2048),
+            Band(description: "4K", frequency: 4096),
+            Band(description: "8K", frequency: 8192),
+            Band(description: "16K", frequency: 16384)
+        ]
         
+        for (index, band) in bands.enumerated() {
+            let float = UserDefaults.standard.float(forKey: "EqualizerParameters.bands.\(band.description)")
+            bands[index].gain = float
+        }
+        
+        self.bands = bands
+        
+        self.globalGain = UserDefaults.standard.float(forKey: "EqualizerParameters.globalGain")
     }
     
     public static func == (_ lhs: EqualizerParameters, _ rhs: EqualizerParameters) -> Bool {

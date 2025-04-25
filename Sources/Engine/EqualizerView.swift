@@ -25,6 +25,9 @@ public struct EqualizerView: View {
                     .background {
                         EqualizerBackground()
                     }
+                    .onChange(of: parameters.globalGain) { oldValue, newValue in
+                        UserDefaults.standard.set(newValue, forKey: "EqualizerParameters.globalGain")
+                    }
                 
                 Text("Global")
             }
@@ -49,6 +52,9 @@ public struct EqualizerView: View {
                         ForEach($parameters.bands) { band in
                             EqualizerSlider(value: band.gain)
                                 .frame(width: 30)
+                                .onChange(of: band.wrappedValue.gain) { oldValue, newValue in
+                                    UserDefaults.standard.set(newValue, forKey: "EqualizerParameters.bands.\(band.wrappedValue.description)")
+                                }
                         }
                     }
                 }
