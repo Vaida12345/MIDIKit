@@ -81,20 +81,60 @@ public final class PianoEngine {
         if engine != nil {
             try self.resume()
         } else {
-            self.engine = AVAudioEngine()
-            self.sampler = AVAudioUnitSampler()
+            let engine = AVAudioEngine()
+            let sampler = AVAudioUnitSampler()
             
-            engine!.attach(sampler!)
-            engine!.connect(sampler!, to: engine!.mainMixerNode, format: nil)
+            // our “early reflections” unit
+            let delay = AVAudioUnitDelay()
+            // our “reverb tail” unit
+            let reverb = AVAudioUnitReverb()
             
-            try engine!.start()
+            self.engine = engine
+            self.sampler = sampler
             
-            sampler!.sendController(72, withValue: 127, onChannel: 0)
-            sampler!.sendController(73, withValue: 127, onChannel: 0)
-            sampler!.sendController(75, withValue: 127, onChannel: 0)
+            engine.attach(delay)
+            engine.attach(reverb)
+            engine.attach(sampler)
+            
+            // 2) Dry path: sampler → mainMixer
+            engine.connect(sampler, to: engine.mainMixerNode, format: nil)
+            
+            // 3) Wet path:
+            // sampler → delay → reverb → mainMixer
+            engine.connect(sampler, to: delay, format: nil)
+            engine.connect(delay, to: reverb, format: nil)
+            engine.connect(reverb, to: engine.mainMixerNode, format: nil)
+            
+            // 4) Start engine
+            try engine.start()
+            
+            // 5) Hook up sampler
+            sampler.sendController(72, withValue: 127, onChannel: 0)
+            sampler.sendController(73, withValue: 127, onChannel: 0)
+            sampler.sendController(75, withValue: 127, onChannel: 0)
             
             let soundBankURL = Bundle.module.url(forResource: "Nice-Steinway-Lite-v3.0", withExtension: "sf2")!
-            try sampler!.loadSoundBankInstrument(at: soundBankURL, program: 0, bankMSB: 0x79, bankLSB: 0x00)
+            try sampler.loadSoundBankInstrument(at: soundBankURL, program: 0, bankMSB: 0x79, bankLSB: 0x00)
+            
+            // ————————————————————————————————————————————————
+            // Now tune our two simple effects to approximate your
+            // ChromaVerb settings:
+            //
+            //   attack   12%   → delay.wetDryMix = 12
+            //   distance 87%   → delay.delayTime  = 0.087  seconds
+            //   density  68%   → delay.feedback   =  68   %
+            //
+            delay.wetDryMix   = 12
+            delay.delayTime   = 0.087
+            delay.feedback    = 68
+            delay.lowPassCutoff = 18_000   // roll off highs a bit
+            
+            //   size     36%   → pick a small–medium room preset
+            //   decay    0.83s → mediumRoom is about 0.8s
+            //   wet      28%   → reverb.wetDryMix = 28
+            //   dry     100%   → our dry path is full-gain already
+            reverb.loadFactoryPreset(.mediumRoom)
+            reverb.wetDryMix = 28
         }
     }
     
