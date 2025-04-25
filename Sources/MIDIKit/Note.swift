@@ -174,7 +174,7 @@ extension MIDINote {
     
     /// The MIDI Note color based on the velocity of a note.
     public static func color(velocity: UInt8) -> Color {
-        let velocity = Double(velocity) / 127
+        let velocity = 1 - Double(velocity) / 127
         
         var red: Double {
             if velocity < 1/4 {
