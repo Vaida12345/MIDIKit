@@ -12,10 +12,12 @@ import ViewCollection
 
 public struct EqualizerView: View {
     
-    @Binding public var parameters: EqualizerParameters
+    let parameters: EqualizerParameters
     
     
     public var body: some View {
+        @Bindable var parameters = parameters
+        
         HStack {
             VStack {
                 EqualizerSlider(value: $parameters.globalGain)
@@ -63,13 +65,13 @@ public struct EqualizerView: View {
         .padding()
     }
     
-    public init(parameters: Binding<EqualizerParameters>) {
-        self._parameters = parameters
+    public init(parameters: EqualizerParameters) {
+        self.parameters = parameters
     }
 }
 
 
 #Preview {
-    EqualizerView(parameters: .constant(.init()))
+    EqualizerView(parameters: .init())
 }
 #endif
