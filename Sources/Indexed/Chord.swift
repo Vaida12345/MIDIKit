@@ -14,6 +14,8 @@ import Essentials
 /// chords are keys that needs to be pressed at the same time.
 ///
 /// Currently it represents notes that *two hands* can play simultaneously. The algorithm for obtain chord for individual hand exists in a previous commit.
+///
+/// In the code, `cluster` and `chord` can be used interchangeably, and a chord means the keys a pianist can play with both hands without lifting any finger.
 public final class Chord: RandomAccessCollection {
     
     var contents: [ReferenceNote]
@@ -139,13 +141,14 @@ public final class Chord: RandomAccessCollection {
         return clusters.sorted(on: { $0.first!.onset }, by: <)
     }
     
+    /// Spec durations are in beats, in 120BPM.
     public struct Spec {
         
         /// The maximum distance apart of any two elements to be considered within the same chord.
-        let duration: Double = 1/8
+        let duration: Double = 0.1
         
-        /// The max width of one single cluster.
-        let clusterWidth: Double = 1/2
+        /// The max duration of one single cluster.
+        let clusterWidth: Double = 0.2
         
         /// Assuming the mergable clusters are near each other, this is the length of pairs checked.
         let contextLength: Int = 15

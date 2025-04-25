@@ -20,7 +20,7 @@ extension IndexedContainer {
         guard !self.combinedNotes.isEmpty else { return }
         
         let chords = await Chord.makeChords(from: self)
-        let margin: Double = 3/16 // the padding after sustain
+        let margin: Double = 1/4 // the padding after sustain
         let minimumLength: Double = 1/64
         
         chords.forEach { __index, chord in
@@ -50,11 +50,11 @@ extension IndexedContainer {
                 } else if let offsetPrevious,
                           offsetPrevious.offset > note.offset - margin,
                           offsetNext.isNil(or: { note.offset < $0.onset }),
-                          note.onset <= offsetPrevious.offset { // Within margin, treat as offset sustain
+                          note.onset <= offsetPrevious.offset { // Within margin, treat as offset sustain. Move the offset to the previous sustain region.
                     offset = offsetPrevious
                     offsetIndex = offsetPreviousIndex
                 } else if let offsetPrevious, let offsetNext = sustains.first(after: note.offset),
-                          offsetNext.onset - offsetPrevious.offset < margin * 2 { // the gap between sustains is extremely small, treat the offset as error
+                          offsetNext.onset - offsetPrevious.offset < margin * 2 { // the gap between sustains is extremely small, treat the gap as sustain reset.
                     offset = offsetPrevious
                     offsetIndex = offsetPreviousIndex
                 } else {
