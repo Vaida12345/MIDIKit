@@ -62,6 +62,10 @@ public struct EqualizerView: View {
         .frame(width: 450, height: 200)
         .padding()
     }
+    
+    public init(parameters: Binding<EqualizerParameters>) {
+        self._parameters = parameters
+    }
 }
 
 
