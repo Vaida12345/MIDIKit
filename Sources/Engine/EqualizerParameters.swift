@@ -9,6 +9,17 @@ import Foundation
 import Observation
 
 
+/// Observable parameter to the equalizer.
+///
+/// To update the engine, use
+/// ```swift
+/// .onChange(of: equalizerParameters.bands, initial: true) {
+///     equalizerParameters.update($1, to: self.engine)
+/// }
+/// .onChange(of: equalizerParameters.globalGain, initial: true) {
+///     equalizerParameters.update($1, to: self.engine)
+/// }
+/// ```
 @Observable
 public final class EqualizerParameters: Equatable {
     

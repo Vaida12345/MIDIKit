@@ -7,7 +7,6 @@
 
 #if os(macOS)
 import SwiftUI
-import ViewCollection
 
 
 public struct EqualizerView: View {
