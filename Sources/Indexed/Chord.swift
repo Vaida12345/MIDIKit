@@ -20,7 +20,9 @@ import Essentials
 /// The algorithm for obtain chord for individual hand exists in a previous commit.
 public final class Chord: RandomAccessCollection {
     
-    /// contents are always sorted by their onsets
+    /// contents are always sorted by their onsets.
+    ///
+    /// contents are disjoint.
     var contents: [ReferenceNote]
     
     /// The max offset in beats. This is determined by the onset of next consecutive note.
@@ -41,30 +43,11 @@ public final class Chord: RandomAccessCollection {
     
     public typealias Element = ReferenceNote
     
-    /// - Complexity: O(n)
+    /// - precondition: `self` must be `other`'s predecessor
+    ///
+    /// - Complexity: O(other)
     private func append(contentsOf other: Chord) {
-        let lhs = self.contents // copy
-        self.contents.removeAll(keepingCapacity: true)
-        self.contents.reserveCapacity(self.contents.count + other.contents.count)
-        
-        var i = 0, j = 0
-        while i < lhs.count, j < other.count {
-            if lhs[i].onset < other[j].onset {
-                self.contents.append(lhs[i])
-                i &+= 1
-            } else {
-                self.contents.append(other[j])
-                j &+= 1
-            }
-        }
-        
-        if i < lhs.count {
-            self.contents.append(contentsOf: lhs[i...])
-        }
-        if j < other.count {
-            self.contents.append(contentsOf: other[j...])
-        }
-        
+        self.contents += other.contents
         
         self.maxOffset = if self.maxOffset != nil && other.maxOffset != nil {
             Swift.min(self.maxOffset!, other.maxOffset!)
@@ -78,6 +61,8 @@ public final class Chord: RandomAccessCollection {
     }
     
     /// Each returned chord is guaranteed to be non-empty.
+    ///
+    /// - Complexity: O(n^2) worse case, O(n log n) practically.
     public static func makeChords(
         from container: IndexedContainer,
         spec: Spec = Spec()
@@ -86,67 +71,36 @@ public final class Chord: RandomAccessCollection {
         
         /// Returns minimum distance between onsets of any two notes in each cluster.
         ///
-        /// - Complexity: O(n)
-        func calMinDistance(_ lhs: Chord, to rhs: Chord) -> Double? {
-            // merge
-            var merged: [ReferenceNote] = []
-            merged.reserveCapacity(lhs.count + rhs.count)
-            
-            var i = 0, j = 0
-            while i < lhs.count, j < rhs.count {
-                if lhs[i].onset < rhs[j].onset {
-                    merged.append(lhs[i])
-                    i &+= 1
-                } else {
-                    merged.append(rhs[j])
-                    j &+= 1
-                }
-            }
-            
-            if i < lhs.count {
-                merged.append(contentsOf: lhs[i...])
-            }
-            if j < rhs.count {
-                merged.append(contentsOf: rhs[j...])
-            }
-            
-            
-            var minDistance: Double?
-            
-            i = 0
-            let end = lhs.endIndex - 1
-            while i < end {
-                let distance = merged[i + 1].onset - merged[i].onset
-                if minDistance == nil || distance < minDistance! {
-                    minDistance = distance
-                }
-                
-                i &+= 1
-            }
-            
-            return minDistance!
+        /// - precondition: `lhs` \< `rhs`
+        ///
+        /// - Complexity: O(1)
+        @inline(__always)
+        func minDistance(_ lhs: Chord, _ rhs: Chord) -> Double {
+            rhs.first!.onset - lhs.last!.onset
         }
         
         /// - Complexity: O(n)
         func clustersCanMerge(_ lhs: Chord, _ rhs: Chord) -> Bool {
-            let maxOnset = Swift.max(lhs.contents.last!.onset, rhs.contents.last!.onset)
             // no duplicated notes, ensured by the max offset
-            guard lhs.maxOffset.isNil(or: { maxOnset < $0 }) && rhs.maxOffset.isNil(or: { maxOnset < $0 }) else { return false }
+            guard lhs.maxOffset.isNil(or: { rhs.contents.last!.onset < $0 }) else { return false }
             
-            // Ensure the widths is smaller than threshold O(1)
-            guard Swift.max(lhs.last!.onset, rhs.last!.onset) - Swift.min(lhs.first!.onset, rhs.first!.onset) < spec.clusterWidth else { return false }
+            // Ensure the widths is smaller than threshold: O(1)
+            guard rhs.last!.onset - lhs.first!.onset < spec.clusterWidth else { return false }
+            
+            // ensure minimum distance is smaller than threshold: O(1)
+            guard minDistance(lhs, rhs) <= spec.duration else { return false }
             
             
             // hand-based analysis
             guard (lhs.count + rhs.count) > 2 else { return true }
             let contents = lhs.contents + rhs.contents
             
-            // cluster into hands O(n)
+            // cluster into hands: O(n)
             var left: [ReferenceNote] = []
             var right: [ReferenceNote] = []
             
             let minIndex = contents.minIndex(of: \.note)
-            let maxIndex = contents.minIndex(of: \.note)
+            let maxIndex = contents.maxIndex(of: \.note)
             let min = contents[minIndex!]
             let max = contents[maxIndex!]
             
@@ -166,7 +120,7 @@ public final class Chord: RandomAccessCollection {
                 }
             }
             
-            // ensure hands can reach O(n)
+            // ensure hands can reach: O(n)
             guard left.max(of: \.note)! - left.min(of: \.note)! < spec.handWidth,
                     right.max(of: \.note)! - right.min(of: \.note)! < spec.handWidth else { return false }
             
@@ -192,57 +146,61 @@ public final class Chord: RandomAccessCollection {
         clusters.sort(by: { $0.first!.onset < $1.first!.onset })
         
         // Step 2: Perform the clustering process
-        var startIndex = 0
-        while startIndex < clusters.endIndex {
-            var minDistance = Double.greatestFiniteMagnitude
-            var mergeIndex1: Int?
-            var mergeIndex2: Int?
-            
-            // Step 3: Find the closest pair of clusters
-            var i = startIndex
-            while i < Swift.min(clusters.endIndex, startIndex + spec.contextLength) {
-                var j = i &+ 1
-                while j < clusters.endIndex && j < i + spec.clusterMaxDistance {
-                    if clustersCanMerge(clusters[i], clusters[j]),
-                       let minClusterDistance = calMinDistance(clusters[i], to: clusters[j]),
-                       minClusterDistance < minDistance {
-                        minDistance = minClusterDistance
-                        mergeIndex1 = i
-                        mergeIndex2 = j
-                    }
-                    
-                    j &+= 1
-                }
+        // chords are disjoint
+        
+        // initial merge: O(n)
+        let queue = Deque(consume clusters)
+        var merged: Queue<Deque<Chord>.Node> = []
+        var front = queue.front
+        while let node = front {
+            merged.enqueue(node)
+            front = front?.next
+        }
+        
+        // merges
+        while !merged.isEmpty {
+            while let cluster = merged.dequeue() {
+                let lhs = cluster.prev
+                let rhs = cluster.next
                 
-                i &+= 1
-            }
-            
-            // Step 4: Merge clusters if the minimum distance is within the threshold
-            if let index1 = mergeIndex1, let index2 = mergeIndex2, minDistance <= spec.duration {
-                clusters[index1].append(contentsOf: clusters[index2])
-                clusters.remove(at: index2)
-            } else {
-                startIndex &+= 1
+                let lhsCanMerge = lhs.map { clustersCanMerge($0.content, cluster.content) } ?? false
+                let rhsCanMerge = rhs.map { clustersCanMerge(cluster.content, $0.content) } ?? false
+                
+                if lhsCanMerge && rhsCanMerge {
+                    if minDistance(lhs!.content, cluster.content) < minDistance(cluster.content, rhs!.content) {
+                        // merge left
+                        lhs!.content.append(contentsOf: cluster.content)
+                        merged.enqueue(lhs!)
+                        queue.remove(cluster)
+                    } else {
+                        cluster.content.append(contentsOf: rhs!.content)
+                        merged.enqueue(cluster)
+                        queue.remove(rhs!)
+                    }
+                } else if lhsCanMerge {
+                    lhs!.content.append(contentsOf: cluster.content)
+                    merged.enqueue(lhs!)
+                    queue.remove(cluster)
+                } else if rhsCanMerge {
+                    cluster.content.append(contentsOf: rhs!.content)
+                    merged.enqueue(cluster)
+                    queue.remove(rhs!)
+                }
             }
         }
         
-        return clusters.sorted(on: { $0.first!.onset }, by: <)
+        
+        return Array(consume queue)
     }
     
     /// Spec durations are in beats, in 120BPM.
     public struct Spec {
         
-        /// The maximum distance apart of any two elements to be considered within the same chord.
+        /// The maximum distance apart of the least apart elements to be considered in the same chord.
         let duration: Double = 0.1
         
         /// The max duration of one single cluster.
         let clusterWidth: Double = 0.2
-        
-        /// Assuming the mergable clusters are near each other, this is the length of pairs checked.
-        let contextLength: Int = 15
-        
-        /// Max distance to look ahead for another note in one cluster.
-        let clusterMaxDistance: Int = 8
         
         /// Width of a single hand, defaults to 15, which is octave plus two white keys
         let handWidth: UInt8 = 15
