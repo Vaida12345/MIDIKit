@@ -11,12 +11,10 @@ import MIDIKit
 import DetailedDescription
 
 
+
+let container = try MIDIContainer(at: "'/Users/vaida/Music/Piano Transcription/09 Variations on the Kanon.mid'")
 let date = Date()
-defer {
-    print(date.distanceToNow())
-}
-
-
-let container = try await MIDIContainer(at: "'/Users/vaida/Music/Piano Transcription/09 Variations on the Kanon.mid'").indexed()
-await container.normalize(preserve: .acousticResult)
-try container.makeContainer().write(to: .desktopDirectory/"MIDIs"/"file.mid")
+let indexed = await container.indexed()
+await indexed.normalize(preserve: .acousticResult)
+print(date.distanceToNow())
+try indexed.makeContainer().write(to: .desktopDirectory/"MIDIs"/"file.mid")

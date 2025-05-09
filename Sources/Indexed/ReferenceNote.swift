@@ -11,51 +11,41 @@ import AudioToolbox
 
 public final class ReferenceNote: Equatable, Interval {
     
-    public var content: MIDINote
+    @inlinable
+    public var content: MIDINote {
+        MIDINote(onset: onset, offset: offset, note: note, velocity: velocity, channel: channel, releaseVelocity: releaseVelocity)
+    }
     
     /// The onset, in beats.
-    @inlinable
-    public var onset: MusicTimeStamp {
-        get { content.onset }
-        set { content.onset = newValue }
-    }
-    @inlinable
-    public var offset: MusicTimeStamp {
-        get { content.offset }
-        set { content.offset = newValue }
-    }
+    public var onset: MusicTimeStamp
+    public var offset: MusicTimeStamp
     /// The key
-    @inlinable
-    public var note: UInt8 {
-        get { content.note }
-        set { content.note = newValue }
-    }
-    @inlinable
-    public var velocity: UInt8 {
-        get { content.velocity }
-        set { content.velocity = newValue }
-    }
-    @inlinable
-    public var channel: UInt8 {
-        get { content.channel }
-        set { content.channel = newValue }
-    }
-    @inlinable
-    public var releaseVelocity: UInt8 {
-        get { content.releaseVelocity }
-        set { content.releaseVelocity = newValue }
-    }
+    public var note: UInt8
+    public var velocity: UInt8
+    public var channel: UInt8
+    public var releaseVelocity: UInt8
     /// The duration of the note, on set, it changes the ``offset``, while ``onset`` remains the same.
     @inlinable
     public var duration: Double {
-        get { content.duration }
-        set { content.duration = newValue }
+        get {
+            self.offset - self.onset
+        }
+        set {
+            self.offset = self.onset + newValue
+        }
     }
     
+    @inlinable
     public init(note: MIDINote) {
-        self.content = note
+        self.onset = note.onset
+        self.offset = note.offset
+        self.note = note.note
+        self.velocity = note.velocity
+        self.channel = note.channel
+        self.releaseVelocity = note.releaseVelocity
     }
     
+    @inlinable
     public static func == (lhs: ReferenceNote, rhs: ReferenceNote) -> Bool {
         lhs.content == rhs.content
     }
@@ -64,6 +54,7 @@ public final class ReferenceNote: Equatable, Interval {
 
 extension ReferenceNote: CustomStringConvertible {
     
+    @inlinable
     public var description: String {
         self.content.description
     }

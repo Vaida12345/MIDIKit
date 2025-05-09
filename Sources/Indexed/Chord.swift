@@ -160,7 +160,6 @@ public final class Chord: RandomAccessCollection {
         
         // merges
         while let cluster = merged.removeFirst() {
-            print(merged.count)
             let lhs = queue.node(before: cluster)
             let rhs = queue.node(after: cluster)
             
@@ -170,28 +169,22 @@ public final class Chord: RandomAccessCollection {
             if lhsCanMerge && rhsCanMerge {
                 if minDistance(lhs!.content, cluster.content) < minDistance(cluster.content, rhs!.content) {
                     // merge left
-                    print(#line)
                     lhs!.content.append(contentsOf: cluster.content)
                     merged.append(lhs!)
                     queue.remove(cluster)
                 } else {
-                    print(#line)
                     cluster.content.append(contentsOf: rhs!.content)
                     merged.append(cluster)
                     queue.remove(rhs!)
                 }
             } else if lhsCanMerge {
-                print(#line)
                 lhs!.content.append(contentsOf: cluster.content)
                 merged.append(lhs!)
                 queue.remove(cluster)
             } else if rhsCanMerge {
-                print("merge right")
                 cluster.content.append(contentsOf: rhs!.content)
                 merged.append(cluster)
                 queue.remove(rhs!)
-            } else {
-                print(#line)
             }
         }
         

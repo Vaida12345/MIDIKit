@@ -22,6 +22,7 @@ public struct MIDINote: Sendable, Hashable, Interval {
     public var releaseVelocity: UInt8
     
     /// The duration of the note, on set, it changes the ``offset``, while ``onset`` remains the same.
+    @inlinable
     public var duration: Double {
         get {
             self.offset - self.onset
