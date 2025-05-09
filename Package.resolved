@@ -51,8 +51,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://www.github.com/Vaida12345/Optimization",
       "state" : {
-        "revision" : "15bdaa5dc861bcde28a338f4f99b198768d3cb2d",
-        "version" : "1.0.0"
+        "revision" : "98da5472dc03851c1627de5537b024e6b28dddbc",
+        "version" : "1.0.4"
       }
     }
   ],

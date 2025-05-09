@@ -19,7 +19,7 @@ import Optimization
 /// `cluster` and `chord` can be used interchangeably.
 ///
 /// The algorithm for obtain chord for individual hand exists in a previous commit.
-public final class Chord: RandomAccessCollection {
+public struct Chord: RandomAccessCollection {
     
     /// contents are always sorted by their onsets.
     ///
@@ -47,7 +47,7 @@ public final class Chord: RandomAccessCollection {
     /// - precondition: `self` must be `other`'s predecessor
     ///
     /// - Complexity: O(other)
-    private func append(contentsOf other: Chord) {
+    private mutating func append(contentsOf other: Chord) {
         self.contents += other.contents
         
         self.maxOffset = if self.maxOffset != nil && other.maxOffset != nil {
@@ -150,41 +150,41 @@ public final class Chord: RandomAccessCollection {
         // chords are disjoint
         
         // initial merge: O(n)
-        let queue = InlineDeque(consume clusters)
-        let merged = RingBuffer<InlineDeque<Chord>.Node>(minimumCapacity: queue.count)
-        var front = queue.front
+        let queue = InlineDeque(consume clusters) // the queue holds the source of truth, while `merged` refers to `queue` for chords.
+        let merged = RingBuffer<InlineDeque<Chord>.Index>(minimumCapacity: queue.count)
+        var front = queue.firstIndex
         while let node = front {
             merged.append(node)
-            front = queue.node(after: node)
+            front = queue.index(after: node)
         }
         
         // merges
         while let cluster = merged.removeFirst() {
-            let lhs = queue.node(before: cluster)
-            let rhs = queue.node(after: cluster)
+            let lhs = queue.index(before: cluster)
+            let rhs = queue.index(after: cluster)
             
-            let lhsCanMerge = lhs.map { clustersCanMerge($0.content, cluster.content) } ?? false
-            let rhsCanMerge = rhs.map { clustersCanMerge(cluster.content, $0.content) } ?? false
+            let lhsCanMerge = lhs.map { clustersCanMerge(queue[$0], queue[cluster]) } ?? false
+            let rhsCanMerge = rhs.map { clustersCanMerge(queue[cluster], queue[$0]) } ?? false
             
             if lhsCanMerge && rhsCanMerge {
-                if minDistance(lhs!.content, cluster.content) < minDistance(cluster.content, rhs!.content) {
+                if minDistance(queue[lhs!], queue[cluster]) < minDistance(queue[cluster], queue[rhs!]) {
                     // merge left
-                    lhs!.content.append(contentsOf: cluster.content)
+                    queue.update(at: lhs!) { $0.append(contentsOf: queue[cluster]) }
                     merged.append(lhs!)
-                    queue.remove(cluster)
+                    queue.remove(at: cluster)
                 } else {
-                    cluster.content.append(contentsOf: rhs!.content)
+                    queue.update(at: cluster) { $0.append(contentsOf: queue[rhs!]) }
                     merged.append(cluster)
-                    queue.remove(rhs!)
+                    queue.remove(at: rhs!)
                 }
             } else if lhsCanMerge {
-                lhs!.content.append(contentsOf: cluster.content)
+                queue.update(at: lhs!) { $0.append(contentsOf: queue[cluster]) }
                 merged.append(lhs!)
-                queue.remove(cluster)
+                queue.remove(at: cluster)
             } else if rhsCanMerge {
-                cluster.content.append(contentsOf: rhs!.content)
+                queue.update(at: cluster) { $0.append(contentsOf: queue[rhs!]) }
                 merged.append(cluster)
-                queue.remove(rhs!)
+                queue.remove(at: rhs!)
             }
         }
         
