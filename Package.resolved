@@ -1,5 +1,5 @@
 {
-  "originHash" : "d1c7bca1fa3f8e5b98676452e47f88b3531ecebe484678274d5565eab082d8f9",
+  "originHash" : "88e6caa7a98a9caa43b93e65702cb40613b44c88e1f86fb3881ad5c443b2cfcf",
   "pins" : [
     {
       "identity" : "concurrentstream",
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://www.github.com/Vaida12345/Essentials",
       "state" : {
-        "revision" : "50d86377d01d801a3e58a94f008e68dd56f3d4a4",
-        "version" : "1.0.34"
+        "revision" : "1ad3371d4aa807775e92ea3df8c85012a8d68f3a",
+        "version" : "1.0.35"
       }
     },
     {
@@ -44,6 +44,15 @@
       "state" : {
         "revision" : "c3c562710f058caa9fcbaba2c20ba3e3f404d7ec",
         "version" : "1.0.2"
+      }
+    },
+    {
+      "identity" : "optimization",
+      "kind" : "remoteSourceControl",
+      "location" : "https://www.github.com/Vaida12345/Optimization",
+      "state" : {
+        "branch" : "main",
+        "revision" : "fa35dd6071fa37da090d679dde6940d6c0d536c7"
       }
     }
   ],

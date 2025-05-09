@@ -9,6 +9,7 @@ import Foundation
 import DetailedDescription
 import Accelerate
 import Essentials
+import Optimization
 
 
 /// chords are keys that needs to be pressed at the same time.
@@ -149,43 +150,48 @@ public final class Chord: RandomAccessCollection {
         // chords are disjoint
         
         // initial merge: O(n)
-        let queue = Deque(consume clusters)
-        let merged: Queue<Deque<Chord>.Node> = []
+        let queue = InlineDeque(consume clusters)
+        let merged = RingBuffer<InlineDeque<Chord>.Node>(minimumCapacity: queue.count)
         var front = queue.front
         while let node = front {
-            merged.enqueue(node)
-            front = front?.next
+            merged.append(node)
+            front = queue.node(after: node)
         }
         
         // merges
-        while !merged.isEmpty {
-            while let cluster = merged.dequeue() {
-                let lhs = cluster.prev
-                let rhs = cluster.next
-                
-                let lhsCanMerge = lhs.map { clustersCanMerge($0.content, cluster.content) } ?? false
-                let rhsCanMerge = rhs.map { clustersCanMerge(cluster.content, $0.content) } ?? false
-                
-                if lhsCanMerge && rhsCanMerge {
-                    if minDistance(lhs!.content, cluster.content) < minDistance(cluster.content, rhs!.content) {
-                        // merge left
-                        lhs!.content.append(contentsOf: cluster.content)
-                        merged.enqueue(lhs!)
-                        queue.remove(cluster)
-                    } else {
-                        cluster.content.append(contentsOf: rhs!.content)
-                        merged.enqueue(cluster)
-                        queue.remove(rhs!)
-                    }
-                } else if lhsCanMerge {
+        while let cluster = merged.removeFirst() {
+            print(merged.count)
+            let lhs = queue.node(before: cluster)
+            let rhs = queue.node(after: cluster)
+            
+            let lhsCanMerge = lhs.map { clustersCanMerge($0.content, cluster.content) } ?? false
+            let rhsCanMerge = rhs.map { clustersCanMerge(cluster.content, $0.content) } ?? false
+            
+            if lhsCanMerge && rhsCanMerge {
+                if minDistance(lhs!.content, cluster.content) < minDistance(cluster.content, rhs!.content) {
+                    // merge left
+                    print(#line)
                     lhs!.content.append(contentsOf: cluster.content)
-                    merged.enqueue(lhs!)
+                    merged.append(lhs!)
                     queue.remove(cluster)
-                } else if rhsCanMerge {
+                } else {
+                    print(#line)
                     cluster.content.append(contentsOf: rhs!.content)
-                    merged.enqueue(cluster)
+                    merged.append(cluster)
                     queue.remove(rhs!)
                 }
+            } else if lhsCanMerge {
+                print(#line)
+                lhs!.content.append(contentsOf: cluster.content)
+                merged.append(lhs!)
+                queue.remove(cluster)
+            } else if rhsCanMerge {
+                print("merge right")
+                cluster.content.append(contentsOf: rhs!.content)
+                merged.append(cluster)
+                queue.remove(rhs!)
+            } else {
+                print(#line)
             }
         }
         
@@ -219,6 +225,16 @@ extension Chord: CustomDetailedStringConvertible {
             descriptor.sequence(for: \.contents)
             descriptor.optional(for: \.maxOffset)
         }
+    }
+    
+}
+
+
+extension Chord: CustomStringConvertible {
+    
+    
+    public var description: String {
+        self.contents.description
     }
     
 }
