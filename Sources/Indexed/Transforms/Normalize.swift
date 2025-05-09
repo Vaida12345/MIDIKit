@@ -16,6 +16,8 @@ extension IndexedContainer {
     ///
     /// This method will
     /// - ensure the gaps between consecutive notes (in the initializer)
+    ///
+    /// - Complexity: O(*n log n*), `makeChords`
     public func normalize(preserve: PreserveSettings) async {
         guard !self.isEmpty else { return }
         

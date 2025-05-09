@@ -98,7 +98,7 @@ public struct IndexedContainer {
         
         let notes = container.tracks.flatMap(\.notes).map(ReferenceNote.init)
         let combinedNotes = CombinedNotes(notes.sorted(by: { $0.onset < $1.onset }))
-        async let average = await RunningAverage(combinedNotes: combinedNotes, runningLength: runningLength)
+        let average = await RunningAverage(combinedNotes: combinedNotes, runningLength: runningLength)
         
         let grouped = Dictionary(grouping: notes, by: \.note)
         
@@ -116,7 +116,7 @@ public struct IndexedContainer {
         }
         
         self.notes = dictionary
-        self.average = await average
+        self.average = average
         self.parameters = Parameters(runningLength: runningLength)
         self.info = Info(combinedNotes: combinedNotes)
     }

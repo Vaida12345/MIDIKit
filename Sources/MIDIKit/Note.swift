@@ -10,7 +10,7 @@ import AudioToolbox
 import SwiftUI
 
 
-public struct MIDINote: Sendable, Equatable, Interval {
+public struct MIDINote: Sendable, Hashable, Interval {
     
     /// The onset, in beats.
     public var onset: MusicTimeStamp
