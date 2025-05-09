@@ -17,7 +17,7 @@ extension IndexedContainer {
     /// This method will
     /// - ensure the gaps between consecutive notes (in the initializer)
     public func normalize(preserve: PreserveSettings) async {
-        guard !self.combinedNotes.isEmpty else { return }
+        guard !self.isEmpty else { return }
         
         let chords = await Chord.makeChords(from: self)
         let margin: Double = 1/4 // the padding after sustain

@@ -19,16 +19,20 @@ public struct MIDINotes: ArrayRepresentable, Sendable, Equatable, CustomDetailed
     
     public var contents: [MIDITrack.Note]
     
+    @inlinable
     public mutating func append(contentsOf: MIDINotes) {
         self.contents.append(contentsOf: contentsOf.contents)
     }
     
+    @inlinable
     public mutating func append(_ note: Note) {
         self.contents.append(note)
     }
     
     /// The range of note value.
-    public var noteRange: (min: UInt8, max: UInt8)? {
+    ///
+    /// - Complexity: O(*n*)
+    public func noteRange() -> (min: UInt8, max: UInt8)? {
         guard !self.isEmpty else { return nil }
         let notes = self.contents.map(\.note)
         
@@ -244,7 +248,7 @@ extension MIDINotes {
             return naiveSeparate(by: key)
         } else {
             let clusters = self.clustered(threshold: clusteringThreshold)
-            let ranges = clusters.compactMap(\.noteRange).filter({ $0.max - $0.min > 7 })
+            let ranges = clusters.compactMap({ $0.noteRange() }).filter({ $0.max - $0.min > 7 })
             let centers = ranges.map({ (Int($0.max) + Int($0.min))/2 })
             let average = centers.sum / centers.count
             

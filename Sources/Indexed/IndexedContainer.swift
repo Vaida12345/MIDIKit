@@ -14,13 +14,10 @@ public struct IndexedContainer {
     
     /// The notes grouped by the key.
     ///
+    /// None value is represented by `nil` (instead of empty array)
+    ///
     /// Key: 21...108
     public let notes: [UInt8 : DisjointNotes]
-    
-    /// The sorted notes.
-    ///
-    /// The `combinedNotes` and `notes` share the same reference.
-    public let combinedNotes: CombinedNotes
     
     /// The sustain events.
     public let sustains: MIDISustainEvents
@@ -31,10 +28,35 @@ public struct IndexedContainer {
     /// The stored parameter for methods that returns a new ``IndexedContainer``.
     internal let parameters: Parameters
     
+    /// The cache containing important cached properties for efficient computations.
+    internal let info: Info
+    
+    
+    /// Whether the container is empty
+    @inlinable
+    public var isEmpty: Bool {
+        self.notes.isEmpty
+    }
+    
+    /// Number of notes in the container.
+    public var count: Int {
+        self.info.notesCount
+    }
+    
     
     /// Converts the indexed container back to ``MIDIContainer``.
+    @inlinable
     public func makeContainer() -> MIDIContainer {
-        let track = MIDITrack(notes: MIDINotes(self.combinedNotes.map(\.content)), sustains: self.sustains)
+        var notes: [MIDINote] = []
+        notes.reserveCapacity(self.count)
+        
+        for value in self.notes.values {
+            value.forEach { index, element in
+                notes.append(element.content)
+            }
+        }
+        
+        let track = MIDITrack(notes: MIDINotes(notes.sorted(on: \.onset, by: <)), sustains: self.sustains)
         return MIDIContainer(tracks: [track])
     }
     
@@ -52,11 +74,13 @@ public struct IndexedContainer {
     ) async {
         self.notes = notes
         self.sustains = sustains
-        self.combinedNotes = CombinedNotes(notes.values.flatten().sorted(on: \.onset, by: <))
+        let combinedNotes = CombinedNotes(notes.values.flatten().sorted(on: \.onset, by: <))
         
         let average = await RunningAverage(combinedNotes: combinedNotes, runningLength: runningLength)
         self.average = average
         self.parameters = Parameters(runningLength: runningLength)
+        
+        self.info = Info(combinedNotes: combinedNotes)
     }
     
     /// - Parameters:
@@ -79,7 +103,6 @@ public struct IndexedContainer {
         let grouped = Dictionary(grouping: notes, by: \.note)
         
         var dictionary: [UInt8 : DisjointNotes] = [:]
-        dictionary.reserveCapacity(88)
         for i in 21...108 {
             guard let contents = grouped[UInt8(i)]?.sorted(by: { $0.onset < $1.onset }) else { continue }
             for i in 0..<contents.count - 1 {
@@ -87,13 +110,15 @@ public struct IndexedContainer {
                 contents[i].offset = min(contents[i].offset, contents[i + 1].onset - minimumConsecutiveNotesGap)
             }
             
-            dictionary[UInt8(i)] = DisjointNotes(contents)
+            if !contents.isEmpty { // just to be sure
+                dictionary[UInt8(i)] = DisjointNotes(contents)
+            }
         }
         
         self.notes = dictionary
-        self.combinedNotes = combinedNotes
         self.average = await average
         self.parameters = Parameters(runningLength: runningLength)
+        self.info = Info(combinedNotes: combinedNotes)
     }
     
     
@@ -101,6 +126,26 @@ public struct IndexedContainer {
     struct Parameters {
         
         let runningLength: Double
+        
+    }
+    
+    
+    internal struct Info {
+        
+        /// `nil` if empty
+        let minOnset: Double?
+        
+        /// `nil` if empty
+        let maxOnset: Double?
+        
+        let notesCount: Int
+        
+        
+        init(combinedNotes: CombinedNotes) {
+            self.minOnset = combinedNotes.first?.onset
+            self.maxOnset = combinedNotes.last?.onset
+            self.notesCount = combinedNotes.count
+        }
         
     }
     
@@ -116,6 +161,7 @@ extension MIDIContainer {
     ///   - runningLength: The length for calculating the running average. The default value is `4` beats, that is one measure in a 4/4 sheet.
     ///
     /// Any methods that returns a new ``IndexedContainer`` will use the parameters set in the initializer.
+    @inlinable
     public func indexed(
         minimumConsecutiveNotesGap: Double = 1/128,
         runningLength: Double = 4

@@ -21,7 +21,7 @@ extension IndexedContainer {
     ///
     /// `self` will not be mutated.
     public func applyVelocity(to other: IndexedContainer) {
-        guard !self.combinedNotes.isEmpty && !other.combinedNotes.isEmpty else { return }
+        guard !self.isEmpty && !other.isEmpty else { return }
         
         for i in (21 as UInt8)...108 {
             guard let lhsNotes = self.notes[i],

@@ -76,11 +76,11 @@ public struct KeyFeatures: ArrayRepresentable {
     
     /// - Parameter interval: The default value is 1/2, 8th note.
     init(container: IndexedContainer, interval: Double = 1/2) {
-        guard !container.combinedNotes.isEmpty else {
+        guard !container.isEmpty else {
             self.init([])
             return
         }
-        let end = container.combinedNotes.last!.offset
+        let end = container.info.maxOnset! + 10 // the max offset is unknown
         
         var features: [KeyFeature] = []
         features.reserveCapacity(Int(end / interval))

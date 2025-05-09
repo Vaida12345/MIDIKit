@@ -67,7 +67,7 @@ public final class Chord: RandomAccessCollection {
         from container: IndexedContainer,
         spec: Spec = Spec()
     ) async -> [Chord] {
-        guard !container.combinedNotes.isEmpty else { return [] }
+        guard !container.isEmpty else { return [] }
         
         /// Returns minimum distance between onsets of any two notes in each cluster.
         ///
@@ -132,15 +132,15 @@ public final class Chord: RandomAccessCollection {
         // Step 1: Start by initializing each value as its own cluster
         // - Complexity: O(n log(n)), sorting
         var clusters: [Chord] = []
-        clusters.reserveCapacity(container.combinedNotes.count)
+        clusters.reserveCapacity(container.count)
         for i in 21...108 {
-            var notes = container.notes[UInt8(i)]?.makeIterator()
-            var current = notes?.next()
-            var next = notes?.next()
+            guard var notes = container.notes[UInt8(i)]?.makeIterator() else { continue }
+            var current = notes.next()
+            var next = notes.next()
             while current != nil {
                 clusters.append(Chord(contents: [current!], maxOffset: next?.onset))
                 current = next
-                next = notes?.next()
+                next = notes.next()
             }
         }
         clusters.sort(by: { $0.first!.onset < $1.first!.onset })
@@ -150,7 +150,7 @@ public final class Chord: RandomAccessCollection {
         
         // initial merge: O(n)
         let queue = Deque(consume clusters)
-        var merged: Queue<Deque<Chord>.Node> = []
+        let merged: Queue<Deque<Chord>.Node> = []
         var front = queue.front
         while let node = front {
             merged.enqueue(node)
