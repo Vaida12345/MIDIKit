@@ -11,7 +11,6 @@ import MIDIKit
 import DetailedDescription
 
 
-
 let container = try MIDIContainer(at: "'/Users/vaida/Music/Piano Transcription/09 Variations on the Kanon.mid'")
 let date = Date()
 let indexed = await container.indexed()
