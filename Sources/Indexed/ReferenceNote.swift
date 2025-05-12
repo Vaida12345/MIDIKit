@@ -9,7 +9,7 @@ import Foundation
 import AudioToolbox
 
 
-public final class ReferenceNote: Equatable, Interval {
+public final class ReferenceNote: Equatable, Interval, Hashable {
     
     @inlinable
     public var content: MIDINote {
@@ -47,7 +47,21 @@ public final class ReferenceNote: Equatable, Interval {
     
     @inlinable
     public static func == (lhs: ReferenceNote, rhs: ReferenceNote) -> Bool {
-        lhs.content == rhs.content
+        lhs.onset == rhs.onset &&
+        lhs.offset == rhs.offset &&
+        lhs.note == rhs.note &&
+        lhs.velocity == rhs.velocity &&
+        lhs.channel == rhs.channel &&
+        lhs.releaseVelocity == rhs.releaseVelocity
+    }
+    
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(self.onset)
+        hasher.combine(self.offset)
+        hasher.combine(self.note)
+        hasher.combine(self.velocity)
+        hasher.combine(self.channel)
+        hasher.combine(self.releaseVelocity)
     }
     
 }

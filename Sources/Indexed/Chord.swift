@@ -44,11 +44,11 @@ public struct Chord: RandomAccessCollection {
     
     public typealias Element = ReferenceNote
     
-    /// - precondition: `self` must be `other`'s predecessor
+    /// - precondition: `other` must be `self`'s predecessor
     ///
     /// - Complexity: O(other)
-    private mutating func append(contentsOf other: Chord) {
-        self.contents += other.contents
+    private mutating func prepend(contentsOf other: Chord) {
+        self.contents = self.contents + other.contents
         
         self.maxOffset = if self.maxOffset != nil && other.maxOffset != nil {
             Swift.min(self.maxOffset!, other.maxOffset!)
@@ -166,26 +166,13 @@ public struct Chord: RandomAccessCollection {
             let lhsCanMerge = lhs.map { clustersCanMerge(queue[$0], queue[cluster]) } ?? false
             let rhsCanMerge = rhs.map { clustersCanMerge(queue[cluster], queue[$0]) } ?? false
             
-            if lhsCanMerge && rhsCanMerge {
-                if minDistance(queue[lhs!], queue[cluster]) < minDistance(queue[cluster], queue[rhs!]) {
-                    // merge left
-                    queue.update(at: lhs!) { $0.append(contentsOf: queue[cluster]) }
-                    merged.append(lhs!)
-                    queue.remove(at: cluster)
-                } else {
-                    queue.update(at: cluster) { $0.append(contentsOf: queue[rhs!]) }
-                    merged.append(cluster)
-                    queue.remove(at: rhs!)
-                }
-            } else if lhsCanMerge {
-                queue.update(at: lhs!) { $0.append(contentsOf: queue[cluster]) }
-                merged.append(lhs!)
-                queue.remove(at: cluster)
-            } else if rhsCanMerge {
-                queue.update(at: cluster) { $0.append(contentsOf: queue[rhs!]) }
+            if rhsCanMerge && (lhsCanMerge => minDistance(queue[lhs!], queue[cluster]) > minDistance(queue[cluster], queue[rhs!])) {
+                queue.update(at: cluster) { $0.prepend(contentsOf: queue[rhs!]) }
                 merged.append(cluster)
                 queue.remove(at: rhs!)
             }
+            // Can ever only merge right, if left merge is better, simply don't, and wait for next right merge
+            // otherwise the merged left is still in the `merged` queue, waiting to be merged (again)
         }
         
         

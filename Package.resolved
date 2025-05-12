@@ -1,5 +1,5 @@
 {
-  "originHash" : "febbd4c462d7e4a67d26d952238d8966f1d1d0d0e4fa423888e7463e18a3e7f0",
+  "originHash" : "ea30c6bcda443b9b0d4d8e45e35079898a94fa4c3b2e30363187309289d23d74",
   "pins" : [
     {
       "identity" : "concurrentstream",
@@ -51,8 +51,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://www.github.com/Vaida12345/Optimization",
       "state" : {
-        "revision" : "15c7f1e523731dc5c132867f6a074eab27c95c12",
-        "version" : "1.0.5"
+        "revision" : "d2604a0e5adcdfb718e151cd8aba9810cb6ce156",
+        "version" : "1.0.8"
       }
     }
   ],
