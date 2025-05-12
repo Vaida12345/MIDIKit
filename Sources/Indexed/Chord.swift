@@ -85,47 +85,44 @@ public struct Chord: RandomAccessCollection {
             // no duplicated notes, ensured by the max offset
             guard lhs.maxOffset.isNil(or: { rhs.contents.last!.onset < $0 }) else { return false }
             
-            // Ensure the widths is smaller than threshold: O(1)
-            guard rhs.last!.onset - lhs.first!.onset < spec.clusterWidth else { return false }
-            
             // ensure minimum distance is smaller than threshold: O(1)
             guard minDistance(lhs, rhs) <= spec.duration else { return false }
             
             
-            // hand-based analysis
-            guard (lhs.count + rhs.count) > 2 else { return true }
-            let contents = lhs.contents + rhs.contents
-            
-            // cluster into hands: O(n)
-            var left: [ReferenceNote] = []
-            var right: [ReferenceNote] = []
-            left.reserveCapacity(contents.count)
-            right.reserveCapacity(contents.count)
-            
-            let minIndex = contents.minIndex(of: \.note)
-            let maxIndex = contents.maxIndex(of: \.note)
-            let min = contents[minIndex!]
-            let max = contents[maxIndex!]
-            
-            contents.forEach { index, element in
-                if index == minIndex {
-                    left.append(min)
-                } else if index == maxIndex {
-                    right.append(max)
-                } else {
-                    let leftDistance = element.note - min.note
-                    let rightDistance = max.note - element.note
-                    if leftDistance < rightDistance {
-                        left.append(element)
-                    } else {
-                        right.append(element)
-                    }
-                }
-            }
-            
-            // ensure hands can reach: O(n)
-            guard left.max(of: \.note)! - left.min(of: \.note)! < spec.handWidth,
-                    right.max(of: \.note)! - right.min(of: \.note)! < spec.handWidth else { return false }
+//            // hand-based analysis
+//            guard (lhs.count + rhs.count) > 2 else { return true }
+//            let contents = lhs.contents + rhs.contents
+//            
+//            // cluster into hands: O(n)
+//            var left: [ReferenceNote] = []
+//            var right: [ReferenceNote] = []
+//            left.reserveCapacity(contents.count)
+//            right.reserveCapacity(contents.count)
+//            
+//            let minIndex = contents.minIndex(of: \.note)
+//            let maxIndex = contents.maxIndex(of: \.note)
+//            let min = contents[minIndex!]
+//            let max = contents[maxIndex!]
+//            
+//            contents.forEach { index, element in
+//                if index == minIndex {
+//                    left.append(min)
+//                } else if index == maxIndex {
+//                    right.append(max)
+//                } else {
+//                    let leftDistance = element.note - min.note
+//                    let rightDistance = max.note - element.note
+//                    if leftDistance < rightDistance {
+//                        left.append(element)
+//                    } else {
+//                        right.append(element)
+//                    }
+//                }
+//            }
+//            
+//            // ensure hands can reach: O(n)
+//            guard left.max(of: \.note)! - left.min(of: \.note)! < spec.handWidth,
+//                    right.max(of: \.note)! - right.min(of: \.note)! < spec.handWidth else { return false }
             
             
             return true
@@ -185,13 +182,12 @@ public struct Chord: RandomAccessCollection {
     public struct Spec {
         
         /// The maximum distance apart of the least apart elements to be considered in the same chord.
+        ///
+        /// The effectively is the min duration of a note.
         let duration: Double = 0.1
         
-        /// The max duration of one single cluster.
-        let clusterWidth: Double = 0.2
-        
-        /// Width of a single hand, defaults to 15, which is octave plus two white keys
-        let handWidth: UInt8 = 15
+//        /// Width of a single hand, defaults to 15, which is octave plus two white keys
+//        let handWidth: UInt8 = 13 + 3
         
         public init() { }
         

@@ -31,6 +31,9 @@ extension IndexedContainer {
             // It is not required if there isn't any note in its duration
             if __index == chords.count - 1 { return }
             let nextNote = chords[__index + 1].min(of: \.onset)!
+            
+            var indeterminate: Set<ReferenceNote> = []
+            
             chord.forEach { _, note in
                 
                 // ensure the sustain is correct
@@ -57,6 +60,9 @@ extension IndexedContainer {
                     offsetIndex = offsetPreviousIndex
                 } else if let offsetPrevious, let offsetNext = sustains.first(after: note.offset),
                           offsetNext.onset - offsetPrevious.offset < margin * 2 { // the gap between sustains is extremely small, treat the gap as sustain reset.
+                    offset = offsetPrevious
+                    offsetIndex = offsetPreviousIndex
+                } else if offsetNext == nil { // no next, it is the last sustain
                     offset = offsetPrevious
                     offsetIndex = offsetPreviousIndex
                 } else {
@@ -114,7 +120,7 @@ extension IndexedContainer {
                         inconclusiveNoOffset(channel: 9)
                     } else {
                         // spanned more than one region
-                        setExcessiveSpan(channel: 15)
+                        setExcessiveSpan(channel: 10)
                     }
                 }
                 
@@ -129,6 +135,7 @@ extension IndexedContainer {
                             channel: channel
                         )
                     }
+                    indeterminate.insert(note)
                 }
                 
                 func setNoteOffset(_ value: Double, channel: UInt8) {
@@ -144,6 +151,7 @@ extension IndexedContainer {
                             clamp(note.offset, max: nextNote),
                             channel: channel
                         )
+                        indeterminate.insert(note)
                         return
                     }
                     
@@ -155,6 +163,7 @@ extension IndexedContainer {
                             clamp(note.offset, max: nextNote),
                             channel: channel
                         )
+                        indeterminate.insert(note)
                     }
                 }
                 
@@ -186,7 +195,17 @@ extension IndexedContainer {
 #endif
                 }
                 
-            }
+            } // forEach
+            
+            guard indeterminate.count == 1 else { return }
+            let determinants = chord.contents.filter({ !indeterminate.contains($0) })
+            guard !determinants.isEmpty else { return }
+            
+            // the indeterminate one could be inferred using
+            let average = determinants.average(of: \.offset)!
+            let removed = indeterminate.removeFirst()
+            removed.offset = max(average, removed.onset + minimumLength)
+            
         }
     }
     
