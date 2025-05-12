@@ -27,15 +27,13 @@ extension IndexedContainer {
             guard let lhsNotes = self.notes[i],
                   let rhsNotes = other.notes[i] else { continue }
             
-            var isLinked: Set<UnsafeRawPointer> = []
+            var isLinked: Set<ReferenceNote> = []
             
             lhsNotes.forEach { index, lhs in
                 guard let match = rhsNotes.nearest(to: lhs.onset, isValid: {
-                    let pointer = Unmanaged.passUnretained($0).toOpaque()
-                    return !isLinked.contains(pointer)
+                    !isLinked.contains($0)
                 }) else { return }
-                let pointer = Unmanaged.passUnretained(match).toOpaque()
-                isLinked.insert(pointer)
+                isLinked.insert(match)
                 lhs.velocity = match.velocity
             }
         }

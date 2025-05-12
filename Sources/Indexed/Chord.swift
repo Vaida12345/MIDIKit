@@ -99,6 +99,8 @@ public struct Chord: RandomAccessCollection {
             // cluster into hands: O(n)
             var left: [ReferenceNote] = []
             var right: [ReferenceNote] = []
+            left.reserveCapacity(contents.count)
+            right.reserveCapacity(contents.count)
             
             let minIndex = contents.minIndex(of: \.note)
             let maxIndex = contents.maxIndex(of: \.note)

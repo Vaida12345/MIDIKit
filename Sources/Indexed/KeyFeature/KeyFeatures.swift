@@ -27,7 +27,7 @@ public struct KeyFeatures: ArrayRepresentable {
                                 velocity: UInt8(value * 127)
                             )
                         }
-                    },
+                    }.sorted { $0.onset < $1.onset },
                     sustains: []
                 )
             ]
@@ -80,7 +80,7 @@ public struct KeyFeatures: ArrayRepresentable {
             self.init([])
             return
         }
-        let end = container.info.maxOnset! + 10 // the max offset is unknown
+        let end = container.contents.last!.offset
         
         var features: [KeyFeature] = []
         features.reserveCapacity(Int(end / interval))

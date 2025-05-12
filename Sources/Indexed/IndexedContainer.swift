@@ -5,12 +5,12 @@
 //  Created by Vaida on 12/19/24.
 //
 
+import Foundation
 import Essentials
-import ConcurrentStream
 
 
 /// Container supporting efficient lookup.
-public struct IndexedContainer {
+public final class IndexedContainer {
     
     /// The notes grouped by the key.
     ///
@@ -18,6 +18,9 @@ public struct IndexedContainer {
     ///
     /// Key: 21...108
     public let notes: [UInt8 : DisjointNotes]
+    
+    /// Sorted notes
+    public let contents: UnsafeMutableBufferPointer<MIDINote>
     
     /// The sustain events.
     public let sustains: MIDISustainEvents
@@ -28,35 +31,29 @@ public struct IndexedContainer {
     /// The stored parameter for methods that returns a new ``IndexedContainer``.
     internal let parameters: Parameters
     
-    /// The cache containing important cached properties for efficient computations.
-    internal let info: Info
-    
     
     /// Whether the container is empty
     @inlinable
     public var isEmpty: Bool {
-        self.notes.isEmpty
+        self.contents.isEmpty
     }
     
     /// Number of notes in the container.
+    @inlinable
     public var count: Int {
-        self.info.notesCount
+        self.contents.count
     }
     
     
     /// Converts the indexed container back to ``MIDIContainer``.
     @inlinable
     public func makeContainer() -> MIDIContainer {
-        var notes: [MIDINote] = []
-        notes.reserveCapacity(self.count)
-        
-        for value in self.notes.values {
-            value.forEach { index, element in
-                notes.append(element.content)
-            }
+        let notes = [MIDINote](unsafeUninitializedCapacity: self.count) {
+            self.contents.copy(to: $0.baseAddress!, count: self.count)
+            $1 = self.count
         }
         
-        let track = MIDITrack(notes: MIDINotes(notes.sorted(on: \.onset, by: <)), sustains: self.sustains)
+        let track = MIDITrack(notes: MIDINotes(consume notes), sustains: self.sustains)
         return MIDIContainer(tracks: [track])
     }
     
@@ -71,16 +68,15 @@ public struct IndexedContainer {
         notes: [UInt8 : DisjointNotes],
         sustains: MIDISustainEvents,
         runningLength: Double = 4
-    ) async {
+    ) {
         self.notes = notes
         self.sustains = sustains
-        let combinedNotes = CombinedNotes(notes.values.flatten().sorted(on: \.onset, by: <))
+        var combinedNotes = notes.values.flatten().sorted(on: \.onset, by: <)
+        self.contents = .allocate(capacity: combinedNotes.count)
+        memcpy(self.contents.baseAddress, &combinedNotes, MemoryLayout<MIDINote>.stride * combinedNotes.count)
         
-        let average = await RunningAverage(combinedNotes: combinedNotes, runningLength: runningLength)
-        self.average = average
+        self.average = RunningAverage(combinedNotes: self.contents, runningLength: runningLength)
         self.parameters = Parameters(runningLength: runningLength)
-        
-        self.info = Info(combinedNotes: combinedNotes)
     }
     
     /// - Parameters:
@@ -93,18 +89,40 @@ public struct IndexedContainer {
         container: MIDIContainer,
         minimumConsecutiveNotesGap: Double = 1/128,
         runningLength: Double = 4
-    ) async {
-        self.sustains = MIDISustainEvents(container.tracks.flatMap(\.sustains))
+    ) {
+        let contents: UnsafeMutableBufferPointer<MIDINote>
+        let sustains: MIDISustainEvents
         
-        let notes = container.tracks.flatMap(\.notes).map(ReferenceNote.init)
-        let combinedNotes = CombinedNotes(notes.sorted(by: { $0.onset < $1.onset }))
-        let average = await RunningAverage(combinedNotes: combinedNotes, runningLength: runningLength)
+        if container.tracks.count == 1,
+           var track = container.tracks.first {
+            contents = .allocate(capacity: track.notes.count)
+            memcpy(contents.baseAddress!, &track.notes.contents, MemoryLayout<MIDINote>.stride * track.notes.count)
+            sustains = track.sustains
+        } else {
+            var notes = container.tracks.flatMap(\.notes)
+            notes.sort { $0.onset < $1.onset }
+            contents = .allocate(capacity: notes.count)
+            memcpy(contents.baseAddress!, &notes, MemoryLayout<MIDINote>.stride * notes.count)
+            
+            sustains = MIDISustainEvents(container.tracks.flatMap(\.sustains))
+        }
         
-        let grouped = Dictionary(grouping: notes, by: \.note)
+        self.contents = contents
+        self.sustains = sustains
         
+        let average = RunningAverage(combinedNotes: contents, runningLength: runningLength)
+        
+        // construct grouped
+        var grouped: [UInt8 : [ReferenceNote]] = [:]
+        contents.forEach { index, element in
+            grouped[element.note, default: []].append(contents.baseAddress! + index)
+        }
+        
+        
+        // construct dictionary
         var dictionary: [UInt8 : DisjointNotes] = [:]
         for i in 21...108 {
-            guard let contents = grouped[UInt8(i)]?.sorted(by: { $0.onset < $1.onset }) else { continue }
+            guard let contents = grouped[UInt8(i)] else { continue }
             for i in 0..<contents.count - 1 {
                 // ensures non-overlapping
                 contents[i].offset = min(contents[i].offset, contents[i + 1].onset - minimumConsecutiveNotesGap)
@@ -114,11 +132,16 @@ public struct IndexedContainer {
                 dictionary[UInt8(i)] = DisjointNotes(contents)
             }
         }
+        _ = consume grouped
         
         self.notes = dictionary
         self.average = average
         self.parameters = Parameters(runningLength: runningLength)
-        self.info = Info(combinedNotes: combinedNotes)
+    }
+    
+    @inlinable
+    deinit {
+        self.contents.deallocate()
     }
     
     
@@ -126,26 +149,6 @@ public struct IndexedContainer {
     struct Parameters {
         
         let runningLength: Double
-        
-    }
-    
-    
-    internal struct Info {
-        
-        /// `nil` if empty
-        let minOnset: Double?
-        
-        /// `nil` if empty
-        let maxOnset: Double?
-        
-        let notesCount: Int
-        
-        
-        init(combinedNotes: CombinedNotes) {
-            self.minOnset = combinedNotes.first?.onset
-            self.maxOnset = combinedNotes.last?.onset
-            self.notesCount = combinedNotes.count
-        }
         
     }
     
@@ -165,8 +168,8 @@ extension MIDIContainer {
     public func indexed(
         minimumConsecutiveNotesGap: Double = 1/128,
         runningLength: Double = 4
-    ) async -> IndexedContainer {
-        await IndexedContainer(
+    ) -> IndexedContainer {
+        IndexedContainer(
             container: self,
             minimumConsecutiveNotesGap: minimumConsecutiveNotesGap,
             runningLength: runningLength

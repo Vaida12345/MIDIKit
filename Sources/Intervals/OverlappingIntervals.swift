@@ -46,7 +46,7 @@ extension OverlappingIntervals {
     ///
     /// - Complexity: O(log *n*), binary search.
     public func first(after timeStamp: Double) -> Element? {
-        self.firstIndex(after: timeStamp).map({ self.contents[$0] })
+        self.firstIndex(after: timeStamp).map({ self[$0] })
     }
     
     /// Returns the last interval whose offset is less than `timeStamp`.
@@ -106,7 +106,7 @@ extension OverlappingIntervals {
     /// - Complexity: O(log *n*), binary search.
     @inlinable
     public func last(before timeStamp: Double) -> Element? {
-        self.lastIndex(before: timeStamp).map { self.contents[$0] }
+        self.lastIndex(before: timeStamp).map { self[$0] }
     }
     
     
@@ -133,8 +133,8 @@ extension OverlappingIntervals {
         
         var result: [Element] = []
         // Check all intervals starting from the found position
-        for i in low..<self.contents.count {
-            let interval = self.contents[i]
+        for i in low..<self.count {
+            let interval = self[i]
             if interval.onset > timeStamp {
                 break
             }
@@ -169,8 +169,8 @@ extension OverlappingIntervals {
         
         var result: [Element] = []
         // Check all intervals starting from the found position
-        for i in low..<self.contents.count {
-            let interval = self.contents[i]
+        for i in low..<self.count {
+            let interval = self[i]
             if interval.onset > range.upperBound {
                 break
             }

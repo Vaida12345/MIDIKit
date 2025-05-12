@@ -8,7 +8,7 @@
 import AudioToolbox
 
 
-public struct DisjointNotes: DisjointIntervals {
+public struct DisjointNotes: ArrayRepresentable, DisjointIntervals {
     
     public var contents: [ReferenceNote]
     

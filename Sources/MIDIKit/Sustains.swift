@@ -11,7 +11,7 @@ import DetailedDescription
 
 
 /// To support efficient lookup, the sustain events are always sorted.
-public struct MIDISustainEvents: DisjointIntervals, Sendable, Equatable, CustomDetailedStringConvertible {
+public struct MIDISustainEvents: ArrayRepresentable, DisjointIntervals, Sendable, Equatable, CustomDetailedStringConvertible {
     
     public var contents: [Element]
     

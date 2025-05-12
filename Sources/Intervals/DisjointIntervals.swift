@@ -44,7 +44,7 @@ extension DisjointIntervals {
     /// - Complexity: O(log *n*), binary search.
     @inlinable
     public func first(after timeStamp: Double) -> Element? {
-        self.firstIndex(after: timeStamp).map { self.contents[$0] }
+        self.firstIndex(after: timeStamp).map { self[$0] }
     }
     
     /// Returns the last interval whose offset is less than `timeStamp`.
@@ -76,7 +76,7 @@ extension DisjointIntervals {
     /// - Complexity: O(log *n*), binary search.
     @inlinable
     public func last(before timeStamp: Double) -> Element? {
-        self.lastIndex(before: timeStamp).map { self.contents[$0] }
+        self.lastIndex(before: timeStamp).map { self[$0] }
     }
     
     /// Returns the interval at the given time stamp, bounds inclusive.
@@ -110,7 +110,7 @@ extension DisjointIntervals {
     /// - Complexity: O(log *n*), binary search.
     @inlinable
     public subscript(at timeStamp: Double) -> Element? {
-        self.index(at: timeStamp).map { self.contents[$0] }
+        self.index(at: timeStamp).map { self[$0] }
     }
     
     /// Returns the nearest interval to  the given time stamp.

@@ -14,14 +14,16 @@ import Accelerate
 import NativeImage
 
 
-/// MIDI Notes are not sorted.
+/// MIDI Notes are sorted.
 public struct MIDINotes: ArrayRepresentable, Sendable, Equatable, CustomDetailedStringConvertible {
     
+    /// sorted
     public var contents: [MIDITrack.Note]
     
     @inlinable
     public mutating func append(contentsOf: MIDINotes) {
         self.contents.append(contentsOf: contentsOf.contents)
+        self.contents.sort { $0.onset < $1.onset }
     }
     
     @inlinable
@@ -51,7 +53,7 @@ public struct MIDINotes: ArrayRepresentable, Sendable, Equatable, CustomDetailed
     public static let preview: MIDINotes = MIDINotes((21...108).map { MIDINote(onset: Double($0) - 21, offset: Double($0) - 20, note: $0, velocity: $0, channel: 0) })
     
     
-    public init(_ contents: [MIDITrack.Note]) {
+    public init(_ contents: consuming [MIDITrack.Note]) {
         self.contents = contents
     }
     
@@ -358,8 +360,7 @@ extension MIDINotes {
     
     /// Normalize by shrinking the length of notes as far as possible, while ensuring the offset are in the same sustain region.
     public func normalizedLengthByShrinkingKeepingOffsetInSameRegion(sustains: MIDISustainEvents, minimumLength: Double = 1/128) -> MIDINotes {
-        let notes = self.contents.sorted(by: { $0.onset < $1.onset })
-        
+        let notes = self.contents
         return MIDINotes(notes.enumerated().map { index, note in
             var note = note
             let onsetSustainRegion = sustains[at: note.onset]

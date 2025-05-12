@@ -20,9 +20,9 @@ public struct RunningAverage {
     ///
     /// - Parameter runningLength: The default value is `4` beats, that is one measure in a 4/4 sheet.
     init(
-        combinedNotes: CombinedNotes,
+        combinedNotes: UnsafeMutableBufferPointer<MIDINote>,
         runningLength: Double = 4
-    ) async {
+    ) {
         var contents: [Element] = []
         combinedNotes.forEach { index, note in
             var notesMin = note.note

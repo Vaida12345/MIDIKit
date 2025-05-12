@@ -47,6 +47,7 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
         return sequence
     }
     
+    @inlinable
     @available(*, deprecated, renamed: "write(to:)")
     public func writeData(to destination: FinderItem) throws {
         try destination.removeIfExists()
@@ -55,6 +56,7 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
     }
     
     /// Writes the MIDI as file to `destination`.
+    @inlinable
     public func write(to destination: FinderItem) throws {
         try destination.removeIfExists()
         let code = MusicSequenceFileCreate(self.makeSequence(), destination.url as CFURL, .midiType, .eraseFile, .max)
@@ -62,6 +64,7 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
     }
     
     /// Obtain the MIDI data.
+    @inlinable
     public func data() throws -> Data {
         var data: Unmanaged<CFData>?
         let code = MusicSequenceFileCreateData(self.makeSequence(), .midiType, .eraseFile, 0, &data)
@@ -69,6 +72,7 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
         return data!.takeRetainedValue() as Data
     }
     
+    @inlinable
     public init(tracks: [MIDITrack] = [], tempo: MIDITempoTrack = MIDITempoTrack(events: [], tempos: [])) {
         self.tracks = tracks
         self.tempo = tempo
@@ -171,6 +175,7 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
                 MusicEventIteratorNextEvent(iterator)
             }
             midiTrack.sustains = MIDISustainEvents(sustains)
+            midiTrack.notes.contents.sort { $0.onset < $1.onset }
             
             return midiTrack
         }
@@ -193,6 +198,7 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
         self.init(tracks: midiTracks, tempo: .init(events: midiTempoTrack!.metaEvents, tempos: additionInfo.tempos))
     }
     
+    @inlinable
     public init(at source: FinderItem) throws {
         var sequence: MusicSequence?
         NewMusicSequence(&sequence)
@@ -207,11 +213,12 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
         try self.init(sequence: sequence)
     }
     
-    
+    @inlinable
     public var description: String {
         self.detailedDescription
     }
     
+    @inlinable
     public func detailedDescription(using descriptor: DetailedDescription.Descriptor<MIDIContainer>) -> any DescriptionBlockProtocol {
         descriptor.container {
             descriptor.sequence(for: \.tracks)

@@ -32,7 +32,7 @@ struct DistanceTests {
     }
     
     @Test func notesClustering() async throws {
-        let notes = MIDINotes(notes: [0.1, 0.12, 0.15, 0.23, 0.28, 0.3, 0.5].map {
+        let notes = MIDINotes([0.1, 0.12, 0.15, 0.23, 0.28, 0.3, 0.5].map {
             MIDINote(onset: $0, offset: 10, note: 10, velocity: 10, channel: 0)
         })
         
