@@ -45,7 +45,7 @@ extension IndexedContainer {
     ///   - threshold: The velocity of a note to be treated as artifact.
     ///
     /// - Returns: A new ``IndexedContainer`` initialized using the parameters used in the initializer for this instance.
-    public func removingArtifacts(threshold: UInt8) async -> IndexedContainer {
+    public func removingArtifacts(threshold: UInt8) -> IndexedContainer {
         var contents: [UInt8 : DisjointNotes] = [:]
         contents.reserveCapacity(self.notes.count)
         
@@ -91,7 +91,7 @@ extension IndexedContainer {
             contents[index] = DisjointNotes(notes)
         }
         
-        return await IndexedContainer(notes: contents, sustains: self.sustains, runningLength: self.parameters.runningLength)
+        return IndexedContainer(notes: contents, sustains: self.sustains, runningLength: self.parameters.runningLength)
     }
     
     /// Apply the gap between consecutive notes.

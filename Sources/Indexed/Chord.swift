@@ -67,7 +67,7 @@ public struct Chord: RandomAccessCollection {
     public static func makeChords(
         from container: IndexedContainer,
         spec: Spec = Spec()
-    ) async -> [Chord] {
+    ) -> [Chord] {
         guard !container.isEmpty else { return [] }
         
         /// Returns minimum distance between onsets of any two notes in each cluster.
