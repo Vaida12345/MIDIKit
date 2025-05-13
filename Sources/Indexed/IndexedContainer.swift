@@ -94,9 +94,12 @@ public final class IndexedContainer {
         let sustains: MIDISustainEvents
         
         if container.tracks.count == 1,
-           var track = container.tracks.first {
-            contents = .allocate(capacity: track.notes.count)
-            memcpy(contents.baseAddress!, &track.notes.contents, MemoryLayout<MIDINote>.stride * track.notes.count)
+           let track = container.tracks.first {
+            var notes = track.notes.contents
+            notes.sort { $0.onset < $1.onset }
+            contents = .allocate(capacity: notes.count)
+            memcpy(contents.baseAddress!, &notes, MemoryLayout<MIDINote>.stride * notes.count)
+            
             sustains = track.sustains
         } else {
             var notes = container.tracks.flatMap(\.notes)

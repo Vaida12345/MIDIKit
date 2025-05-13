@@ -14,7 +14,7 @@ import Accelerate
 import NativeImage
 
 
-/// MIDI Notes are sorted.
+/// MIDI Notes are **not** sorted.
 public struct MIDINotes: ArrayRepresentable, Sendable, Equatable, CustomDetailedStringConvertible {
     
     /// sorted
@@ -23,7 +23,6 @@ public struct MIDINotes: ArrayRepresentable, Sendable, Equatable, CustomDetailed
     @inlinable
     public mutating func append(contentsOf: MIDINotes) {
         self.contents.append(contentsOf: contentsOf.contents)
-        self.contents.sort { $0.onset < $1.onset }
     }
     
     @inlinable

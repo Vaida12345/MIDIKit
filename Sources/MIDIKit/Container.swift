@@ -175,7 +175,6 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
                 MusicEventIteratorNextEvent(iterator)
             }
             midiTrack.sustains = MIDISustainEvents(sustains)
-            midiTrack.notes.contents.sort { $0.onset < $1.onset }
             
             return midiTrack
         }
