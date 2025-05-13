@@ -23,7 +23,7 @@ extension IndexedContainer {
         
         let chords = Chord.makeChords(from: self)
         let margin: Double = 1/4 // the padding after sustain
-        let minimumLength: Double = 1/64
+        let minimumLength: Double = Chord.Spec().duration * 2
         
         chords.forEach { __index, chord in
             
@@ -74,6 +74,7 @@ extension IndexedContainer {
                 if let onset, let offset {
                     // An sustain was found for offset & onset
                     if onset == offset {
+                        assert(onsetIndex == offsetIndex)
                         // The onset and offset are in the same sustain region.
                         
                         // The length can be free.
@@ -82,6 +83,7 @@ extension IndexedContainer {
                             clamp(note.offset, max: nextNote),
                             channel: 0
                         )
+                        return // no need to use proximity based method
                     } else if onsetNextIndex! == offsetIndex! {
                         // The onset and offset and in adjacent sustain regions.
                         span(offset)
@@ -195,6 +197,25 @@ extension IndexedContainer {
 #endif
                 }
                 
+                
+                // MARK: - proximity based
+                
+                var nextProximateOnset: Double? = nil
+                for i in stride(from: note.note - 5, through: note.note + 5, by: 1) {
+                    guard let note = self.notes[i]?.first(after: note.onset + minimumLength) else { continue }
+                    
+                    if nextProximateOnset == nil || nextProximateOnset! > note.onset {
+                        nextProximateOnset = note.onset
+                    }
+                }
+                
+                if let nextProximateOnset {
+                    if note.offset > nextProximateOnset {
+                        note.offset = nextProximateOnset
+                        debugChannel(11)
+                    }
+                }
+                
             } // forEach
             
             guard indeterminate.count == 1 else { return }
@@ -204,8 +225,10 @@ extension IndexedContainer {
             // the indeterminate one could be inferred using
             let average = determinants.average(of: \.offset)!
             let removed = indeterminate.removeFirst()
-            removed.offset = max(average, removed.onset + minimumLength)
-            
+            removed.offset = min(removed.offset, max(average, removed.onset + minimumLength))
+#if DEBUG
+            removed.channel = 12
+#endif
         }
     }
     
