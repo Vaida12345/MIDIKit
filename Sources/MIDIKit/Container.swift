@@ -213,6 +213,27 @@ public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConver
     }
     
     @inlinable
+    public init(data: Data) throws {
+        let sequence: MusicSequence? = nil
+        guard let sequence else {
+            fatalError()
+        }
+        
+        // 3) load it - we use kAudioFileMIDIType to mean “Standard MIDI File”
+        //    and here I ask CoreAudio to preserve the track boundaries
+        let status = MusicSequenceFileLoadData(
+            sequence,
+            data as CFData,
+            .midiType,
+            .smf_PreserveTracks
+        )
+        
+        guard status == noErr else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(status)) }
+        
+        try self.init(sequence: sequence)
+    }
+    
+    @inlinable
     public var description: String {
         self.detailedDescription
     }
