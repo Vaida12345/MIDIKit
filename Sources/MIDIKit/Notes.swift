@@ -15,7 +15,7 @@ import NativeImage
 
 
 /// MIDI Notes are **not** sorted.
-public struct MIDINotes: ArrayRepresentable, Sendable, Equatable, CustomDetailedStringConvertible {
+public struct MIDINotes: ArrayRepresentable, Sendable, Equatable, DetailedStringConvertible {
     
     /// sorted
     public var contents: [MIDITrack.Note]

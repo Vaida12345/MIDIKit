@@ -196,7 +196,7 @@ public struct Chord: RandomAccessCollection {
 }
 
 
-extension Chord: CustomDetailedStringConvertible {
+extension Chord: DetailedStringConvertible {
     
     public func detailedDescription(using descriptor: DetailedDescription.Descriptor<Chord>) -> any DescriptionBlockProtocol {
         descriptor.container {

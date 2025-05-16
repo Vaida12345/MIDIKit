@@ -10,7 +10,7 @@ import DetailedDescription
 import AVFoundation
 
 
-public struct MIDITempoTrack: Sendable, CustomStringConvertible, CustomDetailedStringConvertible, Equatable, ArrayRepresentable {
+public struct MIDITempoTrack: Sendable, CustomStringConvertible, DetailedStringConvertible, Equatable, ArrayRepresentable {
     
     public var events: [MIDIMetaEvent]
     

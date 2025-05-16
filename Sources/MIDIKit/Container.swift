@@ -12,7 +12,7 @@ import DetailedDescription
 import FinderItem
 
 
-public struct MIDIContainer: CustomStringConvertible, CustomDetailedStringConvertible, Sendable, Equatable {
+public struct MIDIContainer: CustomStringConvertible, DetailedStringConvertible, Sendable, Equatable {
     
     public var tracks: [MIDITrack]
     

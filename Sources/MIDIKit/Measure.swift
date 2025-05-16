@@ -19,7 +19,7 @@ import DetailedDescription
 /// The **denominator** indicates *n*th note gets one *beat*.
 ///
 /// For Example, a `4/4` indicates that there are 4 beats per measure, and each beat is a quarter note
-public struct MIDIMeasure: Equatable, CustomDetailedStringConvertible {
+public struct MIDIMeasure: Equatable, DetailedStringConvertible {
     
     var notes: MIDINotes
     
