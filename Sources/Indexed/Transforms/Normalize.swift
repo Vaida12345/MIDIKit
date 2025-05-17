@@ -24,6 +24,7 @@ extension IndexedContainer {
         let chords = Chord.makeChords(from: self)
         let margin: Double = 1/4 // the padding after sustain
         let minimumLength: Double = Chord.Spec().duration * 2
+        let runningAverage = RunningAverage(combinedNotes: self.contents)
         
         chords.forEach { __index, chord in
             
@@ -157,7 +158,7 @@ extension IndexedContainer {
                         return
                     }
                     
-                    let average = self.average[at: note.onset]!
+                    let average = runningAverage[at: note.onset]!
                     if note.note < average.note {
                         // maybe this is the left hand, leave it. For example, Moonlight I.
                     } else {

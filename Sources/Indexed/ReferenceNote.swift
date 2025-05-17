@@ -12,6 +12,14 @@ import AudioToolbox
 public typealias ReferenceNote = UnsafeMutablePointer<MIDINote>
 
 
+extension ReferenceNote: @retroactive CustomStringConvertible {
+    
+    public var description: String {
+        self.pointee.description
+    }
+    
+}
+
 extension ReferenceNote: Interval {
     
     @inlinable

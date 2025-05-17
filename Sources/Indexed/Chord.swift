@@ -32,6 +32,10 @@ public struct Chord: RandomAccessCollection {
     public var startIndex: Int { 0 }
     public var endIndex: Int { contents.count }
     
+    var leadingOnset: Double {
+        self.contents.first!.onset
+    }
+    
     
     public init(contents: [ReferenceNote], maxOffset: Double?) {
         self.contents = contents
@@ -87,43 +91,6 @@ public struct Chord: RandomAccessCollection {
             
             // ensure minimum distance is smaller than threshold: O(1)
             guard minDistance(lhs, rhs) <= spec.duration else { return false }
-            
-            
-//            // hand-based analysis
-//            guard (lhs.count + rhs.count) > 2 else { return true }
-//            let contents = lhs.contents + rhs.contents
-//            
-//            // cluster into hands: O(n)
-//            var left: [ReferenceNote] = []
-//            var right: [ReferenceNote] = []
-//            left.reserveCapacity(contents.count)
-//            right.reserveCapacity(contents.count)
-//            
-//            let minIndex = contents.minIndex(of: \.note)
-//            let maxIndex = contents.maxIndex(of: \.note)
-//            let min = contents[minIndex!]
-//            let max = contents[maxIndex!]
-//            
-//            contents.forEach { index, element in
-//                if index == minIndex {
-//                    left.append(min)
-//                } else if index == maxIndex {
-//                    right.append(max)
-//                } else {
-//                    let leftDistance = element.note - min.note
-//                    let rightDistance = max.note - element.note
-//                    if leftDistance < rightDistance {
-//                        left.append(element)
-//                    } else {
-//                        right.append(element)
-//                    }
-//                }
-//            }
-//            
-//            // ensure hands can reach: O(n)
-//            guard left.max(of: \.note)! - left.min(of: \.note)! < spec.handWidth,
-//                    right.max(of: \.note)! - right.min(of: \.note)! < spec.handWidth else { return false }
-            
             
             return true
         }
@@ -213,6 +180,36 @@ extension Chord: CustomStringConvertible {
     
     public var description: String {
         self.contents.description
+    }
+    
+}
+
+
+extension Array<Chord> {
+    
+    /// Returns the first interval whose onset is greater than `timeStamp`.
+    ///
+    /// - Complexity: O(log *n*), binary search.
+    func firstIndex(after timeStamp: Double) -> Index? {
+        var left = 0
+        var right = self.count
+        
+        while left < right {
+            let mid = (left + right) / 2
+            if self[mid].leadingOnset > timeStamp {
+                right = mid
+            } else {
+                left = mid + 1
+            }
+        }
+        
+        // After the loop, 'left' is the index of the first element greater than the value, if it exists.
+        // Check if 'left' is within bounds and return the element if it exists.
+        if left < self.count {
+            return left
+        } else {
+            return nil
+        }
     }
     
 }

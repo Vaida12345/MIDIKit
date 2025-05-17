@@ -8,7 +8,7 @@
 import AudioToolbox
 
 
-public struct MIDISustainEvent: Sendable, Equatable, Interval {
+public struct MIDISustainEvent: Sendable, Equatable, Interval, Hashable {
     
     public var onset: MusicTimeStamp
     

@@ -10,6 +10,8 @@ import Essentials
 
 
 /// Container supporting efficient lookup.
+///
+/// In the implementation, methods that involve insertion or removal of notes returns a new container, as this structure has two properties containing the notes, for efficient lookup.
 public final class IndexedContainer {
     
     /// The notes grouped by the key.
@@ -23,10 +25,7 @@ public final class IndexedContainer {
     public let contents: UnsafeMutableBufferPointer<MIDINote>
     
     /// The sustain events.
-    public let sustains: MIDISustainEvents
-    
-    /// The running average.
-    public let average: RunningAverage
+    public var sustains: MIDISustainEvents
     
     /// The stored parameter for methods that returns a new ``IndexedContainer``.
     internal let parameters: Parameters
@@ -75,7 +74,6 @@ public final class IndexedContainer {
         self.contents = .allocate(capacity: combinedNotes.count)
         memcpy(self.contents.baseAddress, &combinedNotes, MemoryLayout<MIDINote>.stride * combinedNotes.count)
         
-        self.average = RunningAverage(combinedNotes: self.contents, runningLength: runningLength)
         self.parameters = Parameters(runningLength: runningLength)
     }
     
@@ -113,8 +111,6 @@ public final class IndexedContainer {
         self.contents = contents
         self.sustains = sustains
         
-        let average = RunningAverage(combinedNotes: contents, runningLength: runningLength)
-        
         // construct grouped
         var grouped: [UInt8 : [ReferenceNote]] = [:]
         contents.forEach { index, element in
@@ -138,7 +134,6 @@ public final class IndexedContainer {
         _ = consume grouped
         
         self.notes = dictionary
-        self.average = average
         self.parameters = Parameters(runningLength: runningLength)
     }
     

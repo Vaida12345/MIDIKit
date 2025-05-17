@@ -120,4 +120,24 @@ extension IndexedContainer {
         }
     }
     
+    /// Aligns the first note in the sequence to the start of the timeline (0:00:00).
+    ///
+    /// This function shifts all notes so that the earliest note starts exactly at time zero, preserving the relative timing between notes.
+    public func alignFirstNoteToZero() {
+        let firstNoteOnset = self.contents.first?.onset ?? 0
+        var i = self.contents.startIndex
+        while i < self.contents.endIndex {
+            self.contents[i].onset -= firstNoteOnset
+            self.contents[i].offset -= firstNoteOnset
+            i &+= 1
+        }
+        
+        i = self.sustains.startIndex
+        while i < self.sustains.endIndex {
+            self.sustains[i].onset -= firstNoteOnset
+            self.sustains[i].offset -= firstNoteOnset
+            i &+= 1
+        }
+    }
+    
 }
