@@ -45,7 +45,7 @@ struct DebugView: View {
                         .frame(width: 2)
                         .overlay(alignment: .topTrailing) {
                             Text(downbeat.onset, format: .number.precision(.fractionLength(2)))
-                                .frame(width: 40)
+                                .frame(width: 50)
                                 .offset(x: 40)
                                 .foregroundStyle(.secondary.opacity(0.5))
                         }

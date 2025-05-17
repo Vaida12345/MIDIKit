@@ -109,7 +109,7 @@ extension IndexedContainer {
             
             // distance-based
             for (i, base) in bases.enumerated() {
-                weights[i] += normalPDF(x: base.onset, mean: beat, stdDev: baselineBarLength / 2) / 0.4
+                weights[i] += normalPDF(x: base.onset, mean: beat, stdDev: baselineBarLength / 2) / 0.4 * 2
             }
             
             // pointy-end
@@ -119,21 +119,21 @@ extension IndexedContainer {
 //            let baseSpan = Double(highBase - lowerBase)
             for i in 0..<bases.count {
                 // explore left
-                var left = i + firstChordIndex
+                var left = i + firstChordIndex - 1
                 while left >= max(firstChordIndex - chords.count, 0) { // lower limit
-                    guard _bases[left].note >= _bases[i + firstChordIndex].note else { break }
+                    guard _bases[left].note > _bases[i + firstChordIndex].note else { break }
                     left -= 1
                 }
                 pointyCount[i] += Double(i + firstChordIndex - left)/* * Double(highBase - _bases[i + firstChordIndex].note) / baseSpan*/
             }
-            print(bases.map(\.onset))
-            print(pointyCount)
+            print(bases.map { $0.onset.formatted(.number.precision(.integerAndFractionLength(integer: 3, fraction: 2))) }.joined(separator: "  "))
+            print(pointyCount.map { $0.formatted(.number.precision(.integerAndFractionLength(integer: 3, fraction: 2))) }.joined(separator: "  "))
             
             let pointyCountMax = pointyCount.max()!
             for i in 0..<bases.count {
-                weights[i] += (pointyCount[i] / pointyCountMax)
+                weights[i] += pointyCountMax == 0 ? 0 : (pointyCount[i] / pointyCountMax)
             }
-            print(weights)
+            print(weights.map { $0.formatted(.number.precision(.integerAndFractionLength(integer: 3, fraction: 2))) }.joined(separator: "  "))
             
             // change in base
             
