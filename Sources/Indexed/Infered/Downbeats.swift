@@ -119,7 +119,7 @@ extension IndexedContainer {
             
             // distance-based
             for (i, base) in bases.enumerated() {
-                weights[i] += normalPDF(x: base.onset, mean: beat, stdDev: baselineBarLength / 4) / 0.4 * 2
+                weights[i] += unitNormalPDF(x: base.onset, mean: beat, stdDev: baselineBarLength / 4) * 2
             }
             
             // pointy-end
@@ -179,7 +179,11 @@ public extension Collection where Index == Int, Element: BinaryFloatingPoint {
 }
 
 
-func normalPDF(x: Double, mean: Double = 0, stdDev: Double = 1) -> Double {
-    let exponent = -pow(x - mean, 2) / (2 * pow(stdDev, 2))
-    return (1.0 / (stdDev * sqrt(2 * .pi))) * exp(exponent)
+func unitNormalPDF(x: Double, mean: Double = 0, stdDev: Double = 1) -> Double {
+    func f(x: Double) -> Double {
+        let exponent = -pow(x - mean, 2) / (2 * pow(stdDev, 2))
+        return (1.0 / (stdDev * sqrt(2 * .pi))) * exp(exponent)
+    }
+    
+    return f(x: x) / f(x: mean)
 }

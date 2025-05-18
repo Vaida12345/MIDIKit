@@ -6,12 +6,87 @@
 //
 
 import Foundation
+import Essentials
 
 
-public enum Hand {
+fileprivate enum Hand: CaseIterable, CustomStringConvertible {
     case left
     case right
+    
+    var rightHandness: Double {
+        self.isRightHand ? 1.0 : -1.0
+    }
+    
+    var isRightHand: Bool {
+        self == .right
+    }
+    
+    var description: String {
+        switch self {
+        case .left: "left"
+        case .right: "right"
+        }
+    }
 }
+
+
+fileprivate struct HandCost {
+    
+    var left: Double = 0
+    
+    var right: Double = 0
+    
+    
+    var minCostHand: Hand {
+        if left < right {
+            return .left
+        } else {
+            return .right
+        }
+    }
+    
+    
+    subscript(_ hand: Hand) -> Double {
+        get {
+            switch hand {
+            case .left: self.left
+            case .right: self.right
+            }
+        }
+        set {
+            switch hand {
+            case .left: self.left = newValue
+            case .right: self.right = newValue
+            }
+        }
+    }
+    
+}
+
+fileprivate struct HandBacktrack {
+    
+    var left: Hand = .left
+    
+    var right: Hand = .left
+    
+    
+    subscript(_ hand: Hand) -> Hand {
+        get {
+            switch hand {
+            case .left: self.left
+            case .right: self.right
+            }
+        }
+        set {
+            switch hand {
+            case .left: self.left = newValue
+            case .right: self.right = newValue
+            }
+        }
+    }
+    
+}
+
 
 
 extension IndexedContainer {
@@ -19,36 +94,130 @@ extension IndexedContainer {
     public func assignHands() {
         guard !self.isEmpty else { return }
         
-//        • Pitch proximity: Consecutive notes that are close in pitch are likely to belong to the same hand. Large leaps tend to imply hand changes or chord boundaries.
-//        • Time adjacency: Consecutive notes in very quick succession (e.g., a fast scale) are often played by the same hand—unless the pitch jump is extremely large.
-//        • Chord grouping: Notes that sound simultaneously (or nearly simultaneously) and form a chord typically belong to one hand if they are in a contiguous pitch region. If chord tones span widely (like a 10th or more between them), it may suggest a split between hands.
-//        • Physical constraints: Pianists rarely cross their arms for very long passages. If your ML output tries to keep the left hand consistently above the right in pitch, that’s usually non-idiomatic. A cost function can penalize extreme or persistent crossing.
-        
         // MARK: - Cost functions
         // All cost function should be normalized between 0 and 1, with 0 being no cost.
         
         /// Hand range priors
         ///
         /// By default, the left hand is more comfortable below a certain pitch zone while the right hand is more comfortable above it. But this boundary is not fixed; it can shift or be overridden if other heuristics suggest it.
-        func handRangeCost(note: MIDINote, hand: Hand, boundary: UInt8) -> Double {
+        func handRangeCost(note: ReferenceNote, hand: Hand, boundary: UInt8, span: UInt8) -> Double {
             let spreadFactor: Double = 7
-            let distance = (Int(note.note) - Int(boundary)) * (hand == .right ? 1 : -1)
-            return -tanh(Double(distance) / spreadFactor) / 2 + 0.5
+            let distance = Double(Int(note.note) - Int(boundary)) * hand.rightHandness
+            return -tanh(distance / spreadFactor) / 2 + 0.5
         }
         
-//        /// The transition cost form moving from prev note to curr note.
-//        func transitionCost(from prevNote: ReferenceNote, hand prevHand: Hand, to currNote: ReferenceNote, hand currHand: Hand) -> Double {
-//            
-//        }
+        /// The transition cost form moving from prev note to curr note.
+        func transitionCost(
+            from prevNote: ReferenceNote, hand prevHand: Hand,
+            to currNote: ReferenceNote, hand currHand: Hand,
+            boundary: UInt8, span: UInt8
+        ) -> Double {
+            var cost = 0.0
+            
+            let pitchDifference = Double(currNote.note) - Double(prevNote.note)
+            let pitchDistance = abs(pitchDifference)
+            let onsetDistance = Double(currNote.onset) - Double(prevNote.onset)
+            
+            // Pitch proximity: Consecutive notes that are close in pitch are likely to belong to the same hand. Large leaps tend to imply hand changes or chord boundaries.
+            if prevHand == currHand {
+                if pitchDistance <= 13 {
+                    cost += 0
+                } else {
+                    if pitchDistance <= 16 {
+                        cost += linearInterpolate(pitchDistance, in: 13...16, to: 0.5...1)
+                    } else {
+                        cost += 2 // unlikely
+                    }
+                }
+            } else {
+                cost += 0.5 // cross hand cost
+                
+                let diff = pitchDifference * currHand.rightHandness
+                if diff > 0 {
+                    cost += 0
+                } else if diff == 0 {
+                    cost += 0.9 // unlikely, two hand playing the same note?
+                } else if diff < -13 {
+                    cost += 0.5 // cross hand
+                } else {
+                    cost += 1.5 // unlikely, two hand playing at the same place?
+                }
+            }
+            
+            return cost
+        }
         
         
         // MARK: - Computation
         let average = RunningAverage(combinedNotes: self.contents)
         
-        for (index, note) in self.contents.enumerated() {
-            let average = average[at: note.onset]!
-            let cost = handRangeCost(note: note, hand: .left, boundary: average.note)
-            self.contents[index].velocity = UInt8(cost * 127)
+//        var dp = Array(repeating: [String: Double](), count: groups.count)
+//        var backtrack = Array(repeating: [String: String](), count: groups.count)
+        var costs = Array(repeating: HandCost(), count: self.contents.count)
+        var backtrack = Array(repeating: HandBacktrack(), count: self.contents.count)
+        var contents = self.contents.enumerated().map {
+            self.contents.baseAddress! + $0.offset
+        }
+        // sort
+        contents.sort { lhs, rhs in
+            if abs(lhs.onset - rhs.onset) < Chord.Spec().duration {
+                lhs.note < rhs.note
+            } else {
+                lhs.onset < rhs.onset
+            }
+        }
+        
+        
+        let initialAverage = average[at: contents.first!.onset]!
+        for hand in Hand.allCases {
+            let note = contents[0]
+            let cost = handRangeCost(note: note, hand: hand, boundary: initialAverage.note, span: initialAverage.span)
+            costs[0][hand] = cost
+        }
+        
+        for i in 1..<contents.count {
+            let prev = contents[i - 1]
+            let curr = contents[i]
+            let average = average[at: curr.onset]!
+            print(prev.onset)
+            print("=========================")
+            
+            for hand in Hand.allCases {
+                var bestCost = Double.infinity
+                var bestPrevHand: Hand = .left
+                
+                for prevHand in Hand.allCases {
+                    let cost = handRangeCost(note: curr, hand: hand, boundary: average.note, span: average.span)
+                    let transCost = transitionCost(from: prev, hand: prevHand, to: curr, hand: hand, boundary: average.note, span: average.span)
+                    let totalCost = costs[i-1][prevHand] + cost + transCost
+                    
+                    if totalCost < bestCost {
+                        bestCost = totalCost
+                        bestPrevHand = prevHand
+                    }
+                    
+                    print(prev.note, prevHand)
+                    print(curr.note, hand)
+                    
+                    print(totalCost)
+                    print()
+                }
+                
+                costs[i][hand] = bestCost
+                backtrack[i][hand] = bestPrevHand
+            }
+            
+            print()
+        }
+        
+        
+        var lastHand = costs.last!.minCostHand
+        contents[contents.count - 1].velocity = lastHand.isRightHand ? 127 : 0
+        
+        for i in stride(from: contents.count - 1, through: 0, by: -1) {
+            let prevHand = backtrack[i][lastHand]
+            lastHand = prevHand
+            contents[i].velocity = lastHand.isRightHand ? 127 : 0
         }
     }
     

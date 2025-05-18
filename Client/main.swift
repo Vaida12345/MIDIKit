@@ -25,3 +25,4 @@ print(date.distanceToNow())
 
 indexed.assignHands()
 await DebugView(container: indexed).render(to: .desktopDirectory/"debug.pdf", format: .pdf, scale: 1)
+await DebugPointsPlot().render(to: .desktopDirectory/"points plot.pdf", format: .pdf, scale: 1)

@@ -20,28 +20,33 @@ public struct RunningAverage {
     ///
     /// - Parameter runningLength: The default value is `4` beats, that is one measure in a 4/4 sheet.
     init(
-        combinedNotes: UnsafeMutableBufferPointer<MIDINote>,
-        runningLength: Double = 4
+        combinedNotes: UnsafeMutableBufferPointer<MIDINote>
     ) {
         var contents: [Element] = []
         combinedNotes.forEach { index, note in
             var notesMin = note.note
             var notesMax = note.note
-            var j = combinedNotes.lastIndex(before: note.onset - runningLength * 2) ?? 0
-            while j < combinedNotes.endIndex, combinedNotes[j].onset < note.onset + runningLength / 2 {
-                if combinedNotes[j].offset > note.onset - runningLength / 2 {
+            var j = combinedNotes.lastIndex(before: note.onset - 4) ?? 0
+            while j < combinedNotes.endIndex, combinedNotes[j].onset < note.onset + 4 {
+                if combinedNotes[j].offset > note.onset - 4 {
                     let new = combinedNotes[j].note
-                    if notesMin > new {
-                        notesMin = new
-                    } else if notesMax < new {
-                        notesMax = new
+                    // Gaussian distribute
+                    let diff = Double(new) - Double(note.note)
+                    let scale = unitNormalPDF(x: abs(combinedNotes[j].onset - note.onset), stdDev: 1) // values begins to be non-zero from 4 units apart
+                    
+                    let value = UInt8(Double(note.note) + scale * diff)
+                    
+                    if notesMin > value {
+                        notesMin = value
+                    } else if notesMax < value {
+                        notesMax = value
                     }
                 }
                 
                 j &+= 1
             }
             
-            contents.append(Element(onset: note.onset, note: (notesMin + notesMax) / 2))
+            contents.append(Element(onset: note.onset, note: (notesMin + notesMax) / 2, span: notesMax - notesMin))
         }
         
         self.contents = contents
@@ -79,6 +84,9 @@ public struct RunningAverage {
         public let onset: Double
         
         public let note: UInt8
+        
+        /// Pitch-span
+        public let span: UInt8
         
     }
     
