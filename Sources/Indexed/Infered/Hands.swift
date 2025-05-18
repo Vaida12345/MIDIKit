@@ -32,7 +32,7 @@ extension IndexedContainer {
         /// By default, the left hand is more comfortable below a certain pitch zone while the right hand is more comfortable above it. But this boundary is not fixed; it can shift or be overridden if other heuristics suggest it.
         func handRangeCost(note: MIDINote, hand: Hand, boundary: UInt8) -> Double {
             let spreadFactor: Double = 7
-            let distance = hand == .right ? note.note - boundary : boundary - note.note
+            let distance = (Int(note.note) - Int(boundary)) * (hand == .right ? 1 : -1)
             return -tanh(Double(distance) / spreadFactor) / 2 + 0.5
         }
         

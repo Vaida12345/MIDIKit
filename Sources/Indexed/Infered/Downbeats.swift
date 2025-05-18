@@ -27,14 +27,63 @@ extension IndexedContainer {
     ) -> Double {
         let durations = self.sustains.map(\.duration)
         
+        /// - Complexity: O(*n*).
+        func loss(distances: [Double], reference: Double) -> Double {
+            var i = 0
+            var loss: Double = 0
+            while i < distances.count {
+                let remainder = distances[i].truncatingRemainder(dividingBy: reference)
+                assert(remainder >= 0)
+                loss += Swift.min(remainder, Swift.max(reference - remainder, 0))
+                
+                i &+= 1
+            }
+            
+            return loss
+        }
+        
+        /// - Complexity: O(*n* log *n*).
+        func goldenSectionSearch(left: Double, right: Double, tolerance: Double = 1e-5, body: (Double) -> Double) -> Double {
+            let gr = (sqrt(5) + 1) / 2 // Golden ratio constant
+            
+            var a = left
+            var b = right
+            
+            // We are looking for the minimum, so we apply the golden section search logic
+            var c = b - (b - a) / gr
+            var d = a + (b - a) / gr
+            
+            while abs(c - d) > tolerance {
+                if body(c) < body(d) {
+                    b = d
+                } else {
+                    a = c
+                }
+                
+                c = b - (b - a) / gr
+                d = a + (b - a) / gr
+            }
+            
+            // The point of minimum loss is between a and b
+            return (b + a) / 2
+        }
+        
         var median = durations.median ?? 0
-        let variance: Double = median * 3 / 2
+        let variance: Double = median / 2
         
         if median < 3 {
             median *= 2
         }
         
-        return median
+        let fit = goldenSectionSearch(left: median - variance, right: median + variance * 3) {
+            loss(distances: durations, reference: $0)
+        }
+        if abs(median - variance - fit) < 0.1 {
+            // no pattern found
+            return median
+        } else {
+            return fit
+        }
     }
     
     public func downbeats() -> [MIDINote] {
