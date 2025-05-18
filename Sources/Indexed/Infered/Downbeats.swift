@@ -27,61 +27,22 @@ extension IndexedContainer {
     ) -> Double {
         let durations = self.sustains.map(\.duration)
         
-        /// - Complexity: O(*n*).
-        func loss(distances: [Double], reference: Double) -> Double {
-            var i = 0
-            var loss: Double = 0
-            while i < distances.count {
-                let remainder = distances[i].truncatingRemainder(dividingBy: reference)
-                assert(remainder >= 0)
-                loss += Swift.min(remainder, Swift.max(reference - remainder, 0))
-                
-                i &+= 1
-            }
-            
-            return loss
+        var median = durations.median ?? 0
+        let variance: Double = median * 3 / 2
+        
+        if median < 3 {
+            median *= 2
         }
         
-        /// - Complexity: O(*n* log *n*).
-        func goldenSectionSearch(left: Double, right: Double, tolerance: Double = 1e-5, body: (Double) -> Double) -> Double {
-            let gr = (sqrt(5) + 1) / 2 // Golden ratio constant
-            
-            var a = left
-            var b = right
-            
-            // We are looking for the minimum, so we apply the golden section search logic
-            var c = b - (b - a) / gr
-            var d = a + (b - a) / gr
-            
-            while abs(c - d) > tolerance {
-                if body(c) < body(d) {
-                    b = d
-                } else {
-                    a = c
-                }
-                
-                c = b - (b - a) / gr
-                d = a + (b - a) / gr
-            }
-            
-            // The point of minimum loss is between a and b
-            return (b + a) / 2
-        }
-        
-        let median = durations.median ?? 0
-        let variance: Double = max(1/6, median * 0.5)
-        
-        print("Sustain median is \(median)")
-        
-        return goldenSectionSearch(left: median - variance, right: median + variance) {
-            loss(distances: durations, reference: $0)
-        }
+        return median
     }
     
     public func downbeats() -> [MIDINote] {
         guard !self.isEmpty else { return [] }
         let _chords = Chord.makeChords(from: self)
         let baselineBarLength = self.baselineBarLength()
+        
+        print("baselineBarLength is \(baselineBarLength)")
         
         var beat = baselineBarLength
         var downbeats: [MIDINote] = [self.contents.first!]
@@ -109,7 +70,7 @@ extension IndexedContainer {
             
             // distance-based
             for (i, base) in bases.enumerated() {
-                weights[i] += normalPDF(x: base.onset, mean: beat, stdDev: baselineBarLength / 2) / 0.4 * 2
+                weights[i] += normalPDF(x: base.onset, mean: beat, stdDev: baselineBarLength / 4) / 0.4 * 2
             }
             
             // pointy-end
@@ -126,14 +87,15 @@ extension IndexedContainer {
                 }
                 pointyCount[i] += Double(i + firstChordIndex - left)/* * Double(highBase - _bases[i + firstChordIndex].note) / baseSpan*/
             }
-            print(bases.map { $0.onset.formatted(.number.precision(.integerAndFractionLength(integer: 3, fraction: 2))) }.joined(separator: "  "))
-            print(pointyCount.map { $0.formatted(.number.precision(.integerAndFractionLength(integer: 3, fraction: 2))) }.joined(separator: "  "))
+            print(bases.map { $0.onset.formatted(.number.precision(.fractionLength(2))).prepadding(toLength: 6, withPad: " ") }.joined(separator: "  "))
+            print(weights.map { $0.formatted(.number.precision(.fractionLength(2))).prepadding(toLength: 6, withPad: " ") }.joined(separator: "  "))
+            print(pointyCount.map { $0.formatted(.number.precision(.fractionLength(2))).prepadding(toLength: 6, withPad: " ") }.joined(separator: "  "))
             
             let pointyCountMax = pointyCount.max()!
             for i in 0..<bases.count {
                 weights[i] += pointyCountMax == 0 ? 0 : (pointyCount[i] / pointyCountMax)
             }
-            print(weights.map { $0.formatted(.number.precision(.integerAndFractionLength(integer: 3, fraction: 2))) }.joined(separator: "  "))
+            print(weights.map { $0.formatted(.number.precision(.fractionLength(2))).prepadding(toLength: 6, withPad: " ") }.joined(separator: "  "))
             
             // change in base
             

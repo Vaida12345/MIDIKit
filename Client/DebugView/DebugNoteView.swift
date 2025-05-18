@@ -16,6 +16,8 @@ struct DebugNoteView: View {
     let pixelsPerBeat: Double
     let pixelsPerNote: Double
     
+    let maxNote: UInt8
+    
     var body: some View {
         ZStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: 5)
@@ -25,6 +27,6 @@ struct DebugNoteView: View {
                 .padding(.leading, 5)
         }
         .frame(width: pixelsPerBeat * note.duration, height: pixelsPerNote)
-        .position(x: pixelsPerBeat * note.onset + pixelsPerBeat * note.duration / 2, y: pixelsPerNote * CGFloat(108 - note.note))
+        .position(x: pixelsPerBeat * note.onset + pixelsPerBeat * note.duration / 2, y: pixelsPerNote * CGFloat(maxNote - note.note))
     }
 }

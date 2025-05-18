@@ -175,3 +175,8 @@ extension MIDIContainer {
     }
     
 }
+
+
+extension UnsafeMutableBufferPointer<MIDINote>: SortedIntervals, OverlappingIntervals {
+    
+}
