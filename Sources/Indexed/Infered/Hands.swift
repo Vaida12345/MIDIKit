@@ -155,69 +155,53 @@ extension IndexedContainer {
 //        var backtrack = Array(repeating: [String: String](), count: groups.count)
         var costs = Array(repeating: HandCost(), count: self.contents.count)
         var backtrack = Array(repeating: HandBacktrack(), count: self.contents.count)
-        var contents = self.contents.enumerated().map {
-            self.contents.baseAddress! + $0.offset
-        }
-        // sort
-        contents.sort { lhs, rhs in
-            if abs(lhs.onset - rhs.onset) < Chord.Spec().duration {
-                lhs.note < rhs.note
-            } else {
-                lhs.onset < rhs.onset
-            }
-        }
+        var contents = Chord.makeSingleHandedChords(from: self)
         
         
-        let initialAverage = average[at: contents.first!.onset]!
+        let initialAverage = average[at: contents.first!.leadingOnset]!
         for hand in Hand.allCases {
             let note = contents[0]
-            let cost = handRangeCost(note: note, hand: hand, boundary: initialAverage.note, span: initialAverage.span)
+            let cost = note.contents.reduce(0) { $0 + handRangeCost(note: $1, hand: hand, boundary: initialAverage.note, span: initialAverage.span) }
             costs[0][hand] = cost
         }
         
         for i in 1..<contents.count {
             let prev = contents[i - 1]
             let curr = contents[i]
-            let average = average[at: curr.onset]!
-            print(prev.onset)
-            print("=========================")
+            let average = average[at: curr.leadingOnset]!
             
             for hand in Hand.allCases {
                 var bestCost = Double.infinity
                 var bestPrevHand: Hand = .left
                 
                 for prevHand in Hand.allCases {
-                    let cost = handRangeCost(note: curr, hand: hand, boundary: average.note, span: average.span)
-                    let transCost = transitionCost(from: prev, hand: prevHand, to: curr, hand: hand, boundary: average.note, span: average.span)
+                    let cost = curr.contents.reduce(0) { $0 + handRangeCost(note: $1, hand: hand, boundary: initialAverage.note, span: initialAverage.span) }
+                    let transCost = transitionCost(from: prev.contents.last!, hand: prevHand, to: curr.contents.first!, hand: hand, boundary: average.note, span: average.span)
                     let totalCost = costs[i-1][prevHand] + cost + transCost
                     
                     if totalCost < bestCost {
                         bestCost = totalCost
                         bestPrevHand = prevHand
                     }
-                    
-                    print(prev.note, prevHand)
-                    print(curr.note, hand)
-                    
-                    print(totalCost)
-                    print()
                 }
                 
                 costs[i][hand] = bestCost
                 backtrack[i][hand] = bestPrevHand
             }
-            
-            print()
         }
         
         
         var lastHand = costs.last!.minCostHand
-        contents[contents.count - 1].velocity = lastHand.isRightHand ? 127 : 0
+        for note in contents[contents.count - 1] {
+            note.velocity = lastHand.isRightHand ? 127 : 0
+        }
         
         for i in stride(from: contents.count - 1, through: 0, by: -1) {
             let prevHand = backtrack[i][lastHand]
             lastHand = prevHand
-            contents[i].velocity = lastHand.isRightHand ? 127 : 0
+            for note in contents[i] {
+                note.velocity = lastHand.isRightHand ? 127 : 0
+            }
         }
     }
     

@@ -14,11 +14,9 @@ import Optimization
 
 /// chords are keys that needs to be pressed at the same time.
 ///
-/// Currently it represents notes that *two hands* can play *simultaneously*. `chord`s serve primarily for normalization, arpeggios are not considered in the same chord.
+/// `chord`s serve primarily for normalization, arpeggios are not considered in the same chord.
 ///
 /// `cluster` and `chord` can be used interchangeably.
-///
-/// The algorithm for obtain chord for individual hand exists in a previous commit.
 public struct Chord: RandomAccessCollection {
     
     /// contents are always sorted by their onsets.
@@ -34,6 +32,10 @@ public struct Chord: RandomAccessCollection {
     
     var leadingOnset: Double {
         self.contents.first!.onset
+    }
+    
+    var pitchSpan: UInt8 {
+        self.contents.max(of: \.note)! - self.contents.min(of: \.note)!
     }
     
     
@@ -144,6 +146,56 @@ public struct Chord: RandomAccessCollection {
         
         return Array(consume queue)
     }
+    
+    
+    /// Chords are split making sure that notes within the same chord should be played by the same hand, while notes in different chord could be played by the same hand.
+    public static func makeSingleHandedChords(
+        from container: IndexedContainer,
+        spec: Spec = Spec()
+    ) -> [Chord] {
+        var chords = self.makeChords(from: container, spec: spec)
+        
+        for (index, chord) in chords.enumerated() {
+            let span = chord.pitchSpan
+            guard span > 12 else { continue }
+            guard chord.count > 2 || span > 18 else { continue }
+            
+            let notes = chord.contents.sorted(on: \.note, by: <)
+            
+            // cluster into hands: O(n)
+            var left: [ReferenceNote] = []
+            var right: [ReferenceNote] = []
+            left.reserveCapacity(notes.count)
+            right.reserveCapacity(notes.count)
+
+            let minIndex = notes.minIndex(of: \.note)
+            let maxIndex = notes.maxIndex(of: \.note)
+            let min = notes[minIndex!]
+            let max = notes[maxIndex!]
+
+            notes.forEach { index, element in
+                if index == minIndex {
+                    left.append(min)
+                } else if index == maxIndex {
+                    right.append(max)
+                } else {
+                    let leftDistance = element.note - min.note
+                    let rightDistance = max.note - element.note
+                    if leftDistance < rightDistance {
+                        left.append(element)
+                    } else {
+                        right.append(element)
+                    }
+                }
+            }
+            
+            chords[index].contents = left.sorted()
+            chords.append(Chord(contents: right.sorted(), maxOffset: nil))
+        }
+        
+        return chords.sorted(on: \.leadingOnset, by: <)
+    }
+    
     
     /// Spec durations are in beats, in 120BPM.
     public struct Spec {
