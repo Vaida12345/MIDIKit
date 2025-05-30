@@ -29,8 +29,7 @@ let package = Package(
         .target(
             name: "MIDIKit",
             dependencies: ["DetailedDescription", "FinderItem", "ConcurrentStream", "NativeImage", "Optimization"],
-            path: "Sources",
-            resources: [.copy("Engine/Nice-Steinway-Lite-v3.0.sf2")]
+            path: "Sources"
         ),
         .executableTarget(name: "Client", dependencies: ["MIDIKit"], path: "Client"),
         .testTarget(name: "Tests", dependencies: ["MIDIKit"], path: "Tests"),
