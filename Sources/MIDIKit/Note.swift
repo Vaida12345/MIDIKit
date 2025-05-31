@@ -168,8 +168,8 @@ extension MIDINote {
     /// - Middle C is MIDI note 60, labeled as C4.
     /// - Leftmost key: MIDI note 21 (A0).
     /// - Rightmost key: MIDI note 108 (C8).
-    public static func description(for note: Int) -> String {
-        let index = determine(note: note)
+    public static func description(for note: some BinaryInteger) -> String {
+        let index = determine(note: Int(note))
         return "\(MIDINote.diatonicScale[index.index])\(index.group - 1)\(index.isSharp ? "#" : "")"
     }
     
