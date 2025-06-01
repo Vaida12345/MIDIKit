@@ -91,7 +91,7 @@ extension IndexedContainer {
             contents[index] = DisjointNotes(notes)
         }
         
-        return IndexedContainer(notes: contents, sustains: self.sustains, runningLength: self.parameters.runningLength)
+        return IndexedContainer(notes: contents, sustains: self.sustains)
     }
     
     /// Apply the gap between consecutive notes.

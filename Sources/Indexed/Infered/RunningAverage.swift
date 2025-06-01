@@ -11,15 +11,13 @@ import Essentials
 /// The running average of notes, can be used to separate hands.
 public struct RunningAverage {
     
-    public var contents: [Element]
+    fileprivate var contents: [Element]
     
     
     /// Calculate the running average.
     ///
     /// Only the onset is considered.
-    ///
-    /// - Parameter runningLength: The default value is `4` beats, that is one measure in a 4/4 sheet.
-    init(
+    fileprivate init(
         combinedNotes: UnsafeMutableBufferPointer<MIDINote>
     ) {
         var contents: [Element] = []
@@ -88,6 +86,16 @@ public struct RunningAverage {
         /// Pitch-span
         public let span: UInt8
         
+    }
+    
+}
+
+
+extension IndexedContainer {
+    
+    /// Computes and returns the running average.
+    public func runningAverage() -> RunningAverage {
+        RunningAverage(combinedNotes: self.contents)
     }
     
 }

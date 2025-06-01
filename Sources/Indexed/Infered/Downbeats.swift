@@ -165,6 +165,7 @@ extension IndexedContainer {
 
 public extension Collection where Index == Int, Element: BinaryFloatingPoint {
     
+    @inlinable
     var median: Element? {
         guard !self.isEmpty else { return nil }
         let sorted = self.sorted()
@@ -179,6 +180,7 @@ public extension Collection where Index == Int, Element: BinaryFloatingPoint {
 }
 
 
+@inlinable
 func unitNormalPDF(x: Double, mean: Double = 0, stdDev: Double = 1) -> Double {
     func f(x: Double) -> Double {
         let exponent = -pow(x - mean, 2) / (2 * pow(stdDev, 2))

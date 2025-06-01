@@ -27,9 +27,6 @@ public final class IndexedContainer {
     /// The sustain events.
     public var sustains: MIDISustainEvents
     
-    /// The stored parameter for methods that returns a new ``IndexedContainer``.
-    internal let parameters: Parameters
-    
     
     /// Whether the container is empty
     @inlinable
@@ -73,8 +70,6 @@ public final class IndexedContainer {
         var combinedNotes = notes.values.flatten().sorted(on: \.onset, by: <)
         self.contents = .allocate(capacity: combinedNotes.count)
         memcpy(self.contents.baseAddress, &combinedNotes, MemoryLayout<MIDINote>.stride * combinedNotes.count)
-        
-        self.parameters = Parameters(runningLength: runningLength)
     }
     
     /// - Parameters:
@@ -134,20 +129,11 @@ public final class IndexedContainer {
         _ = consume grouped
         
         self.notes = dictionary
-        self.parameters = Parameters(runningLength: runningLength)
     }
     
     @inlinable
     deinit {
         self.contents.deallocate()
-    }
-    
-    
-    /// The stored parameter for methods that returns a new ``IndexedContainer``.
-    struct Parameters {
-        
-        let runningLength: Double
-        
     }
     
 }

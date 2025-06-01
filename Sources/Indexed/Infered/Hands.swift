@@ -149,13 +149,13 @@ extension IndexedContainer {
         
         
         // MARK: - Computation
-        let average = RunningAverage(combinedNotes: self.contents)
+        let average = self.runningAverage()
         
 //        var dp = Array(repeating: [String: Double](), count: groups.count)
 //        var backtrack = Array(repeating: [String: String](), count: groups.count)
         var costs = Array(repeating: HandCost(), count: self.contents.count)
         var backtrack = Array(repeating: HandBacktrack(), count: self.contents.count)
-        var contents = Chord.makeSingleHandedChords(from: self)
+        let contents = Chord.makeSingleHandedChords(from: self)
         
         
         let initialAverage = average[at: contents.first!.leadingOnset]!
