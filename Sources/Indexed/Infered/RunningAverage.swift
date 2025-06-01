@@ -18,26 +18,22 @@ public struct RunningAverage {
     ///
     /// Only the onset is considered.
     fileprivate init(
-        combinedNotes: UnsafeMutableBufferPointer<MIDINote>
+        combinedNotes: UnsafeMutableBufferPointer<MIDINote>,
+        runningLength: Double
     ) {
         var contents: [Element] = []
         combinedNotes.forEach { index, note in
             var notesMin = note.note
             var notesMax = note.note
-            var j = combinedNotes.lastIndex(before: note.onset - 4) ?? 0
-            while j < combinedNotes.endIndex, combinedNotes[j].onset < note.onset + 4 {
-                if combinedNotes[j].offset > note.onset - 4 {
+            var j = combinedNotes.lastIndex(before: note.onset - runningLength) ?? 0
+            while j < combinedNotes.endIndex, combinedNotes[j].onset < note.onset + runningLength {
+                if combinedNotes[j].offset > note.onset - runningLength {
                     let new = combinedNotes[j].note
-                    // Gaussian distribute
-                    let diff = Double(new) - Double(note.note)
-                    let scale = unitNormalPDF(x: abs(combinedNotes[j].onset - note.onset), stdDev: 1) // values begins to be non-zero from 4 units apart
                     
-                    let value = UInt8(Double(note.note) + scale * diff)
-                    
-                    if notesMin > value {
-                        notesMin = value
-                    } else if notesMax < value {
-                        notesMax = value
+                    if notesMin > new {
+                        notesMin = new
+                    } else if notesMax < new {
+                        notesMax = new
                     }
                 }
                 
@@ -94,8 +90,8 @@ public struct RunningAverage {
 extension IndexedContainer {
     
     /// Computes and returns the running average.
-    public func runningAverage() -> RunningAverage {
-        RunningAverage(combinedNotes: self.contents)
+    public func runningAverage(runningLength: Double = 4) -> RunningAverage {
+        RunningAverage(combinedNotes: self.contents, runningLength: runningLength)
     }
     
 }

@@ -62,8 +62,7 @@ public final class IndexedContainer {
     /// Any methods that returns a new ``IndexedContainer`` will use the parameters set in the initializer.
     public init(
         notes: [UInt8 : DisjointNotes],
-        sustains: MIDISustainEvents,
-        runningLength: Double = 4
+        sustains: MIDISustainEvents
     ) {
         self.notes = notes
         self.sustains = sustains
@@ -80,8 +79,7 @@ public final class IndexedContainer {
     /// Any methods that returns a new ``IndexedContainer`` will use the parameters set in the initializer.
     public init(
         container: MIDIContainer,
-        minimumConsecutiveNotesGap: Double = 1/128,
-        runningLength: Double = 4
+        minimumConsecutiveNotesGap: Double = 1/128
     ) {
         let contents: UnsafeMutableBufferPointer<MIDINote>
         let sustains: MIDISustainEvents
@@ -145,7 +143,6 @@ extension MIDIContainer {
     ///
     /// - Parameters:
     ///   - minimumConsecutiveNotesGap: The minimum gap between two consecutive notes. The default value is `1/128`. The minimum length of individual note from La campanella in G-Sharp Minor by Lang Lang is 0.013 beat, which is around 1/64 beat.
-    ///   - runningLength: The length for calculating the running average. The default value is `4` beats, that is one measure in a 4/4 sheet.
     ///
     /// Any methods that returns a new ``IndexedContainer`` will use the parameters set in the initializer.
     @inlinable
@@ -155,8 +152,7 @@ extension MIDIContainer {
     ) -> IndexedContainer {
         IndexedContainer(
             container: self,
-            minimumConsecutiveNotesGap: minimumConsecutiveNotesGap,
-            runningLength: runningLength
+            minimumConsecutiveNotesGap: minimumConsecutiveNotesGap
         )
     }
     
