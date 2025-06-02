@@ -64,11 +64,34 @@ public final class IndexedContainer {
         notes: [UInt8 : DisjointNotes],
         sustains: MIDISustainEvents
     ) {
-        self.notes = notes
         self.sustains = sustains
         var combinedNotes = notes.values.flatten().sorted(on: \.onset, by: <).map(\.pointee)
         self.contents = .allocate(capacity: combinedNotes.count)
         memcpy(self.contents.baseAddress, &combinedNotes, MemoryLayout<MIDINote>.stride * combinedNotes.count)
+        
+        // construct grouped
+        var grouped: [UInt8 : [ReferenceNote]] = [:]
+        let baseAddress = self.contents.baseAddress!
+        self.contents.forEach { index, element in
+            grouped[element.note, default: []].append(baseAddress + index)
+        }
+        
+        // construct dictionary
+        var dictionary: [UInt8 : DisjointNotes] = [:]
+        for i in 21...108 {
+            guard let contents = grouped[UInt8(i)] else { continue }
+            for i in 0..<contents.count - 1 {
+                // ensures non-overlapping
+                contents[i].offset = min(contents[i].offset, contents[i + 1].onset - 1/128)
+            }
+            
+            if !contents.isEmpty { // just to be sure
+                dictionary[UInt8(i)] = DisjointNotes(contents)
+            }
+        }
+        _ = consume grouped
+        
+        self.notes = dictionary
     }
     
     /// - Parameters:

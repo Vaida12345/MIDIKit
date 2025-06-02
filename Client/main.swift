@@ -16,14 +16,15 @@ import SwiftUI
 //let container = try MIDIContainer(at: "'/Users/vaida/Music/Piano Transcription/Ashes on The Fire - Shingeki no Kyojin.mid'")
 let container = try MIDIContainer(at: "'/Users/vaida/Music/Piano Transcription/10 Clair de lune.mid'")
 let date = Date()
-let indexed = container.indexed()
+var indexed = container.indexed()
 indexed.alignFirstNoteToZero()
+indexed = indexed.removingArtifacts(threshold: 40)
 indexed.normalize(preserve: .acousticResult)
 
 print(date.distanceToNow())
 //try indexed.makeContainer().write(to: .desktopDirectory/"MIDIs"/"file.mid")
 
 indexed.assignHands()
-await DebugView(container: indexed).render(to: .desktopDirectory/"debug.pdf", format: .pdf, scale: 1)
+//await DebugView(container: indexed).render(to: .desktopDirectory/"debug.pdf", format: .pdf, scale: 1)
 //await DebugPointsPlot().render(to: .desktopDirectory/"points plot.pdf", format: .pdf, scale: 1)
 #endif
