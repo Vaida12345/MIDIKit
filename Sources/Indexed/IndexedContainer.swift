@@ -66,7 +66,7 @@ public final class IndexedContainer {
     ) {
         self.notes = notes
         self.sustains = sustains
-        var combinedNotes = notes.values.flatten().sorted(on: \.onset, by: <)
+        var combinedNotes = notes.values.flatten().sorted(on: \.onset, by: <).map(\.pointee)
         self.contents = .allocate(capacity: combinedNotes.count)
         memcpy(self.contents.baseAddress, &combinedNotes, MemoryLayout<MIDINote>.stride * combinedNotes.count)
     }

@@ -70,6 +70,8 @@ public struct Chord: RandomAccessCollection {
     /// Each returned chord is guaranteed to be non-empty.
     ///
     /// - Complexity: O(n^2) worse case, O(n log n) practically.
+    ///
+    /// Chords are sorted by `leadingOnset`.
     public static func makeChords(
         from container: IndexedContainer,
         spec: Spec = Spec()
