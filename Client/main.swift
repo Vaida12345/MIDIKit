@@ -21,6 +21,8 @@ indexed.alignFirstNoteToZero()
 indexed = indexed.removingArtifacts(threshold: 40)
 indexed.normalize(preserve: .acousticResult)
 
+try container.data().write(to: .desktopDirectory/"file.mid")
+
 print(date.distanceToNow())
 //try indexed.makeContainer().write(to: .desktopDirectory/"MIDIs"/"file.mid")
 

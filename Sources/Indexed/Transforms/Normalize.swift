@@ -95,7 +95,7 @@ extension IndexedContainer {
                 } else if let offset {
                     // An sustain was found for offset, but not onset
                     
-                    if onsetNextIndex! == offsetIndex! {
+                    if onsetNextIndex == offsetIndex! {
                         // Sustain not found for offset, but the next sustain region is the offset sustain region
                         span(offset)
                     } else {

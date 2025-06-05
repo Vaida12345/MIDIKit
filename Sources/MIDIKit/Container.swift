@@ -67,7 +67,7 @@ public struct MIDIContainer: CustomStringConvertible, DetailedStringConvertible,
     @inlinable
     public func data() throws -> Data {
         var data: Unmanaged<CFData>?
-        let code = MusicSequenceFileCreateData(self.makeSequence(), .midiType, .eraseFile, 0, &data)
+        let code = MusicSequenceFileCreateData(self.makeSequence(), .midiType, [], .max, &data)
         guard code == noErr else { throw NSError(domain: NSOSStatusErrorDomain, code: Int(code)) }
         return data!.takeRetainedValue() as Data
     }
