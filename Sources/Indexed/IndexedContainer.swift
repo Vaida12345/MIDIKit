@@ -170,8 +170,7 @@ extension MIDIContainer {
     /// Any methods that returns a new ``IndexedContainer`` will use the parameters set in the initializer.
     @inlinable
     public func indexed(
-        minimumConsecutiveNotesGap: Double = 1/128,
-        runningLength: Double = 4
+        minimumConsecutiveNotesGap: Double = 1/128
     ) -> IndexedContainer {
         IndexedContainer(
             container: self,
