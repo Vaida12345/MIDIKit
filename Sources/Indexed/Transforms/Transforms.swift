@@ -44,13 +44,15 @@ extension IndexedContainer {
     /// - Parameters:
     ///   - threshold: The velocity of a note to be treated as artifact.
     ///
-    /// - Returns: A new ``IndexedContainer`` initialized using the parameters used in the initializer for this instance.
+    /// - Returns: A new ``IndexedContainer`` initialized using the parameters used in the initializer for this instance. Contents of `self` remains unchanged.
     public func removingArtifacts(threshold: UInt8) -> IndexedContainer {
-        var contents: [UInt8 : DisjointNotes] = [:]
+        var contents: [MIDINote] = []
         contents.reserveCapacity(self.notes.count)
         
-        for index in (21 as UInt8)...108 {
-            guard var notes = self.notes[index]?.contents else { continue }
+        var index = 21 as UInt8
+        while index < 108 {
+            defer { index &+= 1 }
+            guard var notes = self.notes[index]?.contents.map(\.pointee) else { continue }
             var i = notes.count - 1
             var range: ClosedRange<Int>? = nil
             
@@ -88,10 +90,12 @@ extension IndexedContainer {
                 
                 i &-= 1
             }
-            contents[index] = DisjointNotes(notes)
+            
+            contents.append(contentsOf: notes)
         }
         
-        return IndexedContainer(notes: contents, sustains: self.sustains)
+        let container = MIDIContainer(tracks: [MIDITrack(notes: contents, sustains: self.sustains)])
+        return IndexedContainer(container: container)
     }
     
     /// Apply the gap between consecutive notes.

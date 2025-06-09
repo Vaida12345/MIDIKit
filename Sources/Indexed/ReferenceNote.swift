@@ -14,6 +14,7 @@ public typealias ReferenceNote = UnsafeMutablePointer<MIDINote>
 
 extension ReferenceNote: @retroactive CustomStringConvertible {
     
+    @inlinable
     public var description: String {
         self.pointee.description
     }

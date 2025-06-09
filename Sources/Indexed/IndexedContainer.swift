@@ -53,53 +53,13 @@ public final class IndexedContainer {
         return MIDIContainer(tracks: [track])
     }
     
-    
-    /// - Parameters:
-    ///   - notes: The source notes. The notes are referenced and not copied. The other properties will be calculated accordingly.
-    ///   - sustains: The source sustain events.
-    ///   - runningLength: The length for calculating the running average. The default value is `4` beats, that is one measure in a 4/4 sheet.
-    ///
-    /// Any methods that returns a new ``IndexedContainer`` will use the parameters set in the initializer.
-    public init(
-        notes: [UInt8 : DisjointNotes],
-        sustains: MIDISustainEvents
-    ) {
-        self.sustains = sustains
-        var combinedNotes = notes.values.flatten().sorted(on: \.onset, by: <).map(\.pointee)
-        self.contents = .allocate(capacity: combinedNotes.count)
-        memcpy(self.contents.baseAddress, &combinedNotes, MemoryLayout<MIDINote>.stride * combinedNotes.count)
-        
-        // construct grouped
-        var grouped: [UInt8 : [ReferenceNote]] = [:]
-        let baseAddress = self.contents.baseAddress!
-        self.contents.forEach { index, element in
-            grouped[element.note, default: []].append(baseAddress + index)
-        }
-        
-        // construct dictionary
-        var dictionary: [UInt8 : DisjointNotes] = [:]
-        for i in 21...108 {
-            guard let contents = grouped[UInt8(i)] else { continue }
-            for i in 0..<contents.count - 1 {
-                // ensures non-overlapping
-                contents[i].offset = min(contents[i].offset, contents[i + 1].onset - 1/128)
-            }
-            
-            if !contents.isEmpty { // just to be sure
-                dictionary[UInt8(i)] = DisjointNotes(contents)
-            }
-        }
-        _ = consume grouped
-        
-        self.notes = dictionary
-    }
-    
     /// - Parameters:
     ///   - container: The source container.
     ///   - minimumConsecutiveNotesGap: The minimum gap between two consecutive notes. The default value is `1/128`. The minimum length of individual note from La campanella in G-Sharp Minor by Lang Lang is 0.013 beat, which is around 1/64 beat.
     ///   - runningLength: The length for calculating the running average. The default value is `4` beats, that is one measure in a 4/4 sheet.
     ///
     /// Any methods that returns a new ``IndexedContainer`` will use the parameters set in the initializer.
+    @inlinable
     public init(
         container: MIDIContainer,
         minimumConsecutiveNotesGap: Double = 1/128
@@ -136,16 +96,19 @@ public final class IndexedContainer {
         
         // construct dictionary
         var dictionary: [UInt8 : DisjointNotes] = [:]
-        for i in 21...108 {
-            guard let contents = grouped[UInt8(i)] else { continue }
-            for i in 0..<contents.count - 1 {
+        var index = 0 as UInt8
+        while index < 108 {
+            defer { index &+= 1 }
+            guard let contents = grouped[index] else { continue }
+            var i = 0
+            while i < contents.count - 1 {
                 // ensures non-overlapping
                 contents[i].offset = min(contents[i].offset, contents[i + 1].onset - minimumConsecutiveNotesGap)
+                i &+= 1
             }
             
-            if !contents.isEmpty { // just to be sure
-                dictionary[UInt8(i)] = DisjointNotes(contents)
-            }
+            guard !contents.isEmpty else { continue }
+            dictionary[index] = DisjointNotes(contents)
         }
         _ = consume grouped
         

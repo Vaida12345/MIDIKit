@@ -161,6 +161,7 @@ extension DisjointIntervals {
     /// Returns the nearest interval to  the given time stamp.
     ///
     /// - Complexity: O(log *n*), binary search.
+    @inlinable
     func nearest(
         to timestamp: Double,
         isValid: (Element) -> Bool

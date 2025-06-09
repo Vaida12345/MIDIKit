@@ -18,6 +18,7 @@ extension OverlappingIntervals {
     /// When the onsets are overlapping, the one chosen is indeterministic.
     ///
     /// - Complexity: O(log *n*), binary search.
+    @inlinable
     public func firstIndex(after timeStamp: Double) -> Index? {
         var left = 0
         var right = self.count
@@ -45,6 +46,7 @@ extension OverlappingIntervals {
     /// When the onsets are overlapping, the one chosen is indeterministic.
     ///
     /// - Complexity: O(log *n*), binary search.
+    @inlinable
     public func first(after timeStamp: Double) -> Element? {
         self.firstIndex(after: timeStamp).map({ self[$0] })
     }
@@ -54,6 +56,7 @@ extension OverlappingIntervals {
     /// When the onsets are overlapping, the one chosen is indeterministic.
     ///
     /// - Complexity: O(log *n*), binary search.
+    @inlinable
     public func lastIndex(before timeStamp: Double) -> Index? {
         var left = 0
         var right = self.count
@@ -79,6 +82,7 @@ extension OverlappingIntervals {
     /// When the onsets are overlapping, the one chosen is indeterministic.
     ///
     /// - Complexity: O(log *n*), binary search.
+    @inlinable
     public func lastIndex(onsetBefore timeStamp: Double) -> Index? {
         var left = 0
         var right = self.count
@@ -113,6 +117,7 @@ extension OverlappingIntervals {
     /// Returns the intervals at the given time stamp. The returned sequence is sorted, same as `self`, bounds included.
     ///
     /// - Complexity: O(*n*), binary search then linear.
+    @inlinable
     public subscript(at timeStamp: Double) -> [Element] {
         var low = 0
         var high = self.count - 1
@@ -149,6 +154,7 @@ extension OverlappingIntervals {
     /// Returns the intervals in the given range. The returned sequence is sorted, same as `self`, bounds included.
     ///
     /// - Complexity: O(log *n*), binary search.
+    @inlinable
     public func range(_ range: ClosedRange<Double>) -> [Element] {
         var low = 0
         var high = self.count - 1

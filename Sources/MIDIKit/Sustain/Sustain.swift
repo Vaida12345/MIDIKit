@@ -15,6 +15,7 @@ public struct MIDISustainEvent: Sendable, Equatable, Interval, Hashable {
     public var offset: MusicTimeStamp
     
     /// The duration of the note, on set, it changes the ``offset``, while ``onset`` remains the same.
+    @inlinable
     public var duration: Double {
         get {
             self.offset - self.onset
@@ -24,6 +25,7 @@ public struct MIDISustainEvent: Sendable, Equatable, Interval, Hashable {
         }
     }
     
+    @inlinable
     public init(onset: MusicTimeStamp, offset: MusicTimeStamp) {
         self.onset = onset
         self.offset = offset
