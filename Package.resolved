@@ -1,5 +1,5 @@
 {
-  "originHash" : "d946add59ae1d879db5c74456e872a3a7f5275e12b5448997092e44aa6edc51f",
+  "originHash" : "4c1803e02917dcd22deb82f983641dea499aec49dfec41859f1f52fbf1010b56",
   "pins" : [
     {
       "identity" : "concurrentstream",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://www.github.com/Vaida12345/DetailedDescription",
       "state" : {
-        "revision" : "bee1e194bde199abc091b0420ec928bdcffdb3fb",
-        "version" : "2.0.5"
+        "revision" : "d9726110ad54474071bf7fac6c2d256d44b1fa63",
+        "version" : "2.0.7"
       }
     },
     {
@@ -51,8 +51,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://www.github.com/Vaida12345/Optimization",
       "state" : {
-        "revision" : "d2604a0e5adcdfb718e151cd8aba9810cb6ce156",
-        "version" : "1.0.8"
+        "revision" : "106a073168e768c20f00fb1ef354cbceb89ec1dd",
+        "version" : "1.0.10"
       }
     }
   ],
