@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.1
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -21,7 +21,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://www.github.com/Vaida12345/DetailedDescription", from: "2.0.3"),
         .package(url: "https://www.github.com/Vaida12345/FinderItem", from: "1.0.0"),
-        .package(url: "https://www.github.com/Vaida12345/ConcurrentStream", from: "0.1.0"),
+        .package(url: "https://www.github.com/Vaida12345/ConcurrentStream", from: "1.0.1"),
         .package(url: "https://www.github.com/Vaida12345/NativeImage", from: "1.0.0"),
         .package(url: "https://www.github.com/Vaida12345/Optimization", from: "1.0.5")
     ],
@@ -34,5 +34,5 @@ let package = Package(
         .executableTarget(name: "Client", dependencies: ["MIDIKit"], path: "Client"),
         .testTarget(name: "Tests", dependencies: ["MIDIKit"], path: "Tests"),
     ],
-    swiftLanguageModes: [.v5]
+    
 )
