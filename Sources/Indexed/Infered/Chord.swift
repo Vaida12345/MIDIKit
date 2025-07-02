@@ -27,6 +27,9 @@ public struct Chord: RandomAccessCollection {
     /// The max offset in beats. This is determined by the onset of next consecutive note.
     var maxOffset: Double?
     
+    public var features: Features
+    
+    
     public var startIndex: Int { 0 }
     public var endIndex: Int { contents.count }
     
@@ -39,9 +42,10 @@ public struct Chord: RandomAccessCollection {
     }
     
     
-    public init(contents: [ReferenceNote], maxOffset: Double?) {
+    public init(contents: [ReferenceNote], maxOffset: Double?, features: Features = []) {
         self.contents = contents
         self.maxOffset = maxOffset
+        self.features = features
     }
     
     public subscript(position: Int) -> Element {
@@ -90,6 +94,8 @@ public struct Chord: RandomAccessCollection {
         
         /// - Complexity: O(n)
         func clustersCanMerge(_ lhs: Chord, _ rhs: Chord) -> Bool {
+            guard !lhs.features.contains(.glissando) && !rhs.features.contains(.glissando) else { return false }
+            
             // no duplicated notes, ensured by the max offset
             guard lhs.maxOffset.isNil(or: { rhs.contents.last!.onset < $0 }) else { return false }
             
@@ -100,7 +106,7 @@ public struct Chord: RandomAccessCollection {
         }
         
         
-        // Step 1: Start by initializing each value as its own cluster
+        // Initializing each value as its own cluster
         // - Complexity: O(n log(n)), sorting
         var clusters: [Chord] = []
         clusters.reserveCapacity(container.count)
@@ -116,9 +122,34 @@ public struct Chord: RandomAccessCollection {
         }
         clusters.sort(by: { $0.first!.onset < $1.first!.onset })
         
-        // Step 2: Perform the clustering process
-        // chords are disjoint
+        // extract features
+        var clusterIndex = 0
+        outer: while clusterIndex < clusters.count {
+            defer { clusterIndex &+= 1 }
+            let cluster = clusters[clusterIndex]
+            guard container.sustains[at: cluster.first!.onset] == container.sustains[at: cluster.first!.offset] else { continue } // within the sustain
+            guard clusterIndex + 1 < clusters.count else { break }
+            
+            var prev = cluster.first!
+            var next = clusterIndex + 1
+            while next < clusters.count {
+                let _next = clusters[next].first!
+                guard _next.offset < _next.offset + 0.2,
+                      _next.note <= prev.note,
+                      _next.onset - prev.onset <= 0.2
+                else { break }
+                prev = _next
+                next += 1
+            }
+            guard next - clusterIndex > 10 else { continue }
+            
+            for i in clusterIndex ... next {
+                clusters[i].features.insert(.glissando)
+            }
+            clusterIndex = next
+        }
         
+        // chords are disjoint
         // initial merge: O(n)
         let queue = InlineDeque(consume clusters) // the queue holds the source of truth, while `merged` refers to `queue` for chords.
         let merged = RingBuffer<InlineDeque<Chord>.Index>(minimumCapacity: queue.count)
@@ -192,7 +223,8 @@ public struct Chord: RandomAccessCollection {
             }
             
             chords[index].contents = left.sorted()
-            chords.append(Chord(contents: right.sorted(), maxOffset: nil))
+            chords[index].features.insert(.preferLeftHand)
+            chords.append(Chord(contents: right.sorted(), maxOffset: nil, features: [.preferRightHand]))
         }
         
         return chords.sorted(on: \.leadingOnset, by: <)
@@ -211,6 +243,22 @@ public struct Chord: RandomAccessCollection {
 //        let handWidth: UInt8 = 13 + 3
         
         public init() { }
+        
+    }
+    
+    
+    public struct Features: OptionSet, Sendable {
+        
+        public let rawValue: UInt8
+        
+        public init(rawValue: UInt8) {
+            self.rawValue = rawValue
+        }
+        
+        
+        public static let glissando = Features(rawValue: 1 << 0)
+        public static let preferLeftHand = Features(rawValue: 1 << 1)
+        public static let preferRightHand = Features(rawValue: 1 << 2)
         
     }
     
@@ -233,7 +281,7 @@ extension Chord: CustomStringConvertible {
     
     
     public var description: String {
-        self.contents.description
+        "[" + self.contents.map(\.pointee.description).joined(separator: ", ") + "]"
     }
     
 }

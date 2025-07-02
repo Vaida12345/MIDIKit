@@ -101,6 +101,7 @@ extension IndexedContainer {
         ///
         /// By default, the left hand is more comfortable below a certain pitch zone while the right hand is more comfortable above it. But this boundary is not fixed; it can shift or be overridden if other heuristics suggest it.
         func handRangeCost(note: ReferenceNote, hand: Hand, boundary: UInt8, span: UInt8) -> Double {
+            return 0
             let spreadFactor: Double = 7
             let distance = Double(Int(note.note) - Int(boundary)) * hand.rightHandness
             return -tanh(distance / spreadFactor) / 2 + 0.5
@@ -109,7 +110,7 @@ extension IndexedContainer {
         /// The transition cost form moving from prev note to curr note.
         func transitionCost(
             from prevNote: ReferenceNote, hand prevHand: Hand,
-            to currNote: ReferenceNote, hand currHand: Hand,
+            to currNote: ReferenceNote, hand currHand: Hand, chord: Chord,
             boundary: UInt8, span: UInt8
         ) -> Double {
             var cost = 0.0
@@ -117,6 +118,13 @@ extension IndexedContainer {
             let pitchDifference = Double(currNote.note) - Double(prevNote.note)
             let pitchDistance = abs(pitchDifference)
             let onsetDistance = Double(currNote.onset) - Double(prevNote.onset)
+            
+            if chord.features.contains(.preferLeftHand) && currHand == .right {
+                cost += 5
+            } else if chord.features.contains(.preferRightHand) && currHand == .left {
+                cost += 5
+            }
+            return cost
             
             // Pitch proximity: Consecutive notes that are close in pitch are likely to belong to the same hand. Large leaps tend to imply hand changes or chord boundaries.
             if prevHand == currHand {
@@ -130,7 +138,7 @@ extension IndexedContainer {
                     }
                 }
             } else {
-                cost += 0.5 // cross hand cost
+                cost += 1 // cross hand cost
                 
                 let diff = pitchDifference * currHand.rightHandness
                 if diff > 0 {
@@ -151,8 +159,6 @@ extension IndexedContainer {
         // MARK: - Computation
         let average = self.runningAverage()
         
-//        var dp = Array(repeating: [String: Double](), count: groups.count)
-//        var backtrack = Array(repeating: [String: String](), count: groups.count)
         var costs = Array(repeating: HandCost(), count: self.contents.count)
         var backtrack = Array(repeating: HandBacktrack(), count: self.contents.count)
         let contents = Chord.makeSingleHandedChords(from: self)
@@ -175,8 +181,8 @@ extension IndexedContainer {
                 var bestPrevHand: Hand = .left
                 
                 for prevHand in Hand.allCases {
-                    let cost = curr.contents.reduce(0) { $0 + handRangeCost(note: $1, hand: hand, boundary: initialAverage.note, span: initialAverage.span) }
-                    let transCost = transitionCost(from: prev.contents.last!, hand: prevHand, to: curr.contents.first!, hand: hand, boundary: average.note, span: average.span)
+                    let cost = curr.contents.reduce(0) { $0 + handRangeCost(note: $1, hand: hand, boundary: average.note, span: average.span) }
+                    let transCost = transitionCost(from: prev.contents.last!, hand: prevHand, to: curr.contents.first!, hand: hand, chord: curr, boundary: average.note, span: average.span)
                     let totalCost = costs[i-1][prevHand] + cost + transCost
                     
                     if totalCost < bestCost {
@@ -192,14 +198,12 @@ extension IndexedContainer {
         
         
         var lastHand = costs.last!.minCostHand
-        for note in contents[contents.count - 1] {
+        for note in contents.last! {
             note.velocity = lastHand.isRightHand ? 127 : 0
         }
-        
-        for i in stride(from: contents.count - 1, through: 0, by: -1) {
-            let prevHand = backtrack[i][lastHand]
-            lastHand = prevHand
-            for note in contents[i] {
+        for i in stride(from: contents.count - 1, to: 0, by: -1) {
+            lastHand = backtrack[i][lastHand]
+            for note in contents[i-1] {
                 note.velocity = lastHand.isRightHand ? 127 : 0
             }
         }

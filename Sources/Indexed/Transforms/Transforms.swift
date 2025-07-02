@@ -138,8 +138,14 @@ extension IndexedContainer {
         
         i = self.sustains.startIndex
         while i < self.sustains.endIndex {
-            self.sustains[i].onset -= firstNoteOnset
-            self.sustains[i].offset -= firstNoteOnset
+            if self.sustains[i].onset - firstNoteOnset < 0 {
+                // make it disappear
+                self.sustains[i].onset = 0
+                self.sustains[i].offset = 0
+            } else {
+                self.sustains[i].onset -= firstNoteOnset
+                self.sustains[i].offset -= firstNoteOnset
+            }
             i &+= 1
         }
     }
