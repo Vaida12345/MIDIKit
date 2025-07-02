@@ -6,6 +6,7 @@
 //
 
 import Essentials
+import Foundation
 
 
 extension IndexedContainer {
@@ -224,7 +225,7 @@ extension IndexedContainer {
             guard !determinants.isEmpty else { return }
             
             // the indeterminate one could be inferred using
-            let average = determinants.average(of: \.offset)!
+            let average = determinants.mean(of: \.offset)!
             let removed = indeterminate.removeFirst()
             removed.offset = min(removed.offset, max(average, removed.onset + minimumLength))
 #if DEBUG
@@ -234,7 +235,7 @@ extension IndexedContainer {
     }
     
     
-    public enum PreserveSettings: String, Equatable, Identifiable, CaseIterable {
+    public enum PreserveSettings: String, Equatable, Identifiable, CaseIterable, CustomLocalizedStringResourceConvertible {
         /// Ensuring the sustains are correct for best acoustic results.
         case acousticResult = "Acoustic Result"
         /// Focusing on chords, minimize chords overlapping.
@@ -242,6 +243,13 @@ extension IndexedContainer {
         
         public var id: String {
             self.rawValue
+        }
+        
+        public var localizedStringResource: LocalizedStringResource {
+            switch self {
+            case .acousticResult: "Acoustic Result"
+            case .notesDisplay: "Notes Display"
+            }
         }
     }
     
