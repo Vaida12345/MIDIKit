@@ -122,31 +122,35 @@ public struct Chord: RandomAccessCollection {
         }
         clusters.sort(by: { $0.first!.onset < $1.first!.onset })
         
+        let order: [(UInt8, UInt8) -> Bool] = [{ $0 <= $1 }, {$0 >= $1}]
+        
         // extract features
-        var clusterIndex = 0
-        outer: while clusterIndex < clusters.count {
-            defer { clusterIndex &+= 1 }
-            let cluster = clusters[clusterIndex]
-            guard container.sustains[at: cluster.first!.onset] == container.sustains[at: cluster.first!.offset] else { continue } // within the sustain
-            guard clusterIndex + 1 < clusters.count else { break }
-            
-            var prev = cluster.first!
-            var next = clusterIndex + 1
-            while next < clusters.count {
-                let _next = clusters[next].first!
-                guard _next.offset < _next.offset + 0.2,
-                      _next.note <= prev.note,
-                      _next.onset - prev.onset <= 0.2
-                else { break }
-                prev = _next
-                next += 1
+        for order in order {
+            var clusterIndex = 0
+            outer: while clusterIndex < clusters.count {
+                defer { clusterIndex &+= 1 }
+                let cluster = clusters[clusterIndex]
+                guard container.sustains[at: cluster.first!.onset] == container.sustains[at: cluster.first!.offset] else { continue } // within the sustain
+                guard clusterIndex + 1 < clusters.count else { break }
+                
+                var prev = cluster.first!
+                var next = clusterIndex + 1
+                while next < clusters.count {
+                    let _next = clusters[next].first!
+                    guard _next.offset < _next.offset + 0.2,
+                          order(_next.note, prev.note),
+                          _next.onset - prev.onset <= 0.2
+                    else { break }
+                    prev = _next
+                    next += 1
+                }
+                guard next - clusterIndex > 10 else { continue }
+                
+                for i in clusterIndex ... next {
+                    clusters[i].features.insert(.glissando)
+                }
+                clusterIndex = next
             }
-            guard next - clusterIndex > 10 else { continue }
-            
-            for i in clusterIndex ... next {
-                clusters[i].features.insert(.glissando)
-            }
-            clusterIndex = next
         }
         
         // chords are disjoint
