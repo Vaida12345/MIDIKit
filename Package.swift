@@ -19,12 +19,12 @@ let package = Package(
             targets: ["MIDIKit"]),
     ],
     dependencies: [
-        .package(url: "https://www.github.com/Vaida12345/DetailedDescription", from: "2.0.5"),
-        .package(url: "https://www.github.com/Vaida12345/FinderItem", from: "1.0.16"),
-        .package(url: "https://www.github.com/Vaida12345/ConcurrentStream", from: "1.0.1"),
-        .package(url: "https://www.github.com/Vaida12345/NativeImage", from: "1.0.2"),
-        .package(url: "https://www.github.com/Vaida12345/Optimization", from: "1.0.8"),
-        .package(url: "https://www.github.com/Vaida12345/Essentials", from: "1.1.1")
+        .package(url: "https://github.com/Vaida12345/DetailedDescription.git", from: "2.0.5"),
+        .package(url: "https://github.com/Vaida12345/FinderItem.git", from: "1.0.16"),
+        .package(url: "https://github.com/Vaida12345/ConcurrentStream.git", from: "1.0.1"),
+        .package(url: "https://github.com/Vaida12345/NativeImage.git", from: "1.0.2"),
+        .package(url: "https://github.com/Vaida12345/Optimization.git", from: "1.0.8"),
+        .package(url: "https://github.com/Vaida12345/Essentials.git", from: "1.1.1")
     ],
     targets: [
         .target(

@@ -103,7 +103,7 @@ public final class IndexedContainer {
             var i = 0
             while i < contents.count - 1 {
                 // ensures non-overlapping
-                contents[i].offset = min(contents[i].offset, contents[i + 1].onset - minimumConsecutiveNotesGap)
+                contents[i].offset = Swift.min(contents[i].offset, contents[i + 1].onset - minimumConsecutiveNotesGap)
                 i &+= 1
             }
             

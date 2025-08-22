@@ -130,7 +130,7 @@ extension IndexedContainer {
             for i in 0..<bases.count {
                 // explore left
                 var left = i + firstChordIndex - 1
-                while left >= max(firstChordIndex - chords.count, 0) { // lower limit
+                while left >= Swift.max(firstChordIndex - chords.count, 0) { // lower limit
                     guard _bases[left].note > _bases[i + firstChordIndex].note else { break }
                     left -= 1
                 }

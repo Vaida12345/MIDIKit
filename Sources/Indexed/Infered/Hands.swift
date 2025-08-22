@@ -101,7 +101,6 @@ extension IndexedContainer {
         ///
         /// By default, the left hand is more comfortable below a certain pitch zone while the right hand is more comfortable above it. But this boundary is not fixed; it can shift or be overridden if other heuristics suggest it.
         func handRangeCost(note: ReferenceNote, hand: Hand, boundary: UInt8, span: UInt8) -> Double {
-            return 0
             let spreadFactor: Double = 7
             let distance = Double(Int(note.note) - Int(boundary)) * hand.rightHandness
             return -tanh(distance / spreadFactor) / 2 + 0.5
@@ -124,22 +123,20 @@ extension IndexedContainer {
             } else if chord.features.contains(.preferRightHand) && currHand == .left {
                 cost += 5
             }
-            return cost
             
-            // Pitch proximity: Consecutive notes that are close in pitch are likely to belong to the same hand. Large leaps tend to imply hand changes or chord boundaries.
             if prevHand == currHand {
+                // Pitch proximity: Consecutive notes that are close in pitch are likely to belong to the same hand. Large leaps tend to imply hand changes or chord boundaries.
                 if pitchDistance <= 13 {
                     cost += 0
                 } else {
-                    if pitchDistance <= 16 {
-                        cost += linearInterpolate(pitchDistance, in: 13...16, to: 0.5...1)
+                    let movementSpeed = pitchDistance / onsetDistance
+                    if movementSpeed <= 26 {
+                        cost += linearInterpolate(movementSpeed, in: 0...26, to: 0...1)
                     } else {
-                        cost += 2 // unlikely
+                        cost += 5 // very unlikely
                     }
                 }
             } else {
-                cost += 1 // cross hand cost
-                
                 let diff = pitchDifference * currHand.rightHandness
                 if diff > 0 {
                     cost += 0
@@ -148,7 +145,7 @@ extension IndexedContainer {
                 } else if diff < -13 {
                     cost += 0.5 // cross hand
                 } else {
-                    cost += 1.5 // unlikely, two hand playing at the same place?
+                    cost += 3 // unlikely, two hand playing at the same place?
                 }
             }
             

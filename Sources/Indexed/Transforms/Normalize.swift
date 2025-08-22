@@ -143,7 +143,7 @@ extension IndexedContainer {
                 }
                 
                 func setNoteOffset(_ value: Double, channel: UInt8) {
-                    note.offset = max(value, note.onset + minimumLength)
+                    note.offset = Swift.max(value, note.onset + minimumLength)
                     debugChannel(channel)
                 }
                 
@@ -227,7 +227,7 @@ extension IndexedContainer {
             // the indeterminate one could be inferred using
             let average = determinants.mean(of: \.offset)!
             let removed = indeterminate.removeFirst()
-            removed.offset = min(removed.offset, max(average, removed.onset + minimumLength))
+            removed.offset = Swift.min(removed.offset, Swift.max(average, removed.onset + minimumLength))
 #if DEBUG
             removed.channel = 12
 #endif
