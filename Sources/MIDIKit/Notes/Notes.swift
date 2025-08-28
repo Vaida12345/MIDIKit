@@ -15,6 +15,8 @@ import NativeImage
 
 
 /// MIDI Notes are **not** sorted.
+///
+/// Although `MIDIKit` does not require the notes to be sorted, SMF spec does. Hence on read, all the notes are sorted.
 public struct MIDINotes: ArrayRepresentable, Sendable, Equatable, DetailedStringConvertible {
     
     /// sorted
@@ -38,6 +40,11 @@ public struct MIDINotes: ArrayRepresentable, Sendable, Equatable, DetailedString
         let notes = self.contents.map(\.note)
         
         return (notes.min()!, notes.max()!)
+    }
+    
+    /// Sort the contents.
+    public mutating func sort() {
+        self.contents.sort()
     }
     
     public typealias Note = MIDITrack.Note

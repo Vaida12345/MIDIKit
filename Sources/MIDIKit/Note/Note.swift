@@ -11,7 +11,9 @@ import SwiftUI
 
 
 /// A MIDI note message.
-public struct MIDINote: Sendable, Hashable, Interval {
+///
+/// `MIDINote`s are comparable using their ``onset``.
+public struct MIDINote: Sendable, Hashable, Interval, Comparable {
     
     /// The onset, in beats.
     public var onset: MusicTimeStamp
@@ -31,6 +33,13 @@ public struct MIDINote: Sendable, Hashable, Interval {
         set {
             self.offset = self.onset + newValue
         }
+    }
+    
+    /// The key, alias to `note`.
+    @inlinable
+    public var pitch: UInt8 {
+        get { self.note }
+        set { self.note = newValue }
     }
     
     @inlinable
@@ -53,6 +62,10 @@ public struct MIDINote: Sendable, Hashable, Interval {
         self.velocity = message.velocity
         self.channel = message.channel
         self.releaseVelocity = message.releaseVelocity
+    }
+    
+    public static func < (lhs: MIDINote, rhs: MIDINote) -> Bool {
+        lhs.onset < rhs.onset
     }
     
 }

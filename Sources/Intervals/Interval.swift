@@ -20,3 +20,18 @@ extension Interval {
     public var duration: Double { offset - onset }
     
 }
+
+
+extension Range<Double>: Interval {
+    
+    @inlinable
+    public var onset: Double {
+        self.lowerBound
+    }
+    
+    @inlinable
+    public var offset: Double {
+        self.lowerBound
+    }
+    
+}

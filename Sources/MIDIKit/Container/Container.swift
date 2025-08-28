@@ -22,8 +22,11 @@ public struct MIDIContainer: CustomStringConvertible, DetailedStringConvertible,
     public var tempo: MIDITempoTrack
     
     
+    /// Creates a fresh container.
+    ///
+    /// - SeeAlso: For the default time signature and tempo, see ``MIDITempoTrack.init(events:tempos:)``.
     @inlinable
-    public init(tracks: [MIDITrack] = [], tempo: MIDITempoTrack = MIDITempoTrack(events: [], tempos: [])) {
+    public init(tracks: [MIDITrack] = [], tempo: MIDITempoTrack = MIDITempoTrack()) {
         self.tracks = tracks
         self.tempo = tempo
     }

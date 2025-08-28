@@ -162,7 +162,7 @@ extension DisjointIntervals {
     ///
     /// - Complexity: O(log *n*), binary search.
     @inlinable
-    func nearest(
+    public func nearest(
         to timestamp: Double,
         isValid: (Element) -> Bool
     ) -> Element? {
@@ -203,6 +203,14 @@ extension DisjointIntervals {
         } else {
             return closestRight
         }
+    }
+    
+    
+    /// Whether the two intervals overlaps.
+    public func overlaps(with interval: any Interval) -> Bool {
+        guard self[at: interval.onset] == nil && self[at: interval.offset] == nil else { return true }
+        guard let next = self.first(after: interval.onset) else { return false }
+        return next.onset <= interval.offset
     }
     
     

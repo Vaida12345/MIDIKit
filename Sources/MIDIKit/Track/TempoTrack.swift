@@ -31,7 +31,17 @@ public struct MIDITempoTrack: Sendable, CustomStringConvertible, DetailedStringC
         }
     }
     
-    public init(events: [MIDITrack.MetaEvent], tempos: [Tempo]) {
+    /// Creates a fresh tempo track
+    ///
+    /// If you don't specify the meta events, a default one of 4/4 will be used on write. The default one is equivalent to
+    /// ```swift
+    /// [MIDIMetaEvent(timestamp: 0.0, type: .timeSignature, data: Data([4, 2, 24, 8]))]
+    /// ```
+    ///
+    /// CoreMIDI will also insert a default tempo of 120.
+    ///
+    /// - SeeAlso: ``MIDIMetaEvent.defaultTimeSignature``, ``MIDITempoTrack.Tempo.default``
+    public init(events: [MIDITrack.MetaEvent] = [], tempos: [Tempo] = []) {
         self.events = events
         self.contents = tempos
     }
@@ -59,6 +69,14 @@ public struct MIDITempoTrack: Sendable, CustomStringConvertible, DetailedStringC
         public var timestamp: MusicTimeStamp
         
         public var tempo: Double
+        
+        
+        /// The default tempo of 120.
+        ///
+        /// This is the tempo event CoreMIDI uses on write when on is specified.
+        public static var `default`: Tempo {
+            Tempo(timestamp: 0.0, tempo: 120.0)
+        }
         
         public init(timestamp: MusicTimeStamp, tempo: Double) {
             self.timestamp = timestamp

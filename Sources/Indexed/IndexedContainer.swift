@@ -97,7 +97,7 @@ public final class IndexedContainer {
         // construct dictionary
         var dictionary: [UInt8 : DisjointNotes] = [:]
         var index = 0 as UInt8
-        while index < 108 {
+        while index <= 108 {
             defer { index &+= 1 }
             guard let contents = grouped[index] else { continue }
             var i = 0

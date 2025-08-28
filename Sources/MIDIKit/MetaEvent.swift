@@ -36,6 +36,29 @@ public struct MIDIMetaEvent: Sendable, Equatable {
     public var data: Data
     
     
+    @inlinable
+    public init(timestamp: MusicTimeStamp, type: UInt8, data: Data) {
+        self.timestamp = timestamp
+        self.type = type
+        self.data = data
+    }
+    
+    @inlinable
+    public init(timestamp: MusicTimeStamp, type: AVMIDIMetaEvent.EventType, data: Data) {
+        self.timestamp = timestamp
+        self.type = UInt8(type.rawValue)
+        self.data = data
+    }
+    
+    /// The default time signature meta event CoreMIDI uses on write when none is specified.
+    ///
+    /// The default meta event specifies a 4/4 time signature, one metronome click per quarter note, and the default 32nd-note division.
+    @inlinable
+    public static var defaultTimeSignature: MIDIMetaEvent {
+        MIDIMetaEvent(timestamp: 0.0, type: .timeSignature, data: Data([4, 2, 24, 8]))
+    }
+    
+    
     func withUnsafePointer<T>(body: (UnsafePointer<AudioToolbox.MIDIMetaEvent>) throws -> T) rethrows -> T {
         let data = Swift.withUnsafePointer(to: type) { pointer in
             Data(bytes: pointer, count: 1)
