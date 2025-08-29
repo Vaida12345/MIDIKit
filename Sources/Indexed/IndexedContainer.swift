@@ -18,6 +18,8 @@ public final class IndexedContainer {
     ///
     /// None value is represented by `nil` (instead of empty array)
     ///
+    /// - Warning: The `DisjointNote`s holds unowned references to `self.contents`, please make sure you hold `self` to use `DisjointNote`s.
+    ///
     /// Key: 21...108
     public let notes: [UInt8 : DisjointNotes]
     

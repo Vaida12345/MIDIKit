@@ -22,15 +22,18 @@ struct IOTests {
     
     @Test func consistency() async throws {
         var track = MIDITrack()
-        while track.notes.count < 100 {
+        while track.notes.count < 1000 {
             let onset = Double.random(in: 0...100)
             let duration = Double.random(in: 0...10) + 1/128 // never zero
             let pitch = UInt8.random(in: 21...108)
             let note = MIDINote(onset: onset, offset: onset + duration, note: pitch, velocity: .random(in: 1...127))
-            guard MIDIContainer(tracks: [track]).indexed().notes[pitch].isNil(or: { !$0.overlaps(with: note) }) else { continue }
+            let indexed = MIDIContainer(tracks: [track]).indexed()
+            guard indexed.notes[pitch].isNil(or: { !$0.overlaps(with: note) }) else { continue }
             
             track.notes.append(note)
+            try #require(MIDIContainer(tracks: [track])._checkConsistency())
         }
+        try #require(MIDIContainer(tracks: [track])._checkConsistency())
         
         let dest = try FinderItem.temporaryDirectory(intent: .general)/"\(UUID()).mid"
         defer { try? dest.remove() }

@@ -18,18 +18,18 @@ extension MIDIContainer {
     ///
     /// - Returns: Whether the check passes.
     @discardableResult
-    public func _checkConsistency() -> Bool { // FIXME: test me!
+    public func _checkConsistency() -> Bool {
         let logger = Logger(subsystem: "MIDIKit", category: "Consistency")
         var passed = true
         
         for track in self.tracks {
             for note in track.notes {
                 if note.pitch < 21 || note.pitch > 108 {
-                    logger.warning("You are initialized a MIDI note outside acceptable range (21...108). CoreMIDI may choose to ignore this note on IO.")
+                    logger.warning("You initialized a MIDI note with pitch outside acceptable range (21...108). CoreMIDI may choose to ignore this note on IO.")
                     passed = false
                 }
                 if note.velocity == 0 {
-                    logger.warning("You are initialized a MIDI note with velocity zero. CoreMIDI may choose to ignore this note on IO.")
+                    logger.warning("You initialized a MIDI note with velocity zero. CoreMIDI may choose to ignore this note on IO.")
                     passed = false
                 }
             }
@@ -43,7 +43,7 @@ extension MIDIContainer {
                 defer { _curr = next; _next = sustainIterator.next() }
                 
                 if curr.offset >= next.onset {
-                    logger.warning("You are initialized a MIDI sustain that overlaps with others. CoreMIDI may produce sustains with incorrect lengths.")
+                    logger.warning("You initialized a MIDI sustain that overlaps with others. CoreMIDI may produce sustains with incorrect lengths.")
                     passed = false
                 }
             }
@@ -81,7 +81,7 @@ extension MIDIContainer {
             while i < contents.count - 1 {
                 // overlapping?
                 if contents[i].offset >= contents[i + 1].onset {
-                    logger.warning("You are initialized a MIDI event that overlaps with others. CoreMIDI may produce notes with incorrect lengths.")
+                    logger.warning("You initialized a MIDI event that overlaps with others. CoreMIDI may produce notes with incorrect lengths.")
                     passed = false
                 }
                 i &+= 1

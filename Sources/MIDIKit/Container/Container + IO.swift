@@ -23,6 +23,10 @@ extension MIDIContainer {
     /// Writes the MIDI as file to `destination`.
     @inlinable
     public func write(to destination: FinderItem) throws {
+#if DEBUG
+        self._checkConsistency()
+#endif
+        
         try destination.removeIfExists()
         try withErrorCaptured {
             try MusicSequenceFileCreate(self.makeSequence(), destination.url as CFURL, .midiType, .eraseFile, .max)
@@ -32,6 +36,10 @@ extension MIDIContainer {
     /// Obtain the MIDI data.
     @inlinable
     public func data() throws -> Data {
+#if DEBUG
+        self._checkConsistency()
+#endif
+        
         var data: Unmanaged<CFData>?
         try withErrorCaptured {
             try MusicSequenceFileCreateData(self.makeSequence(), .midiType, [], .max, &data)

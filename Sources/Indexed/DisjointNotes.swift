@@ -8,6 +8,7 @@
 import AudioToolbox
 
 
+/// - Warning: The `DisjointNote`s holds unowned references to `IndexedContainer.contents`, please make sure you hold `self` to use `DisjointNote`s.
 public struct DisjointNotes: ArrayRepresentable, DisjointIntervals {
     
     public var contents: [ReferenceNote]

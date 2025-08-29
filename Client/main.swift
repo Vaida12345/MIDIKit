@@ -14,13 +14,10 @@ import SwiftUI
 
 //let container = try MIDIContainer(at: "'/Users/vaida/Music/Piano Transcription/14 Ballade No. 1 in G minor, Op. 23.mid'")
 //let container = try MIDIContainer(at: "'/Users/vaida/Music/Piano Transcription/Ashes on The Fire - Shingeki no Kyojin.mid'")
-var container = try MIDIContainer(at: "/Users/vaida/Desktop/Untitled 1420.mid")
-var track1 = MIDITrack()
-for note in container.tracks[0].notes {
-    guard note.offset > note.onset else { print(note); continue } // FIXME: why no length?, manually give some length to produce sheet
-    track1.notes.append(note)
-}
-try MIDIContainer(tracks: [track1]).write(to: .desktopDirectory/"file.mid")
+var container = try MIDIContainer(at: "'/Users/vaida/Desktop/04 The Winter (Piano)_1.mid'")
+let indexed = container.indexed()
+indexed.normalize(preserve: .notesDisplay)
+try indexed.makeContainer().write(to: .desktopDirectory/"file.mid")
 //indexed.alignFirstNoteToZero()
 //indexed = indexed.removingArtifacts(threshold: 40)
 //let date = Date()
