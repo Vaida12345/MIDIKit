@@ -45,7 +45,7 @@ extension Array where Element == MIDIMeasure {
     public func jointed() -> MIDIMeasure {
         self.reduce(into: MIDIMeasure()) {
             $0.notes.append(contentsOf: $1.notes)
-            $0.sustains.append(contentsOf: $1.sustains)
+            $0.sustains.insert(contentsOf: $1.sustains)
         }
     }
     

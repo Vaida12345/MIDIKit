@@ -5,7 +5,7 @@
 //  Created by Vaida on 1/3/25.
 //
 
-public protocol Interval {
+public protocol Interval: Comparable {
     
     var onset: Double { get }
     
@@ -19,10 +19,15 @@ extension Interval {
     @inlinable
     public var duration: Double { offset - onset }
     
+    @inlinable
+    public static func < (lhs: Self, rhs: Self) -> Bool {
+        lhs.onset < rhs.onset
+    }
+    
 }
 
 
-extension Range<Double>: Interval {
+extension Range<Double>: Interval, @retroactive Comparable {
     
     @inlinable
     public var onset: Double {

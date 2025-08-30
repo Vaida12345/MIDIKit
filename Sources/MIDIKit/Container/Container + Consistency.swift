@@ -38,6 +38,11 @@ extension MIDIContainer {
                 }
             }
             
+            if track.sustains.contents != track.sustains.sorted() {
+                logger.warning("The sustain events are not sorted.")
+                passed = false
+            }
+            
             var sustainIterator = track.sustains.makeIterator()
             var _curr = sustainIterator.next()
             var _next = sustainIterator.next()
