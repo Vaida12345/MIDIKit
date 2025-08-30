@@ -40,7 +40,7 @@ public struct MIDITempoTrack: Sendable, CustomStringConvertible, DetailedStringC
     ///
     /// CoreMIDI will also insert a default tempo of 120.
     ///
-    /// - SeeAlso: ``MIDIMetaEvent.defaultTimeSignature``, ``MIDITempoTrack.Tempo.default``
+    /// - SeeAlso: ``MIDIMetaEvent/defaultTimeSignature``, ``MIDITempoTrack/Tempo/default``
     public init(events: [MIDITrack.MetaEvent] = [], tempos: [Tempo] = []) {
         self.events = events
         self.contents = tempos

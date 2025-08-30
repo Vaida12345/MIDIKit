@@ -17,6 +17,14 @@ import Optimization
 /// `chord`s serve primarily for normalization, arpeggios are not considered in the same chord.
 ///
 /// `cluster` and `chord` can be used interchangeably.
+///
+/// > Warning:
+/// > The `Chord`s hold non-owning references to `IndexedContainer.contents`.
+/// >
+/// > You can use `extendLifetime(_:)` to ensure a container is not deallocated until it returns.
+/// > ```swift
+/// > extendLifetime(container)
+/// > ```
 public struct Chord: RandomAccessCollection {
     
     /// contents are always sorted by their onsets.
@@ -77,7 +85,7 @@ public struct Chord: RandomAccessCollection {
     ///
     /// Chords are sorted by `leadingOnset`.
     public static func makeChords(
-        from container: IndexedContainer,
+        from container: borrowing IndexedContainer,
         spec: Spec = Spec()
     ) -> [Chord] {
         guard !container.isEmpty else { return [] }

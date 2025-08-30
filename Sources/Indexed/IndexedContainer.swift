@@ -23,7 +23,9 @@ public final class IndexedContainer {
     /// Key: 21...108
     public let notes: [UInt8 : DisjointNotes]
     
-    /// Sorted notes
+    /// The contents are sorted on initialization.
+    ///
+    /// The contents are not guaranteed to be sorted after iteration, as `container` does not update `contents` when the `onset`s for individual notes change.
     public let contents: UnsafeMutableBufferPointer<MIDINote>
     
     /// The sustain events.

@@ -10,7 +10,9 @@ import AudioToolbox
 import DetailedDescription
 
 
-/// To support efficient lookup, the sustain events are always sorted.
+/// To support efficient lookup, the sustain events are sorted on initialization.
+///
+/// The contents are not guaranteed to be sorted after iteration, as `container` does not update `contents` when the `onset`s for individual notes change.
 public struct MIDISustainEvents: ArrayRepresentable, DisjointIntervals, Sendable, Equatable, DetailedStringConvertible {
     
     public var contents: [Element]

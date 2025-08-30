@@ -19,7 +19,6 @@ import NativeImage
 /// Although `MIDIKit` does not require the notes to be sorted, SMF spec does. Hence on read, all the notes are sorted.
 public struct MIDINotes: ArrayRepresentable, Sendable, Equatable, DetailedStringConvertible {
     
-    /// sorted
     public var contents: [MIDITrack.Note]
     
     @inlinable

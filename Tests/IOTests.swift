@@ -28,10 +28,12 @@ struct IOTests {
             let pitch = UInt8.random(in: 21...108)
             let note = MIDINote(onset: onset, offset: onset + duration, note: pitch, velocity: .random(in: 1...127))
             let indexed = MIDIContainer(tracks: [track]).indexed()
-            guard indexed.notes[pitch].isNil(or: { !$0.overlaps(with: note) }) else { continue }
-            
-            track.notes.append(note)
-            try #require(MIDIContainer(tracks: [track])._checkConsistency())
+            try withExtendedLifetime(indexed) { indexed in
+                guard indexed.notes[pitch].isNil(or: { !$0.overlaps(with: note) }) else { return }
+                
+                track.notes.append(note)
+                try #require(MIDIContainer(tracks: [track])._checkConsistency())
+            }
         }
         try #require(MIDIContainer(tracks: [track])._checkConsistency())
         
