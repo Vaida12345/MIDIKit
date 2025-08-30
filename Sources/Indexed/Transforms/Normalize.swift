@@ -175,7 +175,7 @@ extension IndexedContainer {
                 func span(_ sustain: MIDISustainEvents.Element) {
                     if sustain.onset < nextNote {
                         setNoteOffset(
-                            clamp(note.offset, min: sustain.onset + minimumLength, max: nextNote),
+                            clamp(note.offset, min: sustain.onset + minimumLength),
                             channel: 1
                         )
                     } else {
@@ -245,7 +245,7 @@ extension IndexedContainer {
                 guard let next = _next else { break }
                 defer { _curr = next; _next = iterator.next() }
                 
-                curr.offset = clamp(curr.offset, min: curr.onset + minimumLength, max: next.onset - 1 / 64)
+                curr.offset = clamp(curr.offset, min: curr.onset, max: next.onset - 1 / 128)
             }
         }
     }
