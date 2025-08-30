@@ -31,6 +31,11 @@ public struct MIDIContainer: CustomStringConvertible, DetailedStringConvertible,
         self.tempo = tempo
     }
     
+    @inlinable
+    public init(notes: MIDINotes, sustains: MIDISustainEvents = []) {
+        self.init(tracks: [MIDITrack(notes: notes, sustains: sustains)])
+    }
+    
     
     @inlinable
     public var description: String {

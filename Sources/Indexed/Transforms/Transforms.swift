@@ -50,13 +50,13 @@ extension IndexedContainer {
         contents.reserveCapacity(self.notes.count)
         
         var index = 21 as UInt8
-        while index < 108 {
+        while index <= 108 {
             defer { index &+= 1 }
-            guard var notes = self.notes[index]?.contents.map(\.pointee) else { continue }
+            guard var notes = self.notes[index]?.map(\.pointee) else { continue }
             var i = notes.count - 1
             var range: ClosedRange<Int>? = nil
             
-            while i > 0 {
+            while i >= 0 {
                 var isInCloseProximity: Bool {
                     let next = i &+ 1
                     guard next < notes.count else { return false }
@@ -64,7 +64,7 @@ extension IndexedContainer {
                     return distance < 1/2 // 8th note
                 }
                 
-                if notes[i].velocity < threshold {
+                if notes[i].velocity <= threshold && i > 0 {
                     // update range
                     if range != nil {
                         if isInCloseProximity {
