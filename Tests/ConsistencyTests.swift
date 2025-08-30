@@ -6,6 +6,7 @@
 //
 
 import Testing
+import FinderItem
 import MIDIKit
 
 
@@ -42,6 +43,17 @@ struct ConsistencyTests {
         do {
             let notes = [
                 MIDINote(onset: 10, offset: 11, note: 50, velocity: 0)
+            ]
+            let container = MIDIContainer(tracks: [MIDITrack(notes: notes)])
+            #expect(!container._checkConsistency())
+        }
+    }
+    
+    @Test
+    func checkDuration() {
+        do {
+            let notes = [
+                MIDINote(onset: 10, offset: 9, note: 50, velocity: 0)
             ]
             let container = MIDIContainer(tracks: [MIDITrack(notes: notes)])
             #expect(!container._checkConsistency())
@@ -88,6 +100,18 @@ struct ConsistencyTests {
             let container = MIDIContainer(tracks: [MIDITrack(notes: notes)])
             #expect(container._checkConsistency())
         }
+    }
+    
+    @Test(arguments: [IndexedContainer.PreserveSettings.acousticResult, .notesDisplay])
+    func consistencyAfterNormalization(method: IndexedContainer.PreserveSettings) async throws {
+        let generated = try MIDIContainer(at: "/Users/vaida/DataBase/Swift Package/Test Reference/MIDIKit/04 The Winter.mid")
+        #expect(generated._checkConsistency())
+        
+        let indexed = generated.indexed()
+        indexed.normalize(preserve: method)
+        #expect(indexed.makeContainer()._checkConsistency())
+        
+        extendLifetime(indexed)
     }
     
 }

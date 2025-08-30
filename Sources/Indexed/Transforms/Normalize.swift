@@ -24,7 +24,7 @@ extension IndexedContainer {
         
         let chords = Chord.makeChords(from: self)
         let margin: Double = 1/4 // the padding after sustain
-        let minimumLength: Double = Chord.Spec().duration * 2
+        let minimumLength: Double = Chord.Spec().duration
         let runningAverage = self.runningAverage()
         
         chords.forEach { __index, chord in
@@ -232,10 +232,26 @@ extension IndexedContainer {
             removed.channel = 12
 #endif
         }
+        
+        // finally, make sure notes are not overlapping.
+        for pitch in 21...108 as ClosedRange<UInt8> {
+            guard let notes = self.notes[pitch] else { continue }
+            
+            var iterator = notes.makeIterator()
+            var _curr = iterator.next()
+            var _next = iterator.next()
+            
+            while let curr = _curr {
+                guard let next = _next else { break }
+                defer { _curr = next; _next = iterator.next() }
+                
+                curr.offset = clamp(curr.offset, min: curr.onset + minimumLength, max: next.onset - 1 / 64)
+            }
+        }
     }
     
     
-    public enum PreserveSettings: String, Equatable, Identifiable, CaseIterable, CustomLocalizedStringResourceConvertible {
+    public enum PreserveSettings: String, Equatable, Identifiable, CaseIterable, CustomLocalizedStringResourceConvertible, Sendable {
         /// Ensuring the sustains are correct for best acoustic results.
         case acousticResult = "Acoustic Result"
         /// Focusing on chords, minimize chords overlapping.
