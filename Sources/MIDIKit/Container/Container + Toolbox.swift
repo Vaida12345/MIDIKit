@@ -6,6 +6,7 @@
 //
 
 import AudioToolbox
+import OSLog
 
 
 extension MIDIContainer {
@@ -122,7 +123,9 @@ extension MIDIContainer {
                     additionalInfo.tempos.append(MIDITempoTrack.Tempo(timestamp: timeStamp, tempo: tempo))
                     
                 default:
-                    fatalError("Unhandled event: \(eventType)")
+                    let logger = Logger(subsystem: "MIDIKit", category: "MIDIContainer.init")
+                    logger.warning("Unhandled MIDIEventType: \(eventType)")
+                    continue
                 }
             }
             midiTrack.sustains = MIDISustainEvents(sustains)
