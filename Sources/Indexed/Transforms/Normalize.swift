@@ -32,7 +32,7 @@ extension IndexedContainer {
             // check if normalization is required.
             // It is not required if there isn't any note in its duration
             if __index == chords.count - 1 { return }
-            let nextNote = chords[__index + 1].min(of: \.onset)!
+            guard let nextNote = chords[__index + 1].min(of: \.onset) else { return }
             
             var indeterminate: Set<ReferenceNote> = []
             
@@ -86,7 +86,7 @@ extension IndexedContainer {
                             channel: 0
                         )
                         return // no need to use proximity based method
-                    } else if onsetNextIndex! == offsetIndex! {
+                    } else if onsetNextIndex == offsetIndex && onsetNextIndex != nil {
                         // The onset and offset and in adjacent sustain regions.
                         span(offset)
                     } else {
@@ -96,7 +96,7 @@ extension IndexedContainer {
                 } else if let offset {
                     // An sustain was found for offset, but not onset
                     
-                    if onsetNextIndex == offsetIndex! {
+                    if onsetNextIndex == offsetIndex && offsetIndex != nil {
                         // Sustain not found for offset, but the next sustain region is the offset sustain region
                         span(offset)
                     } else {
@@ -159,7 +159,7 @@ extension IndexedContainer {
                         return
                     }
                     
-                    let average = runningAverage[at: note.onset]!
+                    guard let average = runningAverage[at: note.onset] else { return }
                     if note.note < average.note {
                         // maybe this is the left hand, leave it. For example, Moonlight I.
                     } else {
@@ -225,7 +225,7 @@ extension IndexedContainer {
             guard !determinants.isEmpty else { return }
             
             // the indeterminate one could be inferred using
-            let average = determinants.mean(of: \.offset)!
+            guard let average = determinants.mean(of: \.offset) else { return }
             let removed = indeterminate.removeFirst()
             removed.offset = Swift.min(removed.offset, Swift.max(average, removed.onset + minimumLength))
 #if DEBUG
