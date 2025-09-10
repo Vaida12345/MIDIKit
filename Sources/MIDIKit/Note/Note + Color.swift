@@ -7,10 +7,11 @@
 
 import SwiftUI
 
+
 extension MIDINote {
     
-    /// The MIDI Note color based on the velocity of a note.
-    public static func color(velocity: UInt8) -> Color {
+    /// The MIDI Note color components based on the velocity of a note.
+    public static func colorComponents(velocity: UInt8) -> SIMD4<Double> {
         let _velocity = 1 - Double(velocity) / 127
         let velocity = (sin(.pi * _velocity - .pi / 2) + 1) / 2
         
@@ -40,10 +41,19 @@ extension MIDINote {
             linearInterpolate(velocity, 0, 1, min: 30, max: 200)
         }
         
-        return Color(red: red, green: green, blue: blue)
+        return [red, green, blue, 1]
     }
     
-    private static func linearInterpolate( _ t: Double, _ a: Double, _ b: Double, min: Double, max: Double) -> Double {
+    /// The MIDI Note color based on the velocity of a note.
+    @inlinable
+    public static func color(velocity: UInt8) -> Color {
+        let components = self.colorComponents(velocity: velocity)
+        return Color(red: components[0], green: components[1], blue: components[2])
+    }
+    
+    
+    @inlinable
+    internal static func linearInterpolate( _ t: Double, _ a: Double, _ b: Double, min: Double, max: Double) -> Double {
         min / 255 + Double(t - a) / Double(b - a) * (max - min) / 255
     }
     
