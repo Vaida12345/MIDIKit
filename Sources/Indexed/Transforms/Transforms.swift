@@ -101,25 +101,27 @@ extension IndexedContainer {
     /// Apply the gap between consecutive notes.
     ///
     /// - Parameters:
-    ///   - minimum: The minimum gap between consecutive notes.
     ///   - ideal: The ideal gap, defaults to 1/8 beat, 32th note in 4/4 120.
-    ///   - minimumNoteLength: The minimum length of a resulting note.
-    ///   - maxFractionOfDistance: The max gap, of fraction of difference of onsets.
+    ///   - minimumNoteLength: The minimum length of any resulting note.
+    ///
+    /// If ideal gap is not feasible, it will apply any adjustments it deems fit.
     public func applyGap(
-        minimum: Double = 1/128,
         ideal: Double = 1/8,
-        minimumNoteLength: Double = 1/128,
-        maxFractionOfDistance: Double = 1/2
+        minimumNoteLength: Double = 1/128
     ) async {
-        for i in 21...108 {
-            guard let contents = self.notes[UInt8(i)] else { continue }
+        for i in 21...108 as ClosedRange<UInt8> {
+            guard let contents = self.notes[i] else { continue }
             for i in 0..<contents.count - 1 {
                 let duration = contents[i].duration
                 let gap = contents[i + 1].onset - contents[i].offset
                 let distance = duration + gap
                 
-                let resultingGap: Double = clamp(ideal, min: gap, max: distance * maxFractionOfDistance)
-                contents[i].offset = contents[i + 1].onset - clamp(resultingGap, min: minimum, max: distance - minimumNoteLength)
+                guard gap <= ideal else { continue } // no need to do anything.
+                if distance > 2 * ideal { // able to fit ideal gap
+                    contents[i].offset = contents[i + 1].onset - ideal
+                } else if distance > minimumNoteLength { // ensure minimum note length
+                    contents[i].offset = clamp(contents[i + 1].onset - ideal, min: contents[i].duration + minimumNoteLength)
+                } // ensures nothing, keep as-is
             }
         }
     }

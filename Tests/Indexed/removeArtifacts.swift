@@ -54,14 +54,14 @@ struct RemoveArtifactsTests {
     }
     
     @Test func consistencyChecks() async throws {
-        let container = try MIDIContainer(at: "/Users/vaida/DataBase/Swift Package/Test Reference/MIDIKit/Sad Machine (Xeuphoria's Goodbye Ver.).mid")
+        let container = try MIDIContainer(at: "/Users/vaida/DataBase/Swift Package/Test Reference/MIDIKit/Sad Machine.mid")
         try #require(container._checkConsistency())
         let indexed = container.indexed()
         #expect(await indexed.removingArtifacts(threshold: 40).makeContainer()._checkConsistency())
     }
     
     @Test(.disabled("Does nothing")) func tests() async throws {
-        let container = try MIDIContainer(at: "/Users/vaida/DataBase/Swift Package/Test Reference/MIDIKit/The Gardens (Xeuphoria Piano Medley).mid")
+        let container = try MIDIContainer(at: "/Users/vaida/DataBase/Swift Package/Test Reference/MIDIKit/The Gardens.mid")
         try #require(container._checkConsistency())
         let indexed = container.indexed()
         let processed = await indexed.removingArtifacts(threshold: 40).makeContainer()
