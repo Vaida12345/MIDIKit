@@ -20,7 +20,7 @@ extension IndexedContainer {
     ///   - velocity is incorrect.
     ///
     /// `self` will not be mutated.
-    public func applyVelocity(to other: IndexedContainer) {
+    public func applyVelocity(to other: IndexedContainer) async {
         guard !self.isEmpty && !other.isEmpty else { return }
         
         for i in (21 as UInt8)...108 {
@@ -45,7 +45,7 @@ extension IndexedContainer {
     ///   - threshold: The velocity of a note to be treated as artifact.
     ///
     /// - Returns: A new ``IndexedContainer`` initialized using the parameters used in the initializer for this instance. Contents of `self` remains unchanged.
-    public func removingArtifacts(threshold: UInt8) -> IndexedContainer {
+    public func removingArtifacts(threshold: UInt8) async -> IndexedContainer {
         var contents: [MIDINote] = []
         contents.reserveCapacity(self.notes.count)
         
@@ -127,7 +127,7 @@ extension IndexedContainer {
     /// Aligns the first note in the sequence to the start of the timeline (0:00:00).
     ///
     /// This function shifts all notes so that the earliest note starts exactly at time zero, preserving the relative timing between notes.
-    public func alignFirstNoteToZero() {
+    public func alignFirstNoteToZero() async {
         let firstNoteOnset = self.contents.first?.onset ?? 0
         var i = self.contents.startIndex
         while i < self.contents.endIndex {

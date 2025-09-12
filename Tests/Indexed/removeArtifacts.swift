@@ -19,7 +19,7 @@ struct RemoveArtifactsTests {
             MIDINote(onset: 1, offset: 1.1, note: 50, velocity: 20),
             MIDINote(onset: 1.1, offset: 1.3, note: 50, velocity: 20)
         ])
-        let reduced = container.indexed().removingArtifacts(threshold: 30).makeContainer()
+        let reduced = await container.indexed().removingArtifacts(threshold: 30).makeContainer()
         try #require(reduced._checkConsistency())
         
         #expect(reduced.tracks[0].notes.count == 1)
@@ -32,7 +32,7 @@ struct RemoveArtifactsTests {
             MIDINote(onset: 1, offset: 1.1, note: 50, velocity: 20),
             MIDINote(onset: 1.1, offset: 1.3, note: 50, velocity: 20)
         ])
-        let reduced = container.indexed().removingArtifacts(threshold: 30).makeContainer()
+        let reduced = await container.indexed().removingArtifacts(threshold: 30).makeContainer()
         try #require(reduced._checkConsistency())
         
         #expect(reduced.tracks[0].notes.count == 1)
@@ -46,7 +46,7 @@ struct RemoveArtifactsTests {
             MIDINote(onset: 1.1, offset: 1.3, note: 50, velocity: 20),
             MIDINote(onset: 1.3, offset: 1.5, note: 50, velocity: 20)
         ])
-        let reduced = container.indexed().removingArtifacts(threshold: 30).makeContainer()
+        let reduced = await container.indexed().removingArtifacts(threshold: 30).makeContainer()
         try #require(reduced._checkConsistency())
         
         #expect(reduced.tracks[0].notes.count == 2)
@@ -57,14 +57,14 @@ struct RemoveArtifactsTests {
         let container = try MIDIContainer(at: "/Users/vaida/DataBase/Swift Package/Test Reference/MIDIKit/Sad Machine (Xeuphoria's Goodbye Ver.).mid")
         try #require(container._checkConsistency())
         let indexed = container.indexed()
-        #expect(indexed.removingArtifacts(threshold: 40).makeContainer()._checkConsistency())
+        #expect(await indexed.removingArtifacts(threshold: 40).makeContainer()._checkConsistency())
     }
     
     @Test(.disabled("Does nothing")) func tests() async throws {
         let container = try MIDIContainer(at: "/Users/vaida/DataBase/Swift Package/Test Reference/MIDIKit/The Gardens (Xeuphoria Piano Medley).mid")
         try #require(container._checkConsistency())
         let indexed = container.indexed()
-        let processed = indexed.removingArtifacts(threshold: 40).makeContainer()
+        let processed = await indexed.removingArtifacts(threshold: 40).makeContainer()
         #expect(processed._checkConsistency())
     }
 }

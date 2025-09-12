@@ -91,7 +91,7 @@ fileprivate struct HandBacktrack {
 
 extension IndexedContainer {
     
-    public func assignHands() {
+    public func assignHands() async {
         guard !self.isEmpty else { return }
         
         // MARK: - Cost functions
@@ -158,7 +158,7 @@ extension IndexedContainer {
         
         var costs = Array(repeating: HandCost(), count: self.contents.count)
         var backtrack = Array(repeating: HandBacktrack(), count: self.contents.count)
-        let contents = Chord.makeSingleHandedChords(from: self)
+        let contents = await Chord.makeSingleHandedChords(from: self)
         
         
         let initialAverage = average[at: contents.first!.leadingOnset]!

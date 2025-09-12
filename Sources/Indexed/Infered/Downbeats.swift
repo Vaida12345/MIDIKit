@@ -86,9 +86,9 @@ extension IndexedContainer {
         }
     }
     
-    public func downbeats() -> [MIDINote] {
+    public func downbeats() async -> [MIDINote] {
         guard !self.isEmpty else { return [] }
-        let _chords = Chord.makeChords(from: self)
+        let _chords = await Chord.makeChords(from: self)
         let baselineBarLength = self.baselineBarLength()
         
         print("baselineBarLength is \(baselineBarLength)")

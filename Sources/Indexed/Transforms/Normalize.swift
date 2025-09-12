@@ -19,10 +19,10 @@ extension IndexedContainer {
     /// - ensure the gaps between consecutive notes (in the initializer)
     ///
     /// - Complexity: O(*n log n*), `makeChords`
-    public func normalize(preserve: PreserveSettings) {
+    public func normalize(preserve: PreserveSettings) async {
         guard !self.isEmpty else { return }
         
-        let chords = Chord.makeChords(from: self)
+        let chords = await Chord.makeChords(from: self)
         let margin: Double = 1/4 // the padding after sustain
         let minimumLength: Double = Chord.Spec().duration
         let runningAverage = self.runningAverage()

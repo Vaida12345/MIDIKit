@@ -87,7 +87,7 @@ public struct Chord: RandomAccessCollection {
     public static func makeChords(
         from container: borrowing IndexedContainer,
         spec: Spec = Spec()
-    ) -> [Chord] {
+    ) async -> [Chord] {
         guard !container.isEmpty else { return [] }
         
         /// Returns minimum distance between onsets of any two notes in each cluster.
@@ -197,8 +197,8 @@ public struct Chord: RandomAccessCollection {
     public static func makeSingleHandedChords(
         from container: IndexedContainer,
         spec: Spec = Spec()
-    ) -> [Chord] {
-        var chords = self.makeChords(from: container, spec: spec)
+    ) async -> [Chord] {
+        var chords = await self.makeChords(from: container, spec: spec)
         
         for (index, chord) in chords.enumerated() {
             let span = chord.pitchSpan

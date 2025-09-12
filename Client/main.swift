@@ -16,10 +16,10 @@ import SwiftUI
 let container = try MIDIContainer(at: "'/Users/vaida/Music/Piano Transcription/Ashes on The Fire - Shingeki no Kyojin.mid'")
 //let container = try MIDIContainer(at: "'/Users/vaida/Music/Piano Transcription/10 Clair de lune.mid'")
 var indexed = container.indexed()
-indexed.alignFirstNoteToZero()
+await indexed.alignFirstNoteToZero()
 //indexed = indexed.removingArtifacts(threshold: 40)
 let date = Date()
-indexed.normalize(preserve: .acousticResult)
+await indexed.normalize(preserve: .acousticResult)
 print(date.distanceToNow())
 
 try indexed.makeContainer().write(to: .desktopDirectory/"file.mid")

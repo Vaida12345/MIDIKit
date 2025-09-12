@@ -108,7 +108,7 @@ struct ConsistencyTests {
         #expect(generated._checkConsistency())
         
         let indexed = generated.indexed()
-        indexed.normalize(preserve: method)
+        await indexed.normalize(preserve: method)
         #expect(indexed.makeContainer()._checkConsistency())
         
         extendLifetime(indexed)
