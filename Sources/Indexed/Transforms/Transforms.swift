@@ -148,4 +148,42 @@ extension IndexedContainer {
         self.sustains.contents.removeAll(where: { $0.onset < 0 })
     }
     
+    /// Merge all notes that share the same interval in `other`.
+    ///
+    /// This function lookups the corresponding interval of every note in self (indicated by its onset), if they share the same interval, they are merged.
+    public func mergeNotesInSameInterval(in other: IndexedContainer) async -> IndexedContainer {
+        var contents: [MIDINote] = []
+        contents.reserveCapacity(self.notes.count)
+        
+        var index = 21 as UInt8
+        while index <= 108 {
+            defer { index &+= 1 }
+            guard let notes = self.notes[index]?.map(\.pointee) else { continue }
+            var iterator = notes.makeIterator()
+            guard var prev = iterator.next() else { continue }
+            var prevIndex = other.notes[index]?.index(at: prev.onset)
+            var _curr = iterator.next()
+            var lastWasMerged: Bool = false
+            
+            while let curr = _curr {
+                let currIndex = other.notes[index]?.index(at: curr.onset)
+                if let currIndex, currIndex == prevIndex {
+                    prev.offset = curr.offset
+                    if lastWasMerged { contents.removeLast() }
+                    contents.append(prev)
+                    _curr = iterator.next()
+                    
+                    lastWasMerged = true
+                } else {
+                    prev = curr
+                    _curr = iterator.next()
+                    prevIndex = currIndex
+                }
+            }
+        }
+        
+        let container = MIDIContainer(tracks: [MIDITrack(notes: contents, sustains: self.sustains)])
+        return IndexedContainer(container: container)
+    }
+    
 }
