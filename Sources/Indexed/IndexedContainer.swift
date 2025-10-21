@@ -21,12 +21,12 @@ public final class IndexedContainer {
     /// - Warning: The `DisjointNote`s holds unowned references to `self.contents`, please make sure you hold `self` to use `DisjointNote`s.
     ///
     /// Key: 21...108
-    public let notes: [UInt8 : DisjointNotes]
+    public fileprivate(set) var notes: [UInt8 : DisjointNotes]
     
     /// The contents are sorted on initialization.
     ///
     /// The contents are not guaranteed to be sorted after iteration, as `container` does not update `contents` when the `onset`s for individual notes change.
-    public let contents: UnsafeMutableBufferPointer<MIDINote>
+    public fileprivate(set) var contents: UnsafeMutableBufferPointer<MIDINote>
     
     /// The sustain events.
     public var sustains: MIDISustainEvents
@@ -63,8 +63,34 @@ public final class IndexedContainer {
     ///   - runningLength: The length for calculating the running average. The default value is `4` beats, that is one measure in a 4/4 sheet.
     ///
     /// Any methods that returns a new ``IndexedContainer`` will use the parameters set in the initializer.
-    @inlinable
     public init(
+        container: MIDIContainer,
+        minimumConsecutiveNotesGap: Double = 1/128
+    ) {
+        self.notes = [:]
+        self.contents = .allocate(capacity: 0)
+        self.sustains = []
+        
+        self._init(container: container, minimumConsecutiveNotesGap: minimumConsecutiveNotesGap)
+    }
+    
+    @inlinable
+    deinit {
+        self.contents.deallocate()
+    }
+    
+}
+
+
+extension IndexedContainer {
+    
+    /// - Parameters:
+    ///   - container: The source container.
+    ///   - minimumConsecutiveNotesGap: The minimum gap between two consecutive notes. The default value is `1/128`. The minimum length of individual note from La campanella in G-Sharp Minor by Lang Lang is 0.013 beat, which is around 1/64 beat.
+    ///   - runningLength: The length for calculating the running average. The default value is `4` beats, that is one measure in a 4/4 sheet.
+    ///
+    /// Any methods that returns a new ``IndexedContainer`` will use the parameters set in the initializer.
+    func _init(
         container: MIDIContainer,
         minimumConsecutiveNotesGap: Double = 1/128
     ) {
@@ -88,6 +114,7 @@ public final class IndexedContainer {
             sustains = MIDISustainEvents(container.tracks.flatMap(\.sustains))
         }
         
+        self.contents.deallocate()
         self.contents = contents
         self.sustains = sustains
         
@@ -117,11 +144,6 @@ public final class IndexedContainer {
         _ = consume grouped
         
         self.notes = dictionary
-    }
-    
-    @inlinable
-    deinit {
-        self.contents.deallocate()
     }
     
 }

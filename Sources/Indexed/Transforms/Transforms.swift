@@ -47,7 +47,10 @@ extension IndexedContainer {
     /// - Returns: A new ``IndexedContainer`` initialized using the parameters used in the initializer for this instance. Contents of `self` remains unchanged.
     ///
     /// - Note: As `self` is a class, `self` is mutated on return.
-    public func removingArtifacts(threshold: UInt8) async -> IndexedContainer {
+    public func removingArtifacts(
+        threshold: UInt8,
+        proximityThreshold: Double = 1/2 // 8th note
+    ) async -> IndexedContainer {
         var contents: [MIDINote] = []
         contents.reserveCapacity(self.notes.count)
         
@@ -63,7 +66,7 @@ extension IndexedContainer {
                     let next = i &+ 1
                     guard next < notes.count else { return false }
                     let distance = notes[next].onset - notes[i].offset
-                    return distance < 1/2 // 8th note
+                    return distance < proximityThreshold // 8th note
                 }
                 
                 if notes[i].velocity <= threshold && i > 0 {
@@ -155,7 +158,7 @@ extension IndexedContainer {
     /// This function lookups the corresponding interval of every note in self (indicated by its center), if they share the same interval, they are merged.
     ///
     /// - Note: As `self` is a class, `self` is mutated on return.
-    public func mergeNotesInSameInterval(in other: IndexedContainer, threshold: UInt8, difference: UInt8) async -> IndexedContainer {
+    public func mergeNotesInSameInterval(in other: IndexedContainer, threshold: UInt8, difference: UInt8) async {
         var contents: [MIDINote] = []
         contents.reserveCapacity(self.notes.count)
         
@@ -170,7 +173,7 @@ extension IndexedContainer {
             
             while let curr = _curr {
                 let currIndex = other.notes[index]?.index(at: curr.onset + curr.duration / 2)
-                if let currIndex, currIndex == prevIndex, curr.velocity <= threshold, curr.velocity < prev.velocity - difference {
+                if let currIndex, currIndex == prevIndex, curr.velocity <= threshold, curr.velocity <= prev.velocity - difference {
                     prev.offset = curr.offset
                 } else {
                     contents.append(prev)
@@ -185,7 +188,7 @@ extension IndexedContainer {
         }
         
         let container = MIDIContainer(tracks: [MIDITrack(notes: contents, sustains: self.sustains)])
-        return IndexedContainer(container: container)
+        return self._init(container: container)
     }
     
 }
