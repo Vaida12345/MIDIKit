@@ -32,7 +32,7 @@ let rhs = try MIDIContainer(at: .desktopDirectory/"encoded.mid")
 
 print(lhs, rhs)
 
-let transformed = await lhs.indexed().mergeNotesInSameInterval(in: rhs.indexed()).makeContainer()
+let transformed = await lhs.indexed().mergeNotesInSameInterval(in: rhs.indexed(), threshold: 70, difference: 5).makeContainer()
 print(transformed)
 try transformed.write(to: .desktopDirectory/"output 2.mid")
 

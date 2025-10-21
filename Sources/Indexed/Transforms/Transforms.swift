@@ -155,7 +155,7 @@ extension IndexedContainer {
     /// This function lookups the corresponding interval of every note in self (indicated by its center), if they share the same interval, they are merged.
     ///
     /// - Note: As `self` is a class, `self` is mutated on return.
-    public func mergeNotesInSameInterval(in other: IndexedContainer) async -> IndexedContainer {
+    public func mergeNotesInSameInterval(in other: IndexedContainer, threshold: UInt8, difference: UInt8) async -> IndexedContainer {
         var contents: [MIDINote] = []
         contents.reserveCapacity(self.notes.count)
         
@@ -170,7 +170,7 @@ extension IndexedContainer {
             
             while let curr = _curr {
                 let currIndex = other.notes[index]?.index(at: curr.onset + curr.duration / 2)
-                if let currIndex, currIndex == prevIndex {
+                if let currIndex, currIndex == prevIndex, curr.velocity <= threshold, curr.velocity < prev.velocity - difference {
                     prev.offset = curr.offset
                 } else {
                     contents.append(prev)
