@@ -45,6 +45,8 @@ extension IndexedContainer {
     ///   - threshold: The velocity of a note to be treated as artifact.
     ///
     /// - Returns: A new ``IndexedContainer`` initialized using the parameters used in the initializer for this instance. Contents of `self` remains unchanged.
+    ///
+    /// - Note: As `self` is a class, `self` is mutated on return.
     public func removingArtifacts(threshold: UInt8) async -> IndexedContainer {
         var contents: [MIDINote] = []
         contents.reserveCapacity(self.notes.count)
@@ -150,7 +152,9 @@ extension IndexedContainer {
     
     /// Merge all notes that share the same interval in `other`.
     ///
-    /// This function lookups the corresponding interval of every note in self (indicated by its onset), if they share the same interval, they are merged.
+    /// This function lookups the corresponding interval of every note in self (indicated by its center), if they share the same interval, they are merged.
+    ///
+    /// - Note: As `self` is a class, `self` is mutated on return.
     public func mergeNotesInSameInterval(in other: IndexedContainer) async -> IndexedContainer {
         var contents: [MIDINote] = []
         contents.reserveCapacity(self.notes.count)
@@ -161,25 +165,23 @@ extension IndexedContainer {
             guard let notes = self.notes[index]?.map(\.pointee) else { continue }
             var iterator = notes.makeIterator()
             guard var prev = iterator.next() else { continue }
-            var prevIndex = other.notes[index]?.index(at: prev.onset)
+            var prevIndex = other.notes[index]?.index(at: prev.onset + prev.duration / 2)
             var _curr = iterator.next()
-            var lastWasMerged: Bool = false
             
             while let curr = _curr {
-                let currIndex = other.notes[index]?.index(at: curr.onset)
+                let currIndex = other.notes[index]?.index(at: curr.onset + curr.duration / 2)
                 if let currIndex, currIndex == prevIndex {
                     prev.offset = curr.offset
-                    if lastWasMerged { contents.removeLast() }
-                    contents.append(prev)
-                    _curr = iterator.next()
-                    
-                    lastWasMerged = true
                 } else {
+                    contents.append(prev)
                     prev = curr
-                    _curr = iterator.next()
                     prevIndex = currIndex
                 }
+                _curr = iterator.next()
             }
+            
+            // add prev anyway
+            contents.append(prev)
         }
         
         let container = MIDIContainer(tracks: [MIDITrack(notes: contents, sustains: self.sustains)])

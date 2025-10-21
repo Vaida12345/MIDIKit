@@ -83,7 +83,7 @@ extension DisjointIntervals {
     ///
     /// - Complexity: O(log *n*), binary search.
     @inlinable
-    public func index(at timeStamp: Double) -> Index? {
+    public func index(at timeStamp: Double, tolerance: Double = 0) -> Index? {
         var low = 0
         var high = self.count - 1
         
@@ -91,7 +91,7 @@ extension DisjointIntervals {
             let mid = (low + high) / 2
             let interval = self[mid]
             
-            if timeStamp >= interval.onset && timeStamp <= interval.offset {
+            if timeStamp >= interval.onset - tolerance && timeStamp <= interval.offset + tolerance {
                 return mid
             } else if timeStamp < interval.onset {
                 high = mid - 1
