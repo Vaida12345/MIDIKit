@@ -47,7 +47,17 @@ extension ReferenceNote: Interval {
     }
     
     @inlinable
-    public var note: UInt8 { self.pointee.note }
+    public var note: UInt8 {
+        get { self.pointee.note }
+        nonmutating set { self.pointee.note = newValue }
+    }
+    
+    /// The key, alias to `note`.
+    @inlinable
+    public var pitch: UInt8 {
+        get { self.note }
+        nonmutating set { self.note = newValue }
+    }
     
     @inlinable
     public var velocity: UInt8 {

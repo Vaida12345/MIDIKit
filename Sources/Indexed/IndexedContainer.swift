@@ -106,7 +106,18 @@ extension IndexedContainer {
             
             sustains = track.sustains
         } else {
-            var notes = container.tracks.flatMap(\.notes)
+            var notes: [MIDINote] = []
+            notes.reserveCapacity(container.tracks.map(\.notes.count).sum)
+            for (trackIndex, track) in container.tracks.enumerated() {
+                var index = 0
+                while index < track.notes.count {
+                    var note = track.notes[index]
+                    note.channel = UInt8(trackIndex)
+                    notes.append(note)
+                    
+                    index &+= 1
+                }
+            }
             notes.sort { $0.onset < $1.onset }
             contents = .allocate(capacity: notes.count)
             memcpy(contents.baseAddress!, &notes, MemoryLayout<MIDINote>.stride * notes.count)

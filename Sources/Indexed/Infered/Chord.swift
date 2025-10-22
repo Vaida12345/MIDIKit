@@ -41,11 +41,11 @@ public struct Chord: RandomAccessCollection {
     public var startIndex: Int { 0 }
     public var endIndex: Int { contents.count }
     
-    var leadingOnset: Double {
+    public var leadingOnset: Double {
         self.contents.first!.onset
     }
     
-    var pitchSpan: UInt8 {
+    public var pitchSpan: UInt8 {
         self.contents.max(of: \.note)! - self.contents.min(of: \.note)!
     }
     
@@ -203,7 +203,7 @@ public struct Chord: RandomAccessCollection {
         for (index, chord) in chords.enumerated() {
             let span = chord.pitchSpan
             guard span > 12 else { continue }
-            guard chord.count > 2 || span > 18 else { continue }
+            guard chord.count > 2 || span > 14 else { continue }
             
             let notes = chord.contents.sorted(on: \.note, by: <)
             

@@ -91,6 +91,7 @@ fileprivate struct HandBacktrack {
 
 extension IndexedContainer {
     
+    /// - todo: must rework single hand chord, as it can produce wrong clusters.
     public func assignHands() async {
         guard !self.isEmpty else { return }
         

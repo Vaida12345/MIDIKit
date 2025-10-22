@@ -79,6 +79,9 @@ public struct RunningAverage {
         
         public let note: UInt8
         
+        @inlinable
+        public var pitch: UInt8 { self.note }
+        
         /// Pitch-span
         public let span: UInt8
         
