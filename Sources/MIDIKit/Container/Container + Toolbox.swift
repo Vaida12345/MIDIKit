@@ -100,6 +100,7 @@ extension MIDIContainer {
                 switch eventType {
                 case kMusicEventType_MIDINoteMessage:
                     let event = dataPointer.bindMemory(to: MIDINoteMessage.self, capacity: 1).pointee
+                    guard event.duration > 0 else { continue }
                     midiTrack.notes.append(MIDINote(onset: timeStamp, message: event))
                     
                 case kMusicEventType_MIDIChannelMessage:

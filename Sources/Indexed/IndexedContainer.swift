@@ -7,6 +7,7 @@
 
 import Foundation
 import Essentials
+import Optimization
 
 
 /// Container supporting efficient lookup.
@@ -94,19 +95,15 @@ extension IndexedContainer {
         container: MIDIContainer,
         minimumConsecutiveNotesGap: Double = 1/128
     ) {
-        let contents: UnsafeMutableBufferPointer<MIDINote>
+        var notes: [MIDINote] = []
         let sustains: MIDISustainEvents
         
         if container.tracks.count == 1,
            let track = container.tracks.first {
-            var notes = track.notes.contents
-            notes.sort { $0.onset < $1.onset }
-            contents = .allocate(capacity: notes.count)
-            memcpy(contents.baseAddress!, &notes, MemoryLayout<MIDINote>.stride * notes.count)
+            notes = track.notes.contents
             
             sustains = track.sustains
         } else {
-            var notes: [MIDINote] = []
             notes.reserveCapacity(container.tracks.map(\.notes.count).sum)
             for (trackIndex, track) in container.tracks.enumerated() {
                 var index = 0
@@ -118,12 +115,56 @@ extension IndexedContainer {
                     index &+= 1
                 }
             }
-            notes.sort { $0.onset < $1.onset }
-            contents = .allocate(capacity: notes.count)
-            memcpy(contents.baseAddress!, &notes, MemoryLayout<MIDINote>.stride * notes.count)
-            
             sustains = MIDISustainEvents(container.tracks.flatMap(\.sustains))
         }
+        
+        notes.sort { $0.onset < $1.onset }
+        
+        // MARK: -  sanitize notes
+        do {
+            // construct grouped
+            var grouped: [UInt8 : [MIDINote]] = [:]
+            notes.forEach { _, element in
+                grouped[element.note, default: []].append(element)
+            }
+            
+            // construct dictionary
+            var index = 0 as UInt8
+            while index <= 108 {
+                defer { index &+= 1 }
+                guard grouped[index] != nil else { continue }
+                var i = 0
+                while i < grouped[index]!.count - 1 {
+                    if grouped[index]![i + 1].onset - grouped[index]![i].onset < minimumConsecutiveNotesGap {
+                        let offset = Swift.min(grouped[index]![i].offset, grouped[index]![i + 1].onset - minimumConsecutiveNotesGap)
+                        
+                        if offset < grouped[index]![i + 1].offset {
+                            grouped[index]![i + 1].onset = offset
+                        } else {
+                            // completely within, remove it
+                            grouped[index]!.remove(at: i)
+                            continue
+                        }
+                    } else {
+                        // ensures non-overlapping
+                        grouped[index]![i].offset = clamp(grouped[index]![i].offset, max: grouped[index]![i + 1].onset - minimumConsecutiveNotesGap)
+                        if grouped[index]![i].duration < minimumConsecutiveNotesGap {
+                            // note is too short, remove it
+                            grouped[index]!.remove(at: i)
+                            continue
+                        }
+                    }
+                    
+                    i &+= 1
+                }
+            }
+            
+            notes = grouped.values.flatten()
+            notes.sort { $0.onset < $1.onset }
+        }
+        
+        let contents: UnsafeMutableBufferPointer<MIDINote> = .allocate(capacity: notes.count)
+        memcpy(contents.baseAddress!, &notes, MemoryLayout<MIDINote>.stride * notes.count)
         
         self.contents.deallocate()
         self.contents = contents
@@ -142,13 +183,6 @@ extension IndexedContainer {
         while index <= 108 {
             defer { index &+= 1 }
             guard let contents = grouped[index] else { continue }
-            var i = 0
-            while i < contents.count - 1 {
-                // ensures non-overlapping
-                contents[i].offset = clamp(contents[i].offset, max: contents[i + 1].onset - minimumConsecutiveNotesGap)
-                i &+= 1
-            }
-            
             guard !contents.isEmpty else { continue }
             dictionary[index] = DisjointNotes(contents)
         }

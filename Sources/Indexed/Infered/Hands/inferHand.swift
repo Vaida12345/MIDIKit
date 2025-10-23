@@ -5,7 +5,7 @@
 //  Created by Vaida on 2025-10-24.
 //
 
-/*
+
 import Foundation
 import MultiArray
 import CoreML
@@ -17,12 +17,14 @@ extension IndexedContainer {
     /// Separate hands using `BiLSTM`.
     public func inferHand() async throws  {
         let (features, _, chords) = await self._extractMIDINoteFeatures()
+        let inputCount = features.count
         
-        var iterator = WindowedIterator(input: features)
+        var iterator = WindowedIterator(input: consume features)
         var windows: [InferHandInput] = []
-        windows.reserveCapacity(features.count / iterator.stride)
+        windows.reserveCapacity(iterator.input.count / iterator.stride)
         while let window = iterator.next() {
             var multiArray = MultiArray(window)
+            multiArray = multiArray.transposed()
             multiArray = multiArray.reshape(1, 86, iterator.sequenceLength)
             try windows.append(InferHandInput(input: MLMultiArray(multiArray)))
         }
@@ -30,7 +32,7 @@ extension IndexedContainer {
         let model = try InferHand(configuration: MLModelConfiguration())
         let outputs = try model.predictions(inputs: windows)
         
-        let decoded = decode(windows: outputs, inputCount: features.count, stride: iterator.stride)
+        let decoded = decode(windows: outputs, inputCount: inputCount, stride: iterator.stride)
         
         var i = 0
         for chord in chords {
@@ -46,8 +48,7 @@ extension IndexedContainer {
     private struct WindowedIterator: IteratorProtocol {
         
         let sequenceLength: Int = 256
-        let stride: Int = 256
-        let padding: Float = 0.0
+        let stride: Int = 64
         
         
         let input: [[Float]]
@@ -64,8 +65,8 @@ extension IndexedContainer {
         
         init(input: consuming [[Float]]) {
             precondition(input[0].count == 85)
-            // add extra dimension, and add padding.
             
+            // add extra dimension, and add padding.
             var input = consume input
             var i = 0
             while i < input.count {
@@ -77,11 +78,11 @@ extension IndexedContainer {
             if input.count.isMultiple(of: stride) {
                 paddingCount = 0
             } else {
-                paddingCount = stride - (input.count.remainderReportingOverflow(dividingBy: stride).partialValue)
+                paddingCount = stride - (input.count % stride)
             }
             
             // add zero paddings at the end.
-            let padding = [Float](repeating: 86, count: 0)
+            let padding = [Float](repeating: 0, count: 86)
             input.append(contentsOf: [[Float]](repeating: padding, count: paddingCount))
             
             self.input = consume input
@@ -105,8 +106,10 @@ extension IndexedContainer {
             var offset: Int = 0
             while offset < output.count {
                 let index = startIndex &+ offset
+                guard index < inputCount else { break }
                 
-                results[index] += output[offset: offset]
+                let result = output[offset: offset]
+                results[index] += sigmoid(result)
                 factor[index] += 1
                 
                 offset &+= 1
@@ -118,11 +121,14 @@ extension IndexedContainer {
         return [UInt8](unsafeUninitializedCapacity: results.count) { buffer, i in
             while i < results.count {
                 buffer[i] = results[i] >= 0.5 ? 1 : 0
-                
                 i &+= 1
             }
         }
     }
-    
 }
-*/
+
+
+@inlinable
+func sigmoid(_ x: Float) -> Float {
+    1.0 / (1.0 + exp(-x))
+}

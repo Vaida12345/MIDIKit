@@ -245,7 +245,7 @@ extension IndexedContainer {
                 guard let next = _next else { break }
                 defer { _curr = next; _next = iterator.next() }
                 
-                curr.offset = clamp(curr.offset, min: curr.onset, max: next.onset - 1 / 128)
+                curr.offset = clamp(curr.offset, min: curr.onset, max: next.onset - .leastNonzeroMagnitude)
             }
         }
     }
