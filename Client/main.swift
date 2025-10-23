@@ -19,7 +19,7 @@ let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Nu
 var indexed = container.indexed()
 let date = Date()
 await indexed.normalize(preserve: .notesDisplay)
-try await indexed.inferHand()
+//try await indexed.inferHand()
 print(date.distanceToNow())
 print("done")
 

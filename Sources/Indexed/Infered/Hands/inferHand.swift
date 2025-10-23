@@ -5,6 +5,7 @@
 //  Created by Vaida on 2025-10-24.
 //
 
+/*
 import Foundation
 import MultiArray
 import CoreML
@@ -17,28 +18,27 @@ extension IndexedContainer {
     public func inferHand() async throws  {
         let (features, _, chords) = await self._extractMIDINoteFeatures()
         
-        fatalError("NOT IMPLEMENTED")
-//        var iterator = WindowedIterator(input: features)
-//        var windows: [InferHandInput] = []
-//        windows.reserveCapacity(features.count / iterator.stride)
-//        while let window = iterator.next() {
-//            var multiArray = MultiArray(window)
-//            multiArray = multiArray.reshape(1, 86, iterator.sequenceLength)
-//            try windows.append(InferHandInput(input: MLMultiArray(multiArray)))
-//        }
-//        
-//        let model = try InferHand(configuration: MLModelConfiguration())
-//        let outputs = try model.predictions(inputs: windows)
-//        
-//        let decoded = decode(windows: outputs, inputCount: features.count, stride: iterator.stride)
-//        
-//        var i = 0
-//        for chord in chords {
-//            for note in chord {
-//                note.channel = decoded[i]
-//                
-//                i &+= 1
-//            }
+        var iterator = WindowedIterator(input: features)
+        var windows: [InferHandInput] = []
+        windows.reserveCapacity(features.count / iterator.stride)
+        while let window = iterator.next() {
+            var multiArray = MultiArray(window)
+            multiArray = multiArray.reshape(1, 86, iterator.sequenceLength)
+            try windows.append(InferHandInput(input: MLMultiArray(multiArray)))
+        }
+        
+        let model = try InferHand(configuration: MLModelConfiguration())
+        let outputs = try model.predictions(inputs: windows)
+        
+        let decoded = decode(windows: outputs, inputCount: features.count, stride: iterator.stride)
+        
+        var i = 0
+        for chord in chords {
+            for note in chord {
+                note.channel = decoded[i]
+                
+                i &+= 1
+            }
         }
     }
     
@@ -125,3 +125,4 @@ extension IndexedContainer {
     }
     
 }
+*/
