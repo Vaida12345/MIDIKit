@@ -31,6 +31,8 @@ public struct MIDITrack: CustomStringConvertible, DetailedStringConvertible, Sen
     
     public var metaEvents: [MetaEvent]
     
+    public var rawData: [MIDIRawData]
+    
     /// The range of the notes in the track.
     @inlinable
     public var range: ClosedRange<MusicTimeStamp> {
@@ -47,6 +49,7 @@ public struct MIDITrack: CustomStringConvertible, DetailedStringConvertible, Sen
         self.notes = Notes(notes)
         self.sustains = MIDISustainEvents(sustains)
         self.metaEvents = metaEvents
+        self.rawData = []
     }
     
     @inlinable
@@ -54,6 +57,7 @@ public struct MIDITrack: CustomStringConvertible, DetailedStringConvertible, Sen
         self.notes = Notes(notes)
         self.sustains = sustains
         self.metaEvents = metaEvents
+        self.rawData = []
     }
     
     @inlinable
@@ -61,6 +65,7 @@ public struct MIDITrack: CustomStringConvertible, DetailedStringConvertible, Sen
         self.notes = notes
         self.sustains = sustains
         self.metaEvents = metaEvents
+        self.rawData = []
     }
     
     public typealias Note = MIDINote
@@ -82,6 +87,7 @@ public struct MIDITrack: CustomStringConvertible, DetailedStringConvertible, Sen
             descriptor.sequence(for: \.notes)
             descriptor.sequence(for: \.sustains)
             descriptor.sequence(for: \.metaEvents)
+            descriptor.sequence(for: \.rawData)
         }
     }
     

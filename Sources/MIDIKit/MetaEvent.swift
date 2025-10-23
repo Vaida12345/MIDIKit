@@ -102,7 +102,7 @@ extension MIDIMetaEvent: CustomStringConvertible {
         
         let content: Any? = switch AVMIDIMetaEvent.EventType(rawValue: Int(self.type)) {
         case .trackName, .instrument:
-            String(data: self.data, encoding: .utf8) .map { "\"" + $0 + "\"" }
+            String(data: self.data, encoding: .utf8).map { "\"" + $0 + "\"" }
             
         default:
             "(" + self.data.map({ $0.description }).joined(separator: ", ") + ")"

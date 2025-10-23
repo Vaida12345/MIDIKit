@@ -122,6 +122,11 @@ extension MIDIContainer {
                     let tempo = dataPointer.load(as: Double.self)
                     additionalInfo.tempos.append(MIDITempoTrack.Tempo(timestamp: timeStamp, tempo: tempo))
                     
+                case kMusicEventType_MIDIRawData:
+                    let event = dataPointer.bindMemory(to: AudioToolbox.MIDIRawData.self, capacity: 1).pointee
+                    let data = Data(bytes: dataPointer + 4, count: Int(event.length))
+                    midiTrack.rawData.append(MIDIRawData(data: data))
+                    
                 default:
                     let logger = Logger(subsystem: "MIDIKit", category: "MIDIContainer.init")
                     logger.warning("Unhandled MIDIEventType: \(eventType)")

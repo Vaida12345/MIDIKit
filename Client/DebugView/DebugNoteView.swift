@@ -21,7 +21,7 @@ struct DebugNoteView: View {
     var body: some View {
         ZStack(alignment: .leading) {
             RoundedRectangle(cornerRadius: 5)
-                .fill(MIDINote.color(velocity: note.velocity))
+                .fill(note.channel == 1 ? .red : .blue)
             
             Text(note.note.description + "|\(self.note.onset, format: .number.precision(.fractionLength(2)))")
                 .padding(.leading, 5)

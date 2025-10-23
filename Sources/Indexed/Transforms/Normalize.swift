@@ -194,9 +194,9 @@ extension IndexedContainer {
                 }
                 
                 func debugChannel(_ channel: UInt8) {
-#if DEBUG
-                    note.channel = channel
-#endif
+//#if DEBUG
+//                    note.channel = channel
+//#endif
                 }
                 
                 
