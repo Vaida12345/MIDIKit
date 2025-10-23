@@ -13,8 +13,8 @@ import DetailedDescription
 import SwiftUI
 
 //let container = try MIDIContainer(at: "'/Users/vaida/Music/Piano Transcription/14 Ballade No. 1 in G minor, Op. 23.mid'")
-//let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Ashes on The Fire - Shingeki no Kyojin.mid")
-let container = try MIDIContainer(at: "/Users/vaida/DataBase/Machine Learning/InferHand/桜廻廊.mid")
+let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Ashes on The Fire - Shingeki no Kyojin.mid")
+//let container = try MIDIContainer(at: "/Users/vaida/DataBase/Machine Learning/InferHand/桜廻廊.mid")
 
 var date = Date()
 var indexed = container.indexed()
@@ -23,11 +23,11 @@ print(date.distanceToNow())
 date = Date()
 await indexed.normalize(preserve: .notesDisplay)
 print(date.distanceToNow())
-//try await indexed.inferHand()
+try await indexed.inferHand()
 
-//print("done")
-//
-//DebugView(container: indexed).render(to: .desktopDirectory/"debug.pdf", format: .pdf, scale: 1)
+print("done")
 
-try await train()
+DebugView(container: indexed).render(to: .desktopDirectory/"debug.pdf", format: .pdf, scale: 1)
+
+//try await train()
 #endif
