@@ -1,10 +1,10 @@
 {
   "MLModelVersionStringKey" : "v0.4",
-  "MLModelDescriptionKey" : "Separate Piano MIDI notes hand using BiLSTM. Validation set shows 94% accuracy.\nInputs are normalized using notesDisplay.\nHowever, on tests, Ashes_on_Fire, accuracy is basically none.",
+  "MLModelDescriptionKey" : "Separate Piano MIDI notes hand using BiLSTM. Validation set shows 94% accuracy.\nInputs must be normalized using notesDisplay, and quantized.",
   "MLModelCreatorDefinedKey" : {
-    "com.github.apple.coremltools.source_dialect" : "TorchScript",
     "com.github.apple.coremltools.version" : "8.3.0",
-    "com.github.apple.coremltools.source" : "torch==2.1.0"
+    "com.github.apple.coremltools.source" : "torch==2.1.0",
+    "com.github.apple.coremltools.source_dialect" : "TorchScript"
   },
   "MLModelAuthorKey" : "Vaida",
   "MLModelLicenseKey" : "--"

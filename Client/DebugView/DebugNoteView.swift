@@ -7,6 +7,7 @@
 
 import SwiftUI
 import MIDIKit
+import Essentials
 
 
 struct DebugNoteView: View {
@@ -20,10 +21,15 @@ struct DebugNoteView: View {
     
     var body: some View {
         ZStack(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 5)
-                .fill(note.channel == 1 ? .red : .blue)
+            let velocity = linearInterpolate(Double(note.channel), in: 0...15, to: 1...127)
             
-            Text(note.note.description + "|\(self.note.onset, format: .number.precision(.fractionLength(2)))")
+            RoundedRectangle(cornerRadius: 5)
+                .fill(MIDINote.color(velocity: UInt8(velocity)))
+            
+//            Text(note.note.description + "|\(self.note.onset, format: .number.precision(.fractionLength(2)))")
+//                .padding(.leading, 5)
+            
+            Text(self.note.channel.description)
                 .padding(.leading, 5)
         }
         .frame(width: pixelsPerBeat * note.duration, height: pixelsPerNote)

@@ -27,6 +27,11 @@ struct DebugView: View {
                 ForEach(container.contents, id: \.self) { note in
                     DebugNoteView(note: note, pixelsPerBeat: pixelsPerBeat, pixelsPerNote: pixelsPerNote, maxNote: maxNote)
                 }
+                
+                Rectangle()
+                    .fill(.black)
+                    .position(x: width / 2, y: pixelsPerNote * CGFloat(maxNote - 60))
+                    .frame(width: width, height: 20)
             }
             .frame(width: width, height: Double(maxNote - minNote) * pixelsPerNote)
             

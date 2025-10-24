@@ -12,22 +12,20 @@ import MIDIKit
 import DetailedDescription
 import SwiftUI
 
-//let container = try MIDIContainer(at: "'/Users/vaida/Music/Piano Transcription/14 Ballade No. 1 in G minor, Op. 23.mid'")
+//let container = try MIDIContainer(at: "'/Users/vaida/Music/Piano Transcription/Nuvole Bianche.mid'")
 let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Ashes on The Fire - Shingeki no Kyojin.mid")
 //let container = try MIDIContainer(at: "/Users/vaida/DataBase/Machine Learning/InferHand/桜廻廊.mid")
 
-var date = Date()
 var indexed = container.indexed()
-print(date.distanceToNow())
 
-date = Date()
-await indexed.normalize(preserve: .notesDisplay)
-print(date.distanceToNow())
-try await indexed.inferHand()
+let regions = indexed.regions()
+for (i, region) in regions.enumerated() {
+    for note in region.notes {
+        note.channel = UInt8(i % 16)
+    }
+}
 
-print("done")
+print("percentage coverage: \(indexed.sustainCoverage)")
 
 DebugView(container: indexed).render(to: .desktopDirectory/"debug.pdf", format: .pdf, scale: 1)
-
-//try await train()
 #endif
