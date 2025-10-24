@@ -23,7 +23,7 @@ extension IndexedContainer: Sequence {
         public mutating func next() -> ReferenceNote? {
             defer { index += 1 }
             guard index < base.count else { return nil }
-            return base.contents.baseAddress! + index
+            return ReferenceNote(base.contents.baseAddress! + index)
         }
     }
     

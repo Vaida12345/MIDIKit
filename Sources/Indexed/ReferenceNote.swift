@@ -9,10 +9,23 @@ import Foundation
 import AudioToolbox
 
 
-public typealias ReferenceNote = UnsafeMutablePointer<MIDINote>
+public struct ReferenceNote: Hashable {
+    
+    let pointer: UnsafeMutablePointer<MIDINote>
+    
+    public var pointee: MIDINote {
+        get { self.pointer.pointee }
+        nonmutating set { self.pointer.pointee = newValue }
+    }
+    
+    init(_ pointer: UnsafeMutablePointer<MIDINote>) {
+        self.pointer = pointer
+    }
+    
+}
 
 
-extension ReferenceNote: @retroactive CustomStringConvertible {
+extension ReferenceNote: CustomStringConvertible {
     
     @inlinable
     public var description: String {

@@ -78,7 +78,7 @@ extension MIDIContainer {
         // construct grouped
         var grouped: [UInt8 : [ReferenceNote]] = [:]
         contents.forEach { index, element in
-            grouped[element.note, default: []].append(contents.baseAddress! + index)
+            grouped[element.note, default: []].append(ReferenceNote(contents.baseAddress! + index))
         }
         
         // construct dictionary
