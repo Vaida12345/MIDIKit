@@ -13,6 +13,8 @@ extension IndexedContainer {
     
     public struct Region: Comparable {
         
+        public let id: UInt
+        
         public let onset: Double
         
         public var duration: Double { self.offset - self.onset }
@@ -23,9 +25,10 @@ extension IndexedContainer {
         public let notes: [ReferenceNote]
         
         
-        init(notes: [ReferenceNote]) {
+        init(id: UInt, notes: [ReferenceNote]) {
             assert(!notes.isEmpty)
             
+            self.id = id
             self.notes = notes
             self.onset = notes.min(of: \.onset)!
             self.offset = notes.max(of: \.offset)!
@@ -48,40 +51,57 @@ extension IndexedContainer {
     /// - term self: Expected to be raw `self`, without preprocessing.
     ///
     /// - Returns: If `self` has no sustain, returns `self` as region.
+    ///
+    /// > store:
+    /// > Changes to `Region` identifier.
     public func regions() -> [Region] {
+        guard !self.isEmpty else { return [] }
         var notes = (0..<self.contents.count).map({ ReferenceNote(self.contents.baseAddress! + $0) })
         notes.sort(by: { $0.offset > $1.offset })
         
         var sustainsIterator = self.sustains.reversed().makeIterator()
         var _sustain = sustainsIterator.next()
         
-        var groups: [[ReferenceNote]] = []
-        var currentGroup: [ReferenceNote] = []
-        
+        // first sweep
+        var groupIndex: UInt = 0
         var i = notes.startIndex
         while i < notes.endIndex {
             guard let sustain = _sustain else {
                 // push all remaining notes
-                currentGroup.append(contentsOf: notes[i...])
+                for i in notes[i...].indices {
+                    notes[i].store = groupIndex
+                }
+                
                 break
             }
             
-            let value = notes[i]
-            let shouldCreateNewGroup = value.offset < sustain.onset
+            let shouldCreateNewGroup = notes[i].offset < sustain.onset
             if shouldCreateNewGroup {
-                groups.append(currentGroup)
                 _sustain = sustainsIterator.next()
-                currentGroup = []
+                groupIndex += 1
             }
-            currentGroup.append(value)
+            notes[i].store = groupIndex
             
             i &+= 1
         }
         
-        groups.append(currentGroup)
+        var currRegion = notes.last!.store // the largest value
+        // onset sweep
+        notes.sort()
         
-        assert(groups.map(\.count).sum == self.contents.count, "Validation failed, \(#function) is broken.")
-        return groups.map(Region.init)
+        i = notes.startIndex
+        while i < notes.endIndex {
+            if notes[i].store < currRegion { // move to next region
+                currRegion = notes[i].store
+            } else if notes[i].store > currRegion {
+                // still in previous region? thats not right
+                notes[i].store = currRegion
+            }
+            
+            i &+= 1
+        }
+        
+        return Dictionary(grouping: notes, by: \.store).map({ Region(id: $0, notes: $1) }).sorted()
     }
     
 }

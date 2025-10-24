@@ -57,7 +57,8 @@ public struct Chord: RandomAccessCollection {
     }
     
     public subscript(position: Int) -> Element {
-        self.contents[position]
+        get { self.contents[position] }
+        set { self.contents[position] = newValue }
     }
     
     public typealias Element = ReferenceNote
@@ -324,6 +325,15 @@ extension Array<Chord> {
         } else {
             return nil
         }
+    }
+    
+}
+
+
+extension IndexedContainer {
+    
+    public func chords() async -> [Chord] {
+        await Chord.makeChords(from: self)
     }
     
 }

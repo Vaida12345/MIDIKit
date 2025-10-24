@@ -26,10 +26,7 @@ struct DebugNoteView: View {
             RoundedRectangle(cornerRadius: 5)
                 .fill(MIDINote.color(velocity: UInt8(velocity)))
             
-//            Text(note.note.description + "|\(self.note.onset, format: .number.precision(.fractionLength(2)))")
-//                .padding(.leading, 5)
-            
-            Text(self.note.channel.description)
+            Text(note.note.description + "|\(self.note.onset, format: .number.precision(.fractionLength(2)))")
                 .padding(.leading, 5)
         }
         .frame(width: pixelsPerBeat * note.duration, height: pixelsPerNote)
