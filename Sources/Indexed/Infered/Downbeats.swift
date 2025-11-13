@@ -16,15 +16,11 @@ extension IndexedContainer {
     /// A reference note is defined as the baseline most commonly occurred note. This could be, for example, 16th note.
     ///
     /// In proper midi, notes should have onsets at *m* \* 1/2^*n*.
-    /// - Parameters:
-    ///   - minimumNoteDistance: Drop notes whose distances from previous notes are less than `minimumNoteDistance`. As these notes could be forming a chord. Defaults to 2^-4, 64th note.
     ///
     /// - Complexity: O(*n* log *n*). Loss function within golden ratio search.
     ///
     /// - Returns: The length of reference note in beats.
-    public func baselineBarLength(
-        minimumNoteDistance: Double = Double(sign: .plus, exponent: -4, significand: 1)
-    ) -> Double {
+    public func baselineBarLength() -> Double {
         let durations = self.sustains.map(\.duration)
         
         /// - Complexity: O(*n*).

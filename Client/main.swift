@@ -24,8 +24,11 @@ var indexed = container.indexed()
 //        note.channel = UInt8(i % 16)
 //    }
 //}
-await indexed.splitStaves()
+let _ = await indexed.splitStaves()
 await indexed.normalize(preserve: .notesDisplay)
+await indexed.alignFirstNoteToZero()
+
+print(indexed.baselineBarLength())
 
 DebugView(container: indexed).render(to: .desktopDirectory/"debug.pdf", format: .pdf, scale: 1)
 #endif

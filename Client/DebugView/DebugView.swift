@@ -16,6 +16,7 @@ struct DebugView: View {
     
     let pixelsPerBeat: CGFloat = 100
     let pixelsPerNote: CGFloat = 20
+    let baseline: Double
     
     var body: some View {
         let width = pixelsPerBeat * container.contents.max(of: \.offset)!
@@ -24,14 +25,26 @@ struct DebugView: View {
         
         VStack {
             ZStack {
-                ForEach(container.contents, id: \.self) { note in
-                    DebugNoteView(note: note, pixelsPerBeat: pixelsPerBeat, pixelsPerNote: pixelsPerNote, maxNote: maxNote)
+                Canvas { context, size in
+                    var i = 0.0
+                    while i < (container.contents.last?.offset ?? 0) {
+                        context.fill(
+                            Path(CGRect(x: pixelsPerBeat * baseline * i , y: 0, width: 1, height: size.height)),
+                            with: .color(.secondary)
+                        )
+                        
+                        i += 1
+                    }
                 }
                 
                 Rectangle()
-                    .fill(.black)
+                    .fill(.secondary)
+                    .frame(width: width, height: 1)
                     .position(x: width / 2, y: pixelsPerNote * CGFloat(maxNote - 60))
-                    .frame(width: width, height: 20)
+                
+                ForEach(container.contents, id: \.self) { note in
+                    DebugNoteView(note: note, pixelsPerBeat: pixelsPerBeat, pixelsPerNote: pixelsPerNote, maxNote: maxNote)
+                }
             }
             .frame(width: width, height: Double(maxNote - minNote) * pixelsPerNote)
             
@@ -42,6 +55,12 @@ struct DebugView: View {
                 .padding(.vertical, 5)
             }
         }
+    }
+    
+    
+    init(container: IndexedContainer) {
+        self.container = container
+        self.baseline = container.baselineBarLength()
     }
     
 }

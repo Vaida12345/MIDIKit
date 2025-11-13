@@ -31,4 +31,8 @@ struct DistanceTests {
         #expect(lhs.notes.distance(to: rhs.notes) == 0.1 + 10)
     }
     
+    @Test func determineNote() {
+        print(MIDINote.determine(note: 60))
+    }
+    
 }
