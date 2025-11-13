@@ -12,9 +12,14 @@ extension IndexedContainer {
     
     /// Sustain durations adjusted to span the entire container.
     public func sustainDurations() -> [Double] {
-        self.sustains.reduce(into: []) { partialResult, sustain in
-            partialResult.append(sustain.offset - (partialResult.last ?? 0))
+        var results: [Double] = []
+        results.reserveCapacity(self.sustains.count)
+        var lastOffset = 0.0
+        for sustain in self.sustains {
+            results.append(sustain.offset - lastOffset)
+            lastOffset = sustain.offset
         }
+        return results
     }
     
     /// Estimates the baseline bar (measure) length in beats from human-recorded MIDI notes.

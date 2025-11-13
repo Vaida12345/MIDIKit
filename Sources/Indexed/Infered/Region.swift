@@ -11,7 +11,7 @@ import Essentials
 
 extension IndexedContainer {
     
-    public struct Region: Comparable {
+    public struct Region: Interval, Comparable {
         
         public let id: UInt
         
@@ -52,11 +52,17 @@ extension IndexedContainer {
     ///
     /// - Returns: If `self` has no sustain, returns `self` as region.
     ///
+    /// - Note: returned region count could be different to sustain count, as a region cannot be empty.
+    ///
     /// > store:
     /// > Changes to `Region` identifier.
     public func regions() -> [Region] {
         guard !self.isEmpty else { return [] }
         var notes = (0..<self.contents.count).map({ ReferenceNote(self.contents.baseAddress! + $0) })
+        if self.sustains.isEmpty {
+            notes.sort(by: { $0.onset < $1.onset })
+            return [Region(id: 0, notes: notes)]
+        }
         notes.sort(by: { $0.offset > $1.offset })
         
         var sustainsIterator = self.sustains.reversed().makeIterator()
@@ -91,7 +97,7 @@ extension IndexedContainer {
         
         i = notes.startIndex
         while i < notes.endIndex {
-            if notes[i].store < currRegion { // move to next region
+            if notes[i].store < currRegion { // move on to next region
                 currRegion = notes[i].store
             } else if notes[i].store > currRegion {
                 // still in previous region? thats not right
@@ -101,9 +107,16 @@ extension IndexedContainer {
             i &+= 1
         }
         
-        let result = Dictionary(grouping: notes, by: \.store).map({ Region(id: $0, notes: $1) }).sorted()
-        assert(result.count == self.sustains.count)
-        return result
+        return Dictionary(grouping: notes, by: \.store).map({ Region(id: $0, notes: $1) }).sorted()
     }
+    
+}
+
+
+extension Array<IndexedContainer.Region>: SortedIntervals {
+    
+}
+
+extension Array<IndexedContainer.Region>: OverlappingIntervals {
     
 }

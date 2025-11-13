@@ -13,23 +13,23 @@ extension IndexedContainer {
     /// Calculates the start of each measure in beats.
     ///
     /// This function relies on sustains to calculate downbeats.
+    ///
+    /// - Note: inaccurate.
     public func downbeats() async -> [Double] {
         guard !sustains.isEmpty else { return [] }
         var downbeats: [Double] = [0]
         var onset: Double = 0
         
-        let durations = self.sustainDurations() + [self.sustains.last!.duration]
+        var durations = self.sustainDurations()
         let regions = self.regions()
-        print(regions.count)
-        assert(durations.count == regions.count)
-        let contents = Array(zip(durations, regions))
         
         let baseline = self.baselineBarLength()
         
-        var i = 0
-        while i < contents.count {
-            let (duration, region) = contents[i]
-            if duration > baseline * 3, onset == 0 {
+        var durationIndex = 0
+        while durationIndex < durations.count {
+            let duration = durations[durationIndex]
+            guard let region = regions.first(after: onset) else { break }
+            if duration > baseline * 1.5 {
                 // duration significantly higher than baseline
                 let baselineLoss = duration.remainder(dividingBy: baseline)
                 let newFit = IndexedContainer.baselineBarLength(samples: region.notes.map({ ($0.duration, 1) }) + [(duration, 1)])
@@ -45,10 +45,18 @@ extension IndexedContainer {
                     downbeats.append(start)
                 }
                 
-                onset = duration
+                onset += duration
+            } else if duration < baseline / 2 {
+                // too short, must be error, merge with next
+                if durationIndex < durations.count - 1 {
+                    durations[durationIndex + 1] += durations[durationIndex]
+                }
+            } else {
+                onset += duration
+                downbeats.append(onset)
             }
             
-            i &+= 1
+            durationIndex &+= 1
         }
         
         return downbeats
