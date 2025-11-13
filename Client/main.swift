@@ -18,17 +18,21 @@ let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/As
 
 var indexed = container.indexed()
 
-//let regions = indexed.regions()
-//for (i, region) in regions.enumerated() {
-//    for note in region.notes {
-//        note.channel = UInt8(i % 16)
-//    }
-//}
-let _ = await indexed.splitStaves()
+print(indexed.sustains.count)
+print(indexed.sustainDurations().count)
+
+let regions = indexed.regions()
+for (i, region) in regions.enumerated() {
+    for note in region.notes {
+        note.channel = UInt8(i % 16)
+    }
+}
+//let _ = await indexed.splitStaves()
 await indexed.normalize(preserve: .notesDisplay)
 await indexed.alignFirstNoteToZero()
 
 print(indexed.baselineBarLength())
+await indexed.downbeats()
 
-DebugView(container: indexed).render(to: .desktopDirectory/"debug.pdf", format: .pdf, scale: 1)
+await DebugView(container: indexed).render(to: .desktopDirectory/"debug.pdf", format: .pdf, scale: 1)
 #endif

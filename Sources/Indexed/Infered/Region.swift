@@ -101,7 +101,9 @@ extension IndexedContainer {
             i &+= 1
         }
         
-        return Dictionary(grouping: notes, by: \.store).map({ Region(id: $0, notes: $1) }).sorted()
+        let result = Dictionary(grouping: notes, by: \.store).map({ Region(id: $0, notes: $1) }).sorted()
+        assert(result.count == self.sustains.count)
+        return result
     }
     
 }

@@ -16,7 +16,8 @@ extension IndexedContainer {
     
     
     /// Split the *grand staff* to the *base staff* and *treble staff*.
-    @available(*, unavailable, message: "not implemented")
+    ///
+    /// Uses naive split.
     public func splitStaves() async -> (bass: Staff, treble: Staff) {
         let regions = self.regions()
         // store now contains region info.

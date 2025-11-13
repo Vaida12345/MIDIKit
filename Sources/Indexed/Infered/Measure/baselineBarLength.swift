@@ -6,32 +6,71 @@
 //
 
 import Foundation
-import Accelerate
 
 
 extension IndexedContainer {
     
-    /// Calculates the length of the reference note in beats, based on sustain & notes.
+    /// Sustain durations adjusted to span the entire container.
+    public func sustainDurations() -> [Double] {
+        self.sustains.reduce(into: []) { partialResult, sustain in
+            partialResult.append(sustain.offset - (partialResult.last ?? 0))
+        }
+    }
+    
+    /// Estimates the baseline bar (measure) length in beats from human-recorded MIDI notes.
     ///
-    /// A reference note is defined as the baseline most commonly occurred note. This could be, for example, 16th note.
+    /// A measure should divide—or be divisible by—the majority of observed note and sustain
+    /// lengths. We therefore search for the bar length that minimises a weighted loss where
+    /// longer sustains influence the fit more than short attack-only notes.
     ///
-    /// In proper scores, notes should have onsets at *m* \* 1/2^*n*.
+    /// - Parameters: none
+    /// - Returns: The estimated measure length in beats.
+    /// - Complexity: O(*n* log *n*) due to the golden-section search invoking a linear loss.
+    public func baselineBarLength(beatsPerMeasure: Double = 4) -> Double {
+        let sustainWeight = 2.5
+        return IndexedContainer.baselineBarLength(beatsPerMeasure: beatsPerMeasure, samples: self.sustainDurations().map { ($0, sustainWeight) } + self.contents.map { ($0.duration, 1.0) })
+    }
+    
+    /// Estimates the baseline bar (measure) length in beats from human-recorded MIDI notes.
     ///
-    /// - Complexity: O(*n* log *n*). Loss function within golden ratio search.
+    /// A measure should divide—or be divisible by—the majority of observed note and sustain
+    /// lengths. We therefore search for the bar length that minimises a weighted loss where
+    /// longer sustains influence the fit more than short attack-only notes.
     ///
-    /// - Returns: The length of reference note in beats.
-    public func baselineBarLength() -> Double {
-        let durations = self.sustains.map(\.duration) + self.contents.map(\.duration)
+    /// - Parameters: none
+    /// - Returns: The estimated measure length in beats.
+    /// - Complexity: O(*n* log *n*) due to the golden-section search invoking a linear loss.
+    public static func baselineBarLength(beatsPerMeasure: Double = 4, samples: [(duration: Double, weight: Double)]) -> Double {
+        
+        /// Fall back early when no timing information exists.
+        let durations = samples.map { $0.duration }
+        guard let median = durations.median, median > 0 else { return 0 }
         
         /// - Complexity: O(*n*).
-        func loss(distances: [Double], reference: Double) -> Double {
+        func loss(samples: [(duration: Double, weight: Double)], reference: Double) -> Double {
+            guard reference > 0 else { return .infinity }
             var i = 0
             var loss: Double = 0
-            while i < distances.count {
-                let remainder = distances[i].truncatingRemainder(dividingBy: reference)
-                assert(remainder >= 0)
-                loss += Swift.min(remainder, Swift.max(reference - remainder, 0))
-                
+            while i < samples.count {
+                let sample = samples[i]
+                let duration = sample.duration
+                let weight = sample.weight
+                if duration > 0 {
+                    // Measure how closely the ratio between duration and reference aligns to
+                    // integer multiples, regardless of which term is larger.
+                    let ratio: Double
+                    let base: Double
+                    if duration >= reference {
+                        ratio = duration / reference
+                        base = reference
+                    } else {
+                        ratio = reference / duration
+                        base = duration
+                    }
+                    let nearest = Swift.max(1.0, ratio.rounded())
+                    let deviation = abs(ratio - nearest)
+                    loss += deviation * base * weight
+                }
                 i &+= 1
             }
             
@@ -64,22 +103,14 @@ extension IndexedContainer {
             return (b + a) / 2
         }
         
-        var median = durations.median ?? 0
-        let variance: Double = median / 2
+        let left = beatsPerMeasure / 2
+        let right = beatsPerMeasure * 1.5
         
-        if median < 3 {
-            median *= 2
+        let fit = goldenSectionSearch(left: left, right: right) {
+            loss(samples: samples, reference: $0)
         }
         
-        let fit = goldenSectionSearch(left: median - variance, right: median + variance * 3) {
-            loss(distances: durations, reference: $0)
-        }
-        if abs(median - variance - fit) < 0.1 {
-            // no pattern found
-            return median
-        } else {
-            return fit
-        }
+        return fit.isFinite ? fit : median
     }
     
 }

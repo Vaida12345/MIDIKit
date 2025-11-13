@@ -16,7 +16,7 @@ struct DebugView: View {
     
     let pixelsPerBeat: CGFloat = 100
     let pixelsPerNote: CGFloat = 20
-    let baseline: Double
+    let downbeats: [Double]
     
     var body: some View {
         let width = pixelsPerBeat * container.contents.max(of: \.offset)!
@@ -26,14 +26,11 @@ struct DebugView: View {
         VStack {
             ZStack {
                 Canvas { context, size in
-                    var i = 0.0
-                    while i < (container.contents.last?.offset ?? 0) {
+                    for downbeat in downbeats {
                         context.fill(
-                            Path(CGRect(x: pixelsPerBeat * baseline * i , y: 0, width: 1, height: size.height)),
+                            Path(CGRect(x: pixelsPerBeat * downbeat , y: 0, width: 1, height: size.height)),
                             with: .color(.secondary)
                         )
-                        
-                        i += 1
                     }
                 }
                 
@@ -58,9 +55,9 @@ struct DebugView: View {
     }
     
     
-    init(container: IndexedContainer) {
+    init(container: IndexedContainer) async {
         self.container = container
-        self.baseline = container.baselineBarLength()
+        self.downbeats = await container.downbeats()
     }
     
 }
