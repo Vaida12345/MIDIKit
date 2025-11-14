@@ -24,11 +24,36 @@ extension IndexedContainer {
         let regions = self.regions()
         
         let baseline = self.baselineBarLength()
+        let chords = await self.chords()
         
         var durationIndex = 0
         while durationIndex < durations.count {
             let duration = durations[durationIndex]
             guard let region = regions.first(after: onset) else { break }
+            
+            func append(about beats: Double) {
+                guard let nextChordIndex = chords.firstIndex(after: beats) else {
+                    // maybe crossed the end?
+                    downbeats.append(beats)
+                    return
+                }
+                
+                guard nextChordIndex > 0 else {
+                    downbeats.append(chords[nextChordIndex].leadingOnset)
+                    return
+                }
+                
+                let next = chords[nextChordIndex]
+                let prev = chords[nextChordIndex - 1]
+                
+                let nextDistance = abs(next.leadingOnset - beats)
+                let prevDistance = abs(prev.leadingOnset - beats)
+                
+                // snap to nearest chord
+                downbeats.append(nextDistance < prevDistance ? next.leadingOnset : prev.leadingOnset)
+            }
+            
+            
             if duration > baseline * 1.5 {
                 // duration significantly higher than baseline
                 let baselineLoss = duration.remainder(dividingBy: baseline)
@@ -42,7 +67,7 @@ extension IndexedContainer {
                 // naive split for now
                 for i in 1...Int(measuresInDuration) {
                     let start = onset + divisor * Double(i)
-                    downbeats.append(start)
+                    append(about: start)
                 }
                 
                 onset += duration
@@ -53,7 +78,7 @@ extension IndexedContainer {
                 }
             } else {
                 onset += duration
-                downbeats.append(onset)
+                append(about: onset)
             }
             
             durationIndex &+= 1
