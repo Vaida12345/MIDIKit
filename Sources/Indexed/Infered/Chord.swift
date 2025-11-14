@@ -120,13 +120,14 @@ public struct Chord: RandomAccessCollection {
         var clusters: [Chord] = []
         clusters.reserveCapacity(container.count)
         for i in 21...108 {
-            guard var notes = container.notes[UInt8(i)]?.makeIterator() else { continue }
-            var current = notes.next()
-            var next = notes.next()
+            guard let notes = container.notes[UInt8(i)] else { continue }
+            var iterator = notes.makeIterator()
+            var current = iterator.next()
+            var next = iterator.next()
             while current != nil {
                 clusters.append(Chord(contents: [current!], maxOffset: next?.onset))
                 current = next
-                next = notes.next()
+                next = iterator.next()
             }
         }
         clusters.sort(by: { $0.first!.onset < $1.first!.onset })
