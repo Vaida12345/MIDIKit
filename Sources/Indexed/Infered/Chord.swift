@@ -196,7 +196,7 @@ public struct Chord: RandomAccessCollection {
     
     /// Chords are split making sure that notes within the same chord should be played by the same hand, while notes in different chord could be played by the same hand.
     public static func makeSingleHandedChords(
-        from container: IndexedContainer,
+        from container: borrowing IndexedContainer,
         spec: Spec = Spec()
     ) async -> [Chord] {
         var chords = await self.makeChords(from: container, spec: spec)
@@ -332,7 +332,7 @@ extension Array<Chord> {
 
 extension IndexedContainer {
     
-    public func chords() async -> [Chord] {
+    public borrowing func chords() async -> [Chord] {
         await Chord.makeChords(from: self)
     }
     
