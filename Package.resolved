@@ -1,5 +1,5 @@
 {
-  "originHash" : "d2500bcac34fd4edba8cc1201617e54aa17a8a301364e569bd3d97c585b6e36c",
+  "originHash" : "6719bc12923f704fdb21929cd79d4fd4ba811313efb2ce16bce83228fece06a0",
   "pins" : [
     {
       "identity" : "concurrentstream",
@@ -35,15 +35,6 @@
       "state" : {
         "revision" : "8bdd169de0ea5439e31606fd8186c0b480b46e68",
         "version" : "1.2.3"
-      }
-    },
-    {
-      "identity" : "multiarray",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Vaida12345/MultiArray.git",
-      "state" : {
-        "revision" : "23a6596fa43a351bd2f090c7619b6db270edd387",
-        "version" : "1.0.27"
       }
     },
     {

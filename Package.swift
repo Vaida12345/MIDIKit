@@ -25,12 +25,11 @@ let package = Package(
         .package(url: "https://github.com/Vaida12345/NativeImage.git", from: "1.0.3"),
         .package(url: "https://github.com/Vaida12345/Optimization.git", from: "1.0.10"),
         .package(url: "https://github.com/Vaida12345/Essentials.git", from: "1.1.5"),
-        .package(url: "https://github.com/Vaida12345/MultiArray.git", from: "1.0.26"),
     ],
     targets: [
         .target(
             name: "MIDIKit",
-            dependencies: ["DetailedDescription", "FinderItem", "ConcurrentStream", "NativeImage", "Optimization", "Essentials", "MultiArray"],
+            dependencies: ["DetailedDescription", "FinderItem", "ConcurrentStream", "NativeImage", "Optimization", "Essentials"],
             path: "Sources"
         ),
         .executableTarget(name: "Client", dependencies: ["MIDIKit"], path: "Client"),
