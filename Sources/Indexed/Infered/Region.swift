@@ -53,9 +53,6 @@ extension IndexedContainer {
     /// - Returns: If `self` has no sustain, returns `self` as region.
     ///
     /// - Note: returned region count could be different to sustain count, as a region cannot be empty.
-    ///
-    /// > store:
-    /// > Changes to `Region` identifier.
     public func regions() -> [Region] {
         guard !self.isEmpty else { return [] }
         var notes = (0..<self.contents.count).map({ ReferenceNote(self.contents.baseAddress! + $0) })
@@ -68,6 +65,9 @@ extension IndexedContainer {
         var sustainsIterator = self.sustains.reversed().makeIterator()
         var _sustain = sustainsIterator.next()
         
+        var store: [ReferenceNote : UInt] = [:]
+        store.reserveCapacity(notes.count)
+        
         // first sweep
         var groupIndex: UInt = 0
         var i = notes.startIndex
@@ -75,7 +75,7 @@ extension IndexedContainer {
             guard let sustain = _sustain else {
                 // push all remaining notes
                 for i in notes[i...].indices {
-                    notes[i].store = groupIndex
+                    store[notes[i]] = groupIndex
                 }
                 
                 break
@@ -86,28 +86,28 @@ extension IndexedContainer {
                 _sustain = sustainsIterator.next()
                 groupIndex += 1
             }
-            notes[i].store = groupIndex
+            store[notes[i]] = groupIndex
             
             i &+= 1
         }
         
-        var currRegion = notes.last!.store // the largest value
+        var currRegion = store[notes.last!]! // the largest value
         // onset sweep
         notes.sort()
         
         i = notes.startIndex
         while i < notes.endIndex {
-            if notes[i].store < currRegion { // move on to next region
-                currRegion = notes[i].store
-            } else if notes[i].store > currRegion {
+            if store[notes[i]]! < currRegion { // move on to next region
+                currRegion = store[notes[i]]!
+            } else if store[notes[i]]! > currRegion {
                 // still in previous region? thats not right
-                notes[i].store = currRegion
+                store[notes[i]] = currRegion
             }
             
             i &+= 1
         }
         
-        return Dictionary(grouping: notes, by: \.store).map({ Region(id: $0, notes: $1) }).sorted()
+        return Dictionary(grouping: notes, by: { store[$0]! }).map({ Region(id: $0, notes: $1) }).sorted()
     }
     
 }

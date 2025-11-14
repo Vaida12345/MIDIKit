@@ -86,7 +86,7 @@ public struct Chord: RandomAccessCollection {
     ///
     /// Chords are sorted by `leadingOnset`.
     public static func makeChords(
-        from container: borrowing IndexedContainer,
+        from container: IndexedContainer,
         spec: Spec = Spec()
     ) -> [Chord] {
         guard !container.isEmpty else { return [] }
@@ -197,10 +197,10 @@ public struct Chord: RandomAccessCollection {
     
     /// Chords are split making sure that notes within the same chord should be played by the same hand, while notes in different chord could be played by the same hand.
     public static func makeSingleHandedChords(
-        from container: borrowing IndexedContainer,
+        from container: IndexedContainer,
         spec: Spec = Spec()
     ) -> [Chord] {
-        var chords = self.makeChords(from: container, spec: spec)
+        var chords = Chord.makeChords(from: container, spec: spec)
         
         for (index, chord) in chords.enumerated() {
             let span = chord.pitchSpan

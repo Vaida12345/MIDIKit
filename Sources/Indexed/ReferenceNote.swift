@@ -13,9 +13,6 @@ public struct ReferenceNote: Hashable {
     
     let pointer: UnsafeMutablePointer<MIDINote>
     
-    /// Internal temporary value associated with a note.
-    var store: UInt = 0
-    
     public var pointee: MIDINote {
         get { self.pointer.pointee }
         nonmutating set { self.pointer.pointee = newValue }
