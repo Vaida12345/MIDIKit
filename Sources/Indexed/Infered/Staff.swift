@@ -18,11 +18,11 @@ extension IndexedContainer {
     /// Split the *grand staff* to the *base staff* and *treble staff*.
     ///
     /// Uses naive split.
-    public func splitStaves() async -> (bass: Staff, treble: Staff) {
+    public func splitStaves() -> (bass: Staff, treble: Staff) {
         let regions = self.regions()
         // store now contains region info.
         
-        var chords = await self.chords()
+        var chords = self.chords()
         guard !chords.isEmpty else { return (.init(), .init()) }
         
         // make sure chords are in the same region

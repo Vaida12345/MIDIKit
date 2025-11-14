@@ -20,7 +20,7 @@ extension IndexedContainer {
     ///   - velocity is incorrect.
     ///
     /// `self` will not be mutated.
-    public func applyVelocity(to other: IndexedContainer) async {
+    public func applyVelocity(to other: IndexedContainer) {
         guard !self.isEmpty && !other.isEmpty else { return }
         
         for i in (21 as UInt8)...108 {
@@ -50,7 +50,7 @@ extension IndexedContainer {
     public func removingArtifacts(
         threshold: UInt8,
         proximityThreshold: Double = 1/2 // 8th note
-    ) async -> IndexedContainer {
+    ) -> IndexedContainer {
         var contents: [MIDINote] = []
         contents.reserveCapacity(self.notes.count)
         
@@ -113,7 +113,7 @@ extension IndexedContainer {
     public func applyGap(
         ideal: Double = 1/8,
         minimumNoteLength: Double = 1/128
-    ) async {
+    ) {
         for i in 21...108 as ClosedRange<UInt8> {
             guard let contents = self.notes[i] else { continue }
             for i in 0..<contents.count - 1 {
@@ -134,7 +134,7 @@ extension IndexedContainer {
     /// Aligns the first note in the sequence to the start of the timeline (0:00:00).
     ///
     /// This function shifts all notes so that the earliest note starts exactly at time zero, preserving the relative timing between notes.
-    public func alignFirstNoteToZero() async {
+    public func alignFirstNoteToZero() {
         let firstNoteOnset = self.contents.first?.onset ?? 0
         var i = self.contents.startIndex
         while i < self.contents.endIndex {
@@ -158,7 +158,7 @@ extension IndexedContainer {
     /// This function lookups the corresponding interval of every note in self (indicated by its center), if they share the same interval, they are merged.
     ///
     /// - Note: As `self` is a class, `self` is mutated on return.
-    public func mergeNotesInSameInterval(in other: IndexedContainer, threshold: UInt8, difference: UInt8) async {
+    public func mergeNotesInSameInterval(in other: IndexedContainer, threshold: UInt8, difference: UInt8) {
         var contents: [MIDINote] = []
         contents.reserveCapacity(self.notes.count)
         

@@ -13,7 +13,9 @@ import Optimization
 /// Container supporting efficient lookup.
 ///
 /// In the implementation, methods that involve insertion or removal of notes returns a new container, as this structure has two properties containing the notes, for efficient lookup.
-public final class IndexedContainer: @unchecked Sendable {
+///
+/// An `IndexedContainer` is never sendable, crossing domain could corrupt memory. Sendable `MIDIContainer` instead. However, some operations could be heavy, hence it is recommended to put the entire operation in async.
+public final class IndexedContainer {
     
     /// The notes grouped by the key.
     ///

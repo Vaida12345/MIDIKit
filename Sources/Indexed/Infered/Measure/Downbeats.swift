@@ -15,7 +15,7 @@ extension IndexedContainer {
     /// This function relies on sustains to calculate downbeats.
     ///
     /// - Note: inaccurate.
-    public func downbeats() async -> [Double] {
+    public func downbeats() -> [Double] {
         guard !sustains.isEmpty else { return [] }
         var downbeats: [Double] = [0]
         var onset: Double = 0
@@ -24,7 +24,7 @@ extension IndexedContainer {
         let regions = self.regions()
         
         let baseline = self.baselineBarLength()
-        let chords = await self.chords()
+        let chords = self.chords()
         
         var durationIndex = 0
         while durationIndex < durations.count {

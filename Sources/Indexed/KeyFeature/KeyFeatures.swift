@@ -122,7 +122,7 @@ public struct KeyFeatures: ArrayRepresentable {
 
 extension IndexedContainer {
     
-    public func keyFeatures() async -> KeyFeatures {
+    public func keyFeatures() -> KeyFeatures {
         KeyFeatures(container: self)
     }
     
