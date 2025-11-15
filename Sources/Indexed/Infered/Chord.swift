@@ -306,7 +306,7 @@ extension Array<Chord> {
     /// Returns the first interval whose onset is greater than `timeStamp`.
     ///
     /// - Complexity: O(log *n*), binary search.
-    func firstIndex(after timeStamp: Double) -> Index? {
+    public func firstIndex(after timeStamp: Double) -> Index? {
         var left = 0
         var right = self.count
         
