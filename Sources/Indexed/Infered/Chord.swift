@@ -320,7 +320,7 @@ extension Array<Chord> {
         
         while left < right {
             let mid = (left + right) / 2
-            if self[mid].leadingOnset > timeStamp - 1e-6 {
+            if self[mid].leadingOnset > timeStamp {
                 right = mid
             } else {
                 left = mid + 1

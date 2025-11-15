@@ -13,13 +13,12 @@ import DetailedDescription
 import SwiftUI
 
 //let container = try MIDIContainer(at: "'/Users/vaida/Music/Piano Transcription/Nuvole Bianche.mid'")
-let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Ashes on The Fire - Shingeki no Kyojin.mid")
+//let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Ashes on The Fire - Shingeki no Kyojin.mid")
+//let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Owari no Sekai kara.mid")
 //let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/桜廻廊.mid")
+let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Variations on the Kanon.mid")
 
 var indexed = container.indexed()
-
-print(indexed.sustains.count)
-print(indexed.sustainDurations().count)
 
 let regions = indexed.regions()
 for (i, region) in regions.enumerated() {
@@ -28,11 +27,12 @@ for (i, region) in regions.enumerated() {
     }
 }
 //let _ = await indexed.splitStaves()
-await indexed.normalize(preserve: .notesDisplay)
-await indexed.alignFirstNoteToZero()
+indexed.normalize(preserve: .notesDisplay)
+indexed.alignFirstNoteToZero()
 
-print(indexed.baselineBarLength())
-await indexed.downbeats()
+indexed.downbeats()
+
+print(indexed.keySignature())
 
 await DebugView(container: indexed).render(to: .desktopDirectory/"debug.pdf", format: .pdf, scale: 1)
 #endif
