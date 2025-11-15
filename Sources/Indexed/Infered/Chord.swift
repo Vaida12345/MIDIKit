@@ -25,7 +25,7 @@ import Optimization
 /// > ```swift
 /// > extendLifetime(container)
 /// > ```
-public struct Chord: RandomAccessCollection {
+public struct Chord: RandomAccessCollection, Hashable {
     
     /// contents are always sorted by their onsets.
     ///
@@ -41,8 +41,14 @@ public struct Chord: RandomAccessCollection {
     public var startIndex: Int { 0 }
     public var endIndex: Int { contents.count }
     
+    /// The onset of the earliest note.
     public var leadingOnset: Double {
         self.contents.first!.onset
+    }
+    
+    /// The max offset `-` min onset.
+    public var duration: Double {
+        self.contents.max(of: \.offset)! - self.leadingOnset
     }
     
     public var pitchSpan: UInt8 {
@@ -250,18 +256,20 @@ public struct Chord: RandomAccessCollection {
         
         /// The maximum distance apart of the least apart elements to be considered in the same chord.
         ///
-        /// The effectively is the min duration of a note.
-        let duration: Double = 0.1
+        /// This effectively is the min duration of a note.
+        let duration: Double
         
 //        /// Width of a single hand, defaults to 15, which is octave plus two white keys
 //        let handWidth: UInt8 = 13 + 3
         
-        public init() { }
+        public init(duration: Double = 0.1) {
+            self.duration = duration
+        }
         
     }
     
     
-    public struct Features: OptionSet, Sendable {
+    public struct Features: OptionSet, Sendable, Hashable {
         
         public let rawValue: UInt8
         
@@ -312,7 +320,7 @@ extension Array<Chord> {
         
         while left < right {
             let mid = (left + right) / 2
-            if self[mid].leadingOnset > timeStamp {
+            if self[mid].leadingOnset > timeStamp - 1e-6 {
                 right = mid
             } else {
                 left = mid + 1
