@@ -17,7 +17,7 @@ extension IndexedContainer {
         /// listed in the conventional order sharps or flats are applied.
         /// Each value represents a pitch class using semitone indices
         /// relative to C = 0.
-        public let pitches: Set<Int>
+        public let pitches: [Int]
         
         public let accidental: Accidental
         
