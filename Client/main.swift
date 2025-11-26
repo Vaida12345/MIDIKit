@@ -17,6 +17,7 @@ import SwiftUI
 //let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Owari no Sekai kara.mid")
 //let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/桜廻廊.mid")
 let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Variations on the Kanon.mid")
+detailedPrint(container)
 
 var indexed = container.indexed()
 
