@@ -21,6 +21,11 @@ extension IndexedContainer {
         
         public let accidental: Accidental
         
+        public init(pitches: [Int], accidental: Accidental) {
+            self.pitches = pitches
+            self.accidental = accidental
+        }
+        
         
         public enum Accidental: Int, CaseIterable, Hashable, Sendable, Codable {
             case flat = -1
