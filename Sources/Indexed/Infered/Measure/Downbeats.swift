@@ -96,8 +96,18 @@ extension IndexedContainer {
             let prevDistance = abs(prev.leadingOnset - idealOffset)
             
             if nextDistance + idealMeasureWidth / 16 > prevDistance, prev.leadingOnset > onset { // 16th note
-                // next distance just win by a tiny amount, use prev
-                idealOffset = prev.leadingOnset
+                if prevDistance > idealMeasureWidth / 4 {
+                    // maybe its offset is a better fit?
+                    let prevOffsetDistance = abs(prev.trailingOffset - idealOffset)
+                    if prevOffsetDistance < prevDistance {
+                        idealOffset = prev.trailingOffset
+                    } else {
+                        idealOffset = prev.leadingOnset
+                    }
+                } else {
+                    // next distance just win by a tiny amount, use prev
+                    idealOffset = prev.leadingOnset
+                }
             } else {
                 idealOffset = next.leadingOnset
             }
