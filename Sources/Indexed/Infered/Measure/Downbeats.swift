@@ -26,16 +26,12 @@ extension IndexedContainer {
         var downbeats: [Double]
         let idealMeasureWidth: Double
         var onset: Double
-        var lastCheckedSustainIndex = -1
         
         if let prior, prior.count > 1 {
             downbeats = prior
             let beatsPerMeasure = downbeats.gaps()
             idealMeasureWidth = self.baselineBarLength(beatsPerMeasure: beatsPerMeasure.mean!)
             onset = prior.last!
-            if let sustainIndexAfter = self.sustains.firstIndex(after: onset), sustainIndexAfter > 0 {
-                lastCheckedSustainIndex = sustainIndexAfter - 1
-            }
         } else {
             downbeats = [0]
             idealMeasureWidth = self.baselineBarLength(beatsPerMeasure: beatsPerMeasure)
@@ -43,80 +39,155 @@ extension IndexedContainer {
         }
         
         let chords = self.chords()
+        let chordOnsets = chords.map { $0.leadingOnset }
+        let sustainOnsets = self.sustains.map { $0.onset }
         
         let contentMax = self.contents.max(of: \.offset)
         let sustainMax = self.sustains.max(of: \.offset)
         guard let maxOffset = [contentMax, sustainMax].compactMap({ $0 }).max() else {
-            return [] // empty
+            return downbeats
         }
-        while onset < maxOffset {
-            // determine offset
-            var idealOffset = onset + idealMeasureWidth
-            
-            // 1, check nearby measures
-            var sustainCandidates: [Double] = []
-            if let sustainIndexAfter = self.sustains.firstIndex(after: idealOffset) {
-                if sustainIndexAfter > lastCheckedSustainIndex {
-                    sustainCandidates.append(self.sustains[sustainIndexAfter].onset)
-                }
-                let previousIndex = sustainIndexAfter - 1
-                if previousIndex >= 0 && previousIndex > lastCheckedSustainIndex {
-                    sustainCandidates.append(self.sustains[previousIndex].onset)
-                }
-                lastCheckedSustainIndex = Swift.max(lastCheckedSustainIndex, sustainIndexAfter)
-                if previousIndex >= 0 {
-                    lastCheckedSustainIndex = Swift.max(lastCheckedSustainIndex, previousIndex)
+        guard idealMeasureWidth > 0, onset < maxOffset else { return downbeats }
+        
+        struct Candidate {
+            enum Source {
+                case chord
+                case sustain
+                case synthetic
+            }
+            let position: Double
+            let penalty: Double
+            let source: Source
+        }
+        
+        struct Node {
+            let position: Double
+            let cost: Double
+            let parent: Int
+            let depth: Int
+        }
+        
+        func lowerBound(_ values: [Double], target: Double) -> Int {
+            var low = 0
+            var high = values.count
+            while low < high {
+                let mid = (low + high) / 2
+                if values[mid] < target {
+                    low = mid + 1
+                } else {
+                    high = mid
                 }
             }
-            // use sustain to reshape ideal offset
-            sustainCandidates = sustainCandidates.sorted { abs($0 - idealOffset) < abs($1 - idealOffset) }
-            if let sustain = sustainCandidates.first, abs(sustain - idealOffset) < idealMeasureWidth / 4 {
-                idealOffset = sustain
+            return low
+        }
+        
+        func values(in array: [Double], lower: Double, upper: Double) -> ArraySlice<Double> {
+            guard !array.isEmpty else { return [] }
+            let start = lowerBound(array, target: lower)
+            var end = start
+            while end < array.count && array[end] <= upper {
+                end += 1
             }
-            
-            // 2, snap to nearby onset
-            guard let nextChordIndex = chords.firstIndex(after: idealOffset) else {
-                // maybe crossed the end?
-                downbeats.append(idealOffset)
-                onset = idealOffset
+            return array[start..<end]
+        }
+        
+        func candidates(around target: Double, window: Double) -> [Candidate] {
+            var entries: [Double: (penalty: Double, source: Candidate.Source)] = [:]
+            func record(_ position: Double, penalty: Double, source: Candidate.Source) {
+                if let current = entries[position], current.penalty <= penalty { return }
+                entries[position] = (penalty, source)
+            }
+            let lower = target - window
+            let upper = target + window
+            let chordSlice = values(in: chordOnsets, lower: lower, upper: upper)
+            for onset in chordSlice {
+                let deviation = abs(onset - target) / Swift.max(window, 1.0)
+                record(onset, penalty: 0.05 + deviation * 0.1, source: .chord)
+            }
+            let sustainSlice = values(in: sustainOnsets, lower: lower, upper: upper)
+            for onset in sustainSlice {
+                let deviation = abs(onset - target) / Swift.max(window, 1.0)
+                record(onset, penalty: 0.025 + deviation * 0.08, source: .sustain)
+            }
+            record(target, penalty: 0.35, source: .synthetic)
+            return entries.map { Candidate(position: $0.key, penalty: $0.value.penalty, source: $0.value.source) }
+                .sorted { abs($0.position - target) < abs($1.position - target) }
+        }
+        
+        let spacingFloor = Swift.max(idealMeasureWidth * 0.25, 1e-3)
+        let window = Swift.max(idealMeasureWidth * 0.75, 1.0)
+        let alignmentScale = Swift.max(idealMeasureWidth * 0.4, 1.0)
+        let spacingScale = Swift.max(idealMeasureWidth * 0.75, 1.0)
+        let sustainAlignmentTolerance = Swift.max(idealMeasureWidth * 0.1, 1.0 / 48)
+        let maxIterations = Swift.max(1, Int(ceil((maxOffset - onset) / Swift.max(idealMeasureWidth, 1e-3))) + 2)
+        let beamWidth = 12
+        
+        var nodes: [Node] = [Node(position: onset, cost: 0, parent: -1, depth: 0)]
+        var frontier: [Int] = [0]
+        var bestTerminal: (index: Int, score: Double)?
+        
+        for _ in 0..<maxIterations {
+            var nextFrontier: [Int] = []
+            for stateIndex in frontier {
+                let state = nodes[stateIndex]
+                let expected = state.position + idealMeasureWidth
+                let options = candidates(around: expected, window: window)
+                let hasPreferredSustain = options.contains {
+                    $0.source == .sustain && abs($0.position - expected) <= sustainAlignmentTolerance
+                }
+                for option in options {
+                    let spacing = option.position - state.position
+                    if spacing <= spacingFloor { continue }
+                    let spacingCost = abs(spacing - idealMeasureWidth) / spacingScale
+                    let alignmentCost = abs(option.position - expected) / alignmentScale
+                    let nearIdealSpacing = abs(spacing - idealMeasureWidth) <= sustainAlignmentTolerance * 2
+                    var sustainBias = 0.0
+                    if option.source == .sustain && nearIdealSpacing {
+                        sustainBias -= 0.25
+                    } else if hasPreferredSustain && option.source != .sustain && nearIdealSpacing {
+                        sustainBias += 0.2
+                    }
+                    let totalCost = state.cost + spacingCost * 0.85 + alignmentCost * 0.25 + option.penalty + sustainBias
+                    let node = Node(position: option.position, cost: totalCost, parent: stateIndex, depth: state.depth + 1)
+                    nodes.append(node)
+                    let newIndex = nodes.count - 1
+                    nextFrontier.append(newIndex)
+                    if option.position + spacingFloor >= maxOffset {
+                        let terminalScore = totalCost + abs(maxOffset - option.position) / spacingScale
+                        if bestTerminal == nil || terminalScore < bestTerminal!.score {
+                            bestTerminal = (newIndex, terminalScore)
+                        }
+                    }
+                }
+            }
+            if nextFrontier.isEmpty {
                 break
             }
-            
-            guard nextChordIndex > 0 else {
-                downbeats.append(chords[nextChordIndex].leadingOnset)
-                onset = chords[nextChordIndex].leadingOnset
-                continue
+            nextFrontier.sort { nodes[$0].cost < nodes[$1].cost }
+            if nextFrontier.count > beamWidth {
+                nextFrontier.removeSubrange(beamWidth..<nextFrontier.count)
             }
-            
-            // snap to nearest chord
-            let next = chords[nextChordIndex]
-            let prev = chords[nextChordIndex - 1]
-            
-            let nextDistance = abs(next.leadingOnset - idealOffset)
-            let prevDistance = abs(prev.leadingOnset - idealOffset)
-            
-            if nextDistance + idealMeasureWidth / 16 > prevDistance, prev.leadingOnset > onset { // 16th note
-                if prevDistance > idealMeasureWidth / 4 {
-                    // maybe its offset is a better fit?
-                    let prevOffsetDistance = abs(prev.trailingOffset - idealOffset)
-                    if prevOffsetDistance < prevDistance {
-                        idealOffset = prev.trailingOffset
-                    } else {
-                        idealOffset = prev.leadingOnset
-                    }
-                } else {
-                    // next distance just win by a tiny amount, use prev
-                    idealOffset = prev.leadingOnset
-                }
-            } else {
-                idealOffset = next.leadingOnset
-            }
-            
-            assert(idealOffset > onset)
-            
-            downbeats.append(idealOffset)
-            onset = idealOffset
+            frontier = nextFrontier
         }
+        
+        let targetIndex: Int
+        if let bestTerminal {
+            targetIndex = bestTerminal.index
+        } else if let fallback = frontier.min(by: { nodes[$0].cost < nodes[$1].cost }) {
+            targetIndex = fallback
+        } else {
+            return downbeats
+        }
+        
+        var reconstructed: [Double] = []
+        var cursor: Int? = targetIndex
+        while let index = cursor, index > 0 {
+            let node = nodes[index]
+            reconstructed.append(node.position)
+            cursor = nodes[index].parent >= 0 ? nodes[index].parent : nil
+        }
+        let additions = reconstructed.reversed().filter { $0 > onset + 1e-6 }
+        downbeats.append(contentsOf: additions)
         
         return downbeats
     }
