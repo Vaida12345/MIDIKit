@@ -46,9 +46,13 @@ public struct Chord: RandomAccessCollection, Hashable {
         self.contents.first!.onset
     }
     
+    public var trailingOffset: Double {
+        self.contents.max(of: \.offset)!
+    }
+    
     /// The max offset `-` min onset.
     public var duration: Double {
-        self.contents.max(of: \.offset)! - self.leadingOnset
+        trailingOffset - self.leadingOnset
     }
     
     public var pitchSpan: UInt8 {
