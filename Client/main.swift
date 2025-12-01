@@ -15,9 +15,8 @@ import SwiftUI
 //let container = try MIDIContainer(at: "'/Users/vaida/Music/Piano Transcription/Nuvole Bianche.mid'")
 //let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Ashes on The Fire - Shingeki no Kyojin.mid")
 //let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Owari no Sekai kara.mid")
-//let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/桜廻廊.mid")
-let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Variations on the Kanon.mid")
-detailedPrint(container)
+let container = try MIDIContainer(at: "'/Users/vaida/Music/Piano Transcription/14 Ballade No. 1 in G minor, Op. 23.mid'")
+//let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Variations on the Kanon.mid")
 
 var indexed = container.indexed()
 
@@ -31,9 +30,7 @@ for (i, region) in regions.enumerated() {
 indexed.normalize(preserve: .notesDisplay)
 indexed.alignFirstNoteToZero()
 
-indexed.downbeats()
-
-print(indexed.keySignature())
+print("base length", indexed.baselineBarLength())
 
 await DebugView(container: indexed).render(to: .desktopDirectory/"debug.pdf", format: .pdf, scale: 1)
 #endif

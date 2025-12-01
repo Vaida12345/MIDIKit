@@ -13,6 +13,7 @@ import MIDIKit
 struct DebugView: View {
     
     let container: IndexedContainer
+    let bpm = 4.0
     
     let pixelsPerBeat: CGFloat = 100
     let pixelsPerNote: CGFloat = 20
@@ -29,13 +30,25 @@ struct DebugView: View {
                     for downbeat in downbeats {
                         context.fill(
                             Path(CGRect(x: pixelsPerBeat * downbeat , y: 0, width: 1, height: size.height)),
-                            with: .color(.secondary)
+                            with: .color(.blue)
                         )
                     }
                 }
                 
+                Canvas { context, size in
+                    var x = 0.0
+                    while x < size.width {
+                        context.fill(
+                            Path(CGRect(x: x, y: 0, width: 1, height: size.height)),
+                            with: .color(.secondary.opacity(0.5))
+                        )
+                        
+                        x += pixelsPerBeat * 4
+                    }
+                }
+                
                 Rectangle()
-                    .fill(.secondary)
+                    .fill(.secondary.opacity(0.5))
                     .frame(width: width, height: 1)
                     .position(x: width / 2, y: pixelsPerNote * CGFloat(maxNote - 60))
                 

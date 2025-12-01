@@ -30,7 +30,7 @@ extension IndexedContainer {
     ///
     /// - Parameters: none
     /// - Returns: The estimated measure length in beats.
-    /// - Complexity: O(*n* log *n*) due to the golden-section search invoking a linear loss.
+    /// - Complexity: O(*n* · *m*), where *m* is the capped number of descent iterations.
     public func baselineBarLength(beatsPerMeasure: Double = 4) -> Double {
         let sustainWeight = 2.5
         return IndexedContainer.baselineBarLength(beatsPerMeasure: beatsPerMeasure, samples: self.sustainDurations().map { ($0, sustainWeight) } + self.contents.map { ($0.duration, 1.0) })
@@ -44,7 +44,7 @@ extension IndexedContainer {
     ///
     /// - Parameters: none
     /// - Returns: The estimated measure length in beats.
-    /// - Complexity: O(*n* log *n*) due to the golden-section search invoking a linear loss.
+    /// - Complexity: O(*n* · *m*), where *m* is the capped number of descent iterations.
     public static func baselineBarLength(beatsPerMeasure: Double = 4, samples: [(duration: Double, weight: Double)]) -> Double {
         
         /// Fall back early when no timing information exists.
@@ -64,14 +64,12 @@ extension IndexedContainer {
                     // Measure how closely the ratio between duration and reference aligns to
                     // integer multiples, regardless of which term is larger.
                     let ratio: Double
-                    let base: Double
                     if duration >= reference {
                         ratio = duration / reference
-                        base = reference
                     } else {
                         ratio = reference / duration
-                        base = duration
                     }
+                    let base = duration
                     let nearest = Swift.max(1.0, ratio.rounded())
                     let deviation = abs(ratio - nearest)
                     loss += deviation * base * weight
@@ -82,38 +80,48 @@ extension IndexedContainer {
             return loss
         }
         
-        /// - Complexity: O(*n* log *n*).
-        func goldenSectionSearch(left: Double, right: Double, tolerance: Double = 1e-5, body: (Double) -> Double) -> Double {
-            let gr = (sqrt(5) + 1) / 2 // Golden ratio constant
-            
-            var a = left
-            var b = right
-            
-            // We are looking for the minimum, so we apply the golden section search logic
-            var c = b - (b - a) / gr
-            var d = a + (b - a) / gr
-            
-            while abs(c - d) > tolerance {
-                if body(c) < body(d) {
-                    b = d
-                } else {
-                    a = c
-                }
-                
-                c = b - (b - a) / gr
-                d = a + (b - a) / gr
+        /// Performs a derivative-free descent anchored at `center` to favour nearby minima.
+        func localMinimumAroundCenter(around center: Double, left: Double, right: Double, tolerance: Double = 1e-4, body: (Double) -> Double) -> Double {
+            guard right > left else { return center }
+            var current = Swift.min(Swift.max(center, left), right)
+            var currentLoss = body(current)
+            if !currentLoss.isFinite {
+                return center
             }
-            
-            // The point of minimum loss is between a and b
-            return (b + a) / 2
+            var step = (right - left) / 4
+            let minStep = tolerance
+            while step > minStep {
+                let leftCandidate = Swift.max(left, current - step)
+                let rightCandidate = Swift.min(right, current + step)
+                var moved = false
+                var bestPoint = current
+                var bestLoss = currentLoss
+                let leftLoss = body(leftCandidate)
+                if leftLoss < bestLoss {
+                    bestPoint = leftCandidate
+                    bestLoss = leftLoss
+                    moved = true
+                }
+                let rightLoss = body(rightCandidate)
+                if rightLoss < bestLoss {
+                    bestPoint = rightCandidate
+                    bestLoss = rightLoss
+                    moved = true
+                }
+                if moved {
+                    current = bestPoint
+                    currentLoss = bestLoss
+                } else {
+                    step /= 2
+                }
+            }
+            return current
         }
-        
+
         let left = beatsPerMeasure / 2
         let right = beatsPerMeasure * 1.5
-        
-        let fit = goldenSectionSearch(left: left, right: right) {
-            loss(samples: samples, reference: $0)
-        }
+        let objective: (Double) -> Double = { loss(samples: samples, reference: $0) }
+        let fit = localMinimumAroundCenter(around: beatsPerMeasure, left: left, right: right, body: objective)
         
         return fit.isFinite ? fit : median
     }
