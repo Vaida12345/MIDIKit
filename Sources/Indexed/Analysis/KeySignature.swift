@@ -61,6 +61,32 @@ extension IndexedContainer.KeySignature: CaseIterable {
         .natural,
         sharps1, sharps2, sharps3, sharps4, sharps5, sharps6, sharps7
     ]
+    
+    public init?(accidental: Accidental, accidentalCount: Int) {
+        switch (accidental, accidentalCount) {
+        case (.sharp, 0): self = .natural
+        case (.sharp, 1): self = .sharps1
+        case (.sharp, 2): self = .sharps2
+        case (.sharp, 3): self = .sharps3
+        case (.sharp, 4): self = .sharps4
+        case (.sharp, 5): self = .sharps5
+        case (.sharp, 6): self = .sharps6
+        case (.sharp, 7): self = .sharps7
+            
+        case (.flat, 0): self = .natural
+        case (.flat, 1): self = .flats1
+        case (.flat, 2): self = .flats2
+        case (.flat, 3): self = .flats3
+        case (.flat, 4): self = .flats4
+        case (.flat, 5): self = .flats5
+        case (.flat, 6): self = .flats6
+        case (.flat, 7): self = .flats7
+            
+        case (.neutral, 0): self = .natural
+            
+        default: return nil
+        }
+    }
 }
 
 
