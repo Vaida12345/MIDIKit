@@ -26,14 +26,14 @@ extension IndexedContainer {
         var downbeats: [Double]
         let idealMeasureWidth: Double
         var onset: Double
-        var lastCheckedSustainIndex = 0
+        var lastCheckedSustainIndex = -1
         
         if let prior, prior.count > 1 {
             downbeats = prior
             let beatsPerMeasure = downbeats.gaps()
             idealMeasureWidth = self.baselineBarLength(beatsPerMeasure: beatsPerMeasure.mean!)
             onset = prior.last!
-            if let sustainIndexAfter = self.sustains.firstIndex(after: onset), sustainIndexAfter > 1 {
+            if let sustainIndexAfter = self.sustains.firstIndex(after: onset), sustainIndexAfter > 0 {
                 lastCheckedSustainIndex = sustainIndexAfter - 1
             }
         } else {
@@ -44,7 +44,11 @@ extension IndexedContainer {
         
         let chords = self.chords()
         
-        guard let maxOffset = self.contents.max(of: \.offset) else { return [] } // self is empty
+        let contentMax = self.contents.max(of: \.offset)
+        let sustainMax = self.sustains.max(of: \.offset)
+        guard let maxOffset = [contentMax, sustainMax].compactMap({ $0 }).max() else {
+            return [] // empty
+        }
         while onset < maxOffset {
             // determine offset
             var idealOffset = onset + idealMeasureWidth
@@ -55,9 +59,13 @@ extension IndexedContainer {
                 if sustainIndexAfter > lastCheckedSustainIndex {
                     sustainCandidates.append(self.sustains[sustainIndexAfter].onset)
                 }
-                
-                if sustainIndexAfter - 1 > lastCheckedSustainIndex {
-                    sustainCandidates.append(self.sustains[sustainIndexAfter - 1].onset)
+                let previousIndex = sustainIndexAfter - 1
+                if previousIndex >= 0 && previousIndex > lastCheckedSustainIndex {
+                    sustainCandidates.append(self.sustains[previousIndex].onset)
+                }
+                lastCheckedSustainIndex = Swift.max(lastCheckedSustainIndex, sustainIndexAfter)
+                if previousIndex >= 0 {
+                    lastCheckedSustainIndex = Swift.max(lastCheckedSustainIndex, previousIndex)
                 }
             }
             // use sustain to reshape ideal offset
@@ -87,7 +95,7 @@ extension IndexedContainer {
             let nextDistance = abs(next.leadingOnset - idealOffset)
             let prevDistance = abs(prev.leadingOnset - idealOffset)
             
-            if nextDistance + 0.25 > prevDistance, prev.leadingOnset > onset { // 16th note
+            if nextDistance + idealMeasureWidth / 16 > prevDistance, prev.leadingOnset > onset { // 16th note
                 // next distance just win by a tiny amount, use prev
                 idealOffset = prev.leadingOnset
             } else {
