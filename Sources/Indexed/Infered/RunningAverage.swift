@@ -40,7 +40,7 @@ public struct RunningAverage {
                 j &+= 1
             }
             
-            contents.append(Element(onset: note.onset, note: (notesMin + notesMax) / 2, span: notesMax - notesMin))
+            contents.append(Element(onset: note.onset, note: notesMin + (notesMax - notesMin) / 2, span: notesMax - notesMin))
         }
         
         self.contents = contents
