@@ -211,6 +211,10 @@ public struct Chord: RandomAccessCollection, Hashable {
         spec: Spec = Spec()
     ) -> [Chord] {
         var chords = Chord.makeChords(from: container, spec: spec)
+        let reachLimit: UInt8 = 9
+        let octaveTolerance = 1
+        let gapWeight = 1.5
+        let spanWeight = 0.2
         
         for (index, chord) in chords.enumerated() {
             let span = chord.pitchSpan
@@ -218,37 +222,60 @@ public struct Chord: RandomAccessCollection, Hashable {
             guard chord.count > 2 || span > 14 else { continue }
             
             let notes = chord.contents.sorted(on: \.note, by: <)
+            guard notes.count >= 2 else { continue }
             
-            // cluster into hands: O(n)
-            var left: [ReferenceNote] = []
-            var right: [ReferenceNote] = []
-            left.reserveCapacity(notes.count)
-            right.reserveCapacity(notes.count)
-
-            let minIndex = notes.minIndex(of: \.note)
-            let maxIndex = notes.maxIndex(of: \.note)
-            let min = notes[minIndex!]
-            let max = notes[maxIndex!]
-
-            notes.forEach { index, element in
-                if index == minIndex {
-                    left.append(min)
-                } else if index == maxIndex {
-                    right.append(max)
-                } else {
-                    let leftDistance = element.note - min.note
-                    let rightDistance = max.note - element.note
-                    if leftDistance < rightDistance {
-                        left.append(element)
-                    } else {
-                        right.append(element)
-                    }
+            let totalSpan = Int(notes.last!.note) - Int(notes.first!.note)
+            var bestSplit: Int?
+            var bestCost = Double.infinity
+            
+            for split in 1..<notes.count {
+                let leftSpan = Int(notes[split - 1].note) - Int(notes.first!.note)
+                let rightSpan = Int(notes.last!.note) - Int(notes[split].note)
+                let maxSpan = Swift.max(leftSpan, rightSpan)
+                let gap = Int(notes[split].note) - Int(notes[split - 1].note)
+                let remainder = gap % 12
+                let octaveCloseness = Swift.min(remainder, 12 - remainder)
+                let octavePenalty = octaveCloseness <= octaveTolerance
+                ? Double(octaveTolerance - octaveCloseness + 1) * 6.0
+                : 0.0
+                let reachPenalty = Swift.max(0, maxSpan - Int(reachLimit))
+                let imbalance = abs(leftSpan - rightSpan)
+                
+                let cost = Double(maxSpan)
+                + Double(reachPenalty)
+                + Double(imbalance) * spanWeight
+                - Double(gap) * gapWeight
+                + octavePenalty
+                
+                if cost < bestCost {
+                    bestCost = cost
+                    bestSplit = split
                 }
             }
             
-            chords[index].contents = left.sorted()
+            guard let splitIndex = bestSplit else { continue }
+            guard bestCost + 0.5 < Double(totalSpan) else { continue }
+            
+            let leftSlice = Array(notes[..<splitIndex])
+            let rightSlice = Array(notes[splitIndex...])
+            guard !leftSlice.isEmpty, !rightSlice.isEmpty else { continue }
+            
+            let leftNotes = leftSlice.sorted(on: \.onset, by: <)
+            let rightNotes = rightSlice.sorted(on: \.onset, by: <)
+            
+            chords[index].contents = leftNotes
+            chords[index].maxOffset = chord.maxOffset
+            chords[index].features = chord.features
             chords[index].features.insert(.preferLeftHand)
-            chords.append(Chord(contents: right.sorted(), maxOffset: nil, features: [.preferRightHand]))
+            
+            var rightFeatures = chord.features
+            rightFeatures.insert(.preferRightHand)
+            let rightChord = Chord(
+                contents: rightNotes,
+                maxOffset: chord.maxOffset,
+                features: rightFeatures
+            )
+            chords.append(rightChord)
         }
         
         return chords.sorted(on: \.leadingOnset, by: <)
