@@ -187,7 +187,32 @@ extension IndexedContainer {
             cursor = nodes[index].parent >= 0 ? nodes[index].parent : nil
         }
         let additions = reconstructed.reversed().filter { $0 > onset + 1e-6 }
-        downbeats.append(contentsOf: additions)
+        
+        func append(about beats: Double) {
+            guard let nextChordIndex = chords.firstIndex(after: beats) else {
+                // maybe crossed the end?
+                downbeats.append(beats)
+                return
+            }
+            
+            guard nextChordIndex > 0 else {
+                downbeats.append(chords[nextChordIndex].leadingOnset)
+                return
+            }
+            
+            let next = chords[nextChordIndex]
+            let prev = chords[nextChordIndex - 1]
+            
+            let nextDistance = abs(next.leadingOnset - beats)
+            let prevDistance = abs(prev.leadingOnset - beats)
+            
+            // snap to nearest chord
+            downbeats.append(nextDistance < prevDistance ? next.leadingOnset : prev.leadingOnset)
+        }
+        
+        for addition in additions {
+            append(about: addition)
+        }
         
         return downbeats
     }
