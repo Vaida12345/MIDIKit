@@ -47,6 +47,10 @@ extension IndexedContainer {
     /// - Returns: A new ``IndexedContainer`` initialized using the parameters used in the initializer for this instance. Contents of `self` remains unchanged.
     ///
     /// - Note: As `self` is a class, `self` is mutated on return.
+    ///
+    /// ## User-facing Description:
+    ///
+    /// - Removes tiny stray notes for a cleaner, less noisy sound.
     public func removingArtifacts(
         threshold: UInt8,
         proximityThreshold: Double = 1/2 // 8th note

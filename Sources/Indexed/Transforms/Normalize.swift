@@ -19,6 +19,11 @@ extension IndexedContainer {
     /// - ensure the gaps between consecutive notes (in the initializer)
     ///
     /// - Complexity: O(*n log n*), `makeChords`
+    ///
+    /// ## User-facing Description:
+    /// Automatically adjusts note durations using the sustain pedal and nearby notes, fixing overly long notes and overlaps for more natural playback and clearer chords.
+    ///
+    /// - Adjusts note lengths to fix overlaps for clearer chords.
     public func normalize(preserve: PreserveSettings) {
         guard !self.isEmpty else { return }
         
@@ -265,6 +270,15 @@ extension IndexedContainer {
             switch self {
             case .acousticResult: "Acoustic Result"
             case .notesDisplay: "Notes Display"
+            }
+        }
+        
+        public var description: LocalizedStringResource {
+            switch self {
+            case .acousticResult:
+                "Optimize note lengths using the sustain pedal for the most realistic sound."
+            case .notesDisplay:
+                "Tighten note lengths to reduce overlaps and make chords and rhythms easier to read."
             }
         }
     }
