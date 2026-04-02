@@ -6,41 +6,12 @@
 //
 
 import Foundation
+import Accelerate
 
 extension IndexedContainer {
 
     /// Creates a time warp between `self` and `other` using default parameters.
-    ///
-    /// 1. **Extract note-on events** from MIDI A and B.
-    /// 2. **Sort and clean duplicates**.
-    /// 3. Compute `ε_A`, `ε_B`.
-    /// 4. Run `makeChords()` on each file.
-    /// 5. Build chord-event sequences with:
-    ///     - median chord time
-    ///     - pitch set
-    /// 6. Implement **pass-1 semiglobal affine-gap alignment** using pitch-only score.
-    /// 7. Extract high-confidence anchors and build rough `f0`.
-    /// 8. Implement **pass-2 semiglobal affine-gap alignment** using pitch + timing score.
-    /// 9. Extract final anchors.
-    /// 10. Fit robust **monotone piecewise-linear warp** `f`.
-    /// 11. Warp all original onset times in A via `f`.
-    /// 12. Produce diagnostics:
-    ///     - anchor plot
-    ///     - residual plot
-    ///     - coverage / Dice stats
-    ///
-    /// ## Core
-    ///
-    /// We use **two-pass chord-sequence alignment in the Needleman–Wunsch / pair-HMM family**.
-    ///
-    /// | Approach | Handles missing / extra notes well? | Handles gradual tempo drift? | Handles abrupt tempo changes / pauses? | Good fit for piano MIDI onset+pitch? | Main issue here |
-    /// |---|---:|---:|---:|---:|---|
-    /// | **DTW** | Medium | Excellent | Good if unconstrained | Medium | Standard DTW forces everything to align; gaps are implicit and often pathological for symbolic note sequences |
-    /// | **Constrained DTW** | Medium | Good | Medium | Medium | Band/slope constraints reduce false paths, but can fail under abrupt tempo changes unless band is wide |
-    /// | **soft-DTW** | Medium | Good | Good | Low-Medium | Mainly useful as a differentiable loss in learning; not usually more accurate than hard alignment offline |
-    /// | **Edit distance / Needleman–Wunsch** | **Excellent** | Indirectly yes | **Yes**, via later warp fit | **Excellent** | Timing is not modeled strongly unless you add a second pass or timing term |
-    /// | **HMM / Viterbi (offline)** | **Excellent** | **Excellent** | **Excellent** | **Excellent** | Most flexible, but significantly more tuning / state design / implementation complexity |
-    /// | **MIR frame/piano-roll DTW variants** | Medium | Good | Good | Medium | Often assume duration-based features or time discretization; less natural when you only trust note-on events |
+    /// - Complexity: O(nA log nA + nB log nB + NA * NB), where n* are note counts and N* are chord-event counts.
     public func timeWarp(other: IndexedContainer) -> TimeWarpMapping {
         self.timeWarp(other: other, parameters: .init())
     }
@@ -53,8 +24,8 @@ extension IndexedContainer {
     /// - Parameters:
     ///   - other: Target container to project into.
     ///   - parameters: Alignment and fitting controls.
-    ///
     /// - Returns: A mapping function from this container's beat timeline to `other`'s beat timeline.
+    /// - Complexity: O(nA log nA + nB log nB + NA * NB), where n* are note counts and N* are chord-event counts.
     public func timeWarp(other: IndexedContainer, parameters: TimeWarpParameters = .init()) -> TimeWarpMapping {
         guard !self.isEmpty, !other.isEmpty else { return .identity }
 
@@ -252,6 +223,7 @@ extension IndexedContainer {
         /// - Recommended range: broad guardrail.
         public var slopeMax: Double
 
+        /// - Complexity: O(1).
         public init(
             epsilonA: Double? = nil,
             epsilonB: Double? = nil,
@@ -293,6 +265,7 @@ extension IndexedContainer {
 
         public static let identity = TimeWarpMapping(xs: [0], ys: [0], fallbackSlope: 1)
 
+        /// - Complexity: O(1).
         fileprivate init(xs: [Double], ys: [Double], fallbackSlope: Double = 1) {
             self.xs = xs
             self.ys = ys
@@ -300,6 +273,7 @@ extension IndexedContainer {
         }
 
         /// Returns `x` projected onto `other` in beats.
+        /// - Complexity: O(log k), where k is the number of warp knots.
         public func map(_ x: Double) -> Double {
             guard !self.xs.isEmpty, self.xs.count == self.ys.count else { return x }
 
@@ -393,6 +367,7 @@ private extension IndexedContainer {
         let operations: [AlignmentOp]
     }
 
+    /// - Complexity: O(n log n), where n is the number of notes in the container.
     static func noteOnEvents(from container: IndexedContainer) -> [OnsetEvent] {
         var events: [OnsetEvent] = []
         events.reserveCapacity(container.contents.count)
@@ -410,11 +385,13 @@ private extension IndexedContainer {
         return events
     }
 
+    /// - Complexity: O(n log n), where n is the number of onset events.
     static func estimatedChordWindow(from events: [OnsetEvent]) -> Double {
         let q10 = q10IOI(from: events) ?? 0.2
         return Swift.max(0.03, Swift.min(0.10, 0.25 * q10))
     }
 
+    /// - Complexity: O(n), where n is the number of onset events.
     static func cleanedEvents(_ events: [OnsetEvent], duplicateThreshold: Double) -> [OnsetEvent] {
         guard !events.isEmpty else { return [] }
 
@@ -444,6 +421,7 @@ private extension IndexedContainer {
         return cleaned
     }
 
+    /// - Complexity: O(n log n), where n is the number of onset events.
     static func chordEvents(from events: [OnsetEvent], epsilon: Double) -> [ChordEvent] {
         guard !events.isEmpty else { return [] }
 
@@ -469,6 +447,7 @@ private extension IndexedContainer {
         }
     }
 
+    /// - Complexity: O(min(a, b)), where a and b are the pitch-set sizes.
     static func overlapMetrics(_ lhs: Set<UInt8>, _ rhs: Set<UInt8>) -> OverlapMetrics {
         let small = lhs.count <= rhs.count ? lhs : rhs
         let large = lhs.count <= rhs.count ? rhs : lhs
@@ -481,14 +460,17 @@ private extension IndexedContainer {
         return OverlapMetrics(intersection: intersection, lhsCount: lhs.count, rhsCount: rhs.count)
     }
 
+    /// - Complexity: O(1).
     static func isAllowedInPass1(_ metrics: OverlapMetrics, lhsCount: Int, rhsCount: Int, tauDice1: Double) -> Bool {
         metrics.dice >= tauDice1 || (lhsCount == 1 && rhsCount == 1 && metrics.intersection == 1)
     }
 
+    /// - Complexity: O(1).
     static func isAllowedInPass2(_ metrics: OverlapMetrics, lhsCount: Int, rhsCount: Int, tauDice2: Double) -> Bool {
         metrics.dice >= tauDice2 || (lhsCount == 1 && rhsCount == 1 && metrics.intersection == 1)
     }
 
+    /// - Complexity: O(N * M) time and O(N * M) memory, where N and M are chord-event counts.
     static func alignAffineSemiglobal(
         lhs: [ChordEvent],
         rhs: [ChordEvent],
@@ -504,6 +486,7 @@ private extension IndexedContainer {
         let width = m + 1
         let cellCount = (n + 1) * (m + 1)
 
+        // Complexity: O(1).
         @inline(__always)
         func index(_ i: Int, _ j: Int) -> Int { i * width + j }
 
@@ -650,6 +633,7 @@ private extension IndexedContainer {
         return AlignmentResult(score: bestScore, operations: operations)
     }
 
+    /// - Complexity: O(k), where k is the number of alignment operations.
     static func extractMatches(from operations: [AlignmentOp]) -> [(Int, Int)] {
         var matches: [(Int, Int)] = []
         matches.reserveCapacity(operations.count)
@@ -661,6 +645,7 @@ private extension IndexedContainer {
         return matches
     }
 
+    /// - Complexity: O(k log k), where k is the number of matched pairs.
     static func anchors(
         from matches: [(Int, Int)],
         lhs: [ChordEvent],
@@ -668,6 +653,7 @@ private extension IndexedContainer {
         tau: Double,
         fallbackTau: Double
     ) -> [Anchor] {
+        // Complexity: O(k log k), where k is the number of matched pairs.
         func build(_ threshold: Double) -> [Anchor] {
             var output: [Anchor] = []
             output.reserveCapacity(matches.count)
@@ -687,6 +673,7 @@ private extension IndexedContainer {
         return build(fallbackTau)
     }
 
+    /// - Complexity: O(k log k), where k is the number of anchors.
     static func roughWarp(
         anchors: [Anchor],
         lhs: [ChordEvent],
@@ -714,6 +701,7 @@ private extension IndexedContainer {
         return TimeWarpMapping(xs: xs, ys: ys, fallbackSlope: slope)
     }
 
+    /// - Complexity: O(k log k), where k is the number of anchors.
     static func pruneAnchorOutliers(_ anchors: [Anchor], slopeMin: Double, slopeMax: Double) -> [Anchor] {
         guard !anchors.isEmpty else { return [] }
         var anchors = anchors.sorted { $0.x < $1.x }
@@ -798,6 +786,7 @@ private extension IndexedContainer {
         return anchors
     }
 
+    /// - Complexity: O(k log k + s), where k is the number of anchors and s is split recursion work.
     static func fitPiecewiseLinearWarp(_ anchors: [Anchor], tauFit: Double, slopeMin: Double, slopeMax: Double) -> TimeWarpMapping? {
         let anchors = pruneAnchorOutliers(anchors, slopeMin: slopeMin, slopeMax: slopeMax)
         guard !anchors.isEmpty else { return nil }
@@ -809,6 +798,7 @@ private extension IndexedContainer {
 
         var knots: Set<Int> = [0, anchors.count - 1]
 
+        // Complexity: O(m) for segment size m in this recursion node.
         func recurse(_ left: Int, _ right: Int) {
             if right - left <= 1 { return }
 
@@ -855,7 +845,6 @@ private extension IndexedContainer {
             ys.append(anchors[index].y)
         }
 
-        // Enforce strict monotonicity.
         var monotoneX: [Double] = []
         var monotoneY: [Double] = []
         monotoneX.reserveCapacity(xs.count)
@@ -887,6 +876,7 @@ private extension IndexedContainer {
         return TimeWarpMapping(xs: monotoneX, ys: monotoneY, fallbackSlope: slope)
     }
 
+    /// - Complexity: O(1).
     static func endpointLinearFallback(lhs: [OnsetEvent], rhs: [OnsetEvent]) -> TimeWarpMapping {
         guard let x0 = lhs.first?.time,
               let x1 = lhs.last?.time,
@@ -904,6 +894,7 @@ private extension IndexedContainer {
         return TimeWarpMapping(xs: [x0, x1], ys: [y0, y1], fallbackSlope: slope)
     }
 
+    /// - Complexity: O(n log n), where n is the number of onset events.
     static func q10IOI(from events: [OnsetEvent]) -> Double? {
         guard events.count >= 2 else { return nil }
 
@@ -945,11 +936,13 @@ private extension IndexedContainer {
         return intervals[low] + t * (intervals[high] - intervals[low])
     }
 
+    /// - Complexity: O(n log n), where n is the number of values.
     static func mad(_ values: [Double]) -> Double? {
         guard !values.isEmpty, let median = values.median else { return nil }
         return values.map { abs($0 - median) }.median
     }
 
+    /// - Complexity: O(1).
     static func huber(_ z: Double, delta: Double) -> Double {
         let value = abs(z)
         if value <= delta {
@@ -958,6 +951,7 @@ private extension IndexedContainer {
         return delta * (value - 0.5 * delta)
     }
 
+    /// - Complexity: O(k log k), where k is the number of anchors.
     static func estimatedFitTolerance(_ anchors: [Anchor]) -> Double {
         guard anchors.count >= 3 else { return 0.08 }
 
