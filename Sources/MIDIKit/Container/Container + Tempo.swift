@@ -11,136 +11,89 @@ import Essentials
 
 public extension MIDIContainer {
     
-    /// Apply the tempo.
+    /// Rewrites all note and sustain timestamps so playback is represented in a single tempo domain.
     ///
-    /// - Precondition: This function assumes the container is in constant tempo.
+    /// This preserves real-time musical timing while converting beat positions to a timeline where
+    /// `constantTempo` is the only tempo. After conversion, ``tempo`` is replaced with exactly one
+    /// event at timestamp `0`.
     ///
-    /// ```swift
-    /// // start by normalizing tempo
-    /// let referenceNoteLength = container.tracks[0].notes.deriveReferenceNoteLength()
+    /// Fast path: if ``tempo`` is already constant and equal to `constantTempo`, this method returns
+    /// without changing notes, sustains, or tempo events.
     ///
-    /// let tempo = 120 * 1/4 / referenceNoteLength
-    /// container.applyTempo(tempo: tempo)
-    /// ```
-    mutating func applyTempo(tempo: Double) {
-        precondition(self.tempo.isEmpty || (self.tempo.count == 1 && self.tempo[0] == .init(timestamp: 0, tempo: 120)))
+    /// - Parameter constantTempo: The target tempo in BPM. Must be greater than `0`.
+    mutating func normalizeToConstantTempo(_ constantTempo: Double) {
+        precondition(constantTempo > 0, "constantTempo must be greater than 0")
         
-        if self.tempo.isEmpty {
-            self.tempo.contents.append(MIDITempoTrack.Tempo(timestamp: 0, tempo: tempo))
-        } else {
-            self.tempo[0].tempo = tempo
+        let defaultTempo = MIDITempoTrack.Tempo.default.tempo
+        let sortedTempoEvents = self.tempo.contents.sorted(on: \.timestamp, by: <)
+        
+        func areClose(_ lhs: Double, _ rhs: Double) -> Bool {
+            abs(lhs - rhs) <= 1e-9
         }
         
-        let factor = tempo / 120
+        // If the track already has the requested constant tempo, no rescaling is needed.
+        let initialTempoAtZero: Double = sortedTempoEvents
+            .last(where: { $0.timestamp <= 0 })?
+            .tempo ?? defaultTempo
+        let hasConstantTempo = areClose(initialTempoAtZero, constantTempo)
+            && sortedTempoEvents.allSatisfy { areClose($0.tempo, constantTempo) }
+        if hasConstantTempo { return }
         
-        self.tracks.mutatingForEach { index, element in
-            element.notes.mutatingForEach { index, element in
-                element.onset *= factor
-                element.offset *= factor
-            }
-            
-            element.sustains.mutatingForEach { index, element in
-                element.onset *= factor
-                element.offset *= factor
-            }
-            
-            element.metaEvents.mutatingForEach { index, element in
-                element.timestamp *= factor
+        var effectiveTempoEvents: [MIDITempoTrack.Tempo] = [
+            MIDITempoTrack.Tempo(timestamp: 0, tempo: initialTempoAtZero)
+        ]
+        for event in sortedTempoEvents where event.timestamp >= 0 {
+            if event.timestamp == 0 {
+                effectiveTempoEvents[0] = event
+            } else if effectiveTempoEvents.last?.timestamp == event.timestamp {
+                effectiveTempoEvents[effectiveTempoEvents.count - 1] = event
+            } else {
+                effectiveTempoEvents.append(event)
             }
         }
-    }
-    
-    mutating func adjustMIDINotesToConstantTempo(_ constantTempo: Double) {
+        
         // Function to calculate time scaled to the constant tempo
-        func scaledTime(at timestamp: MusicTimeStamp, tempoEvents: [MIDITempoTrack.Tempo], constantTempo: Double) -> MusicTimeStamp {
-            var lastTempoChangeTime: MusicTimeStamp = 0
-            var lastTempo: Double = tempoEvents.first?.tempo ?? constantTempo
-            var scaledTime: MusicTimeStamp = 0
+        func scaledTime(
+            at timestamp: MusicTimeStamp,
+            tempoEvents: [MIDITempoTrack.Tempo],
+            constantTempo: Double
+        ) -> MusicTimeStamp {
+            var scaled: MusicTimeStamp = 0
+            var currentTempoEvent = tempoEvents[0]
             
-            for tempoEvent in tempoEvents {
-                if timestamp < tempoEvent.timestamp {
+            for nextTempoEvent in tempoEvents.dropFirst() {
+                if timestamp < nextTempoEvent.timestamp {
                     break
                 }
                 
-                let timeDifference = tempoEvent.timestamp - lastTempoChangeTime
-                let scaledTimeSegment = timeDifference * constantTempo / lastTempo
-                scaledTime += scaledTimeSegment
-                
-                lastTempoChangeTime = tempoEvent.timestamp
-                lastTempo = tempoEvent.tempo
+                let duration = nextTempoEvent.timestamp - currentTempoEvent.timestamp
+                scaled += duration * constantTempo / currentTempoEvent.tempo
+                currentTempoEvent = nextTempoEvent
             }
             
-            // Scale remaining time up to the note's timestamp
-            let remainingTime = timestamp - lastTempoChangeTime
-            scaledTime += remainingTime * constantTempo / lastTempo
-            
-            return scaledTime
+            let remainingDuration = timestamp - currentTempoEvent.timestamp
+            scaled += remainingDuration * constantTempo / currentTempoEvent.tempo
+            return scaled
         }
         
-        
-        self.tracks.mutatingForEach { index, track in
+        self.tracks.mutatingForEach { _, track in
             track.notes.mutatingForEach { _, note in
-                note.onset = scaledTime(at: note.onset, tempoEvents: self.tempo.contents, constantTempo: constantTempo)
-                note.offset = scaledTime(at: note.offset, tempoEvents: self.tempo.contents, constantTempo: constantTempo)
+                note.onset = scaledTime(at: note.onset, tempoEvents: effectiveTempoEvents, constantTempo: constantTempo)
+                note.offset = scaledTime(at: note.offset, tempoEvents: effectiveTempoEvents, constantTempo: constantTempo)
             }
             
             track.sustains.mutatingForEach { _, sustain in
-                sustain.onset = scaledTime(at: sustain.onset, tempoEvents: self.tempo.contents, constantTempo: constantTempo)
-                sustain.offset = scaledTime(at: sustain.offset, tempoEvents: self.tempo.contents, constantTempo: constantTempo)
+                sustain.onset = scaledTime(at: sustain.onset, tempoEvents: effectiveTempoEvents, constantTempo: constantTempo)
+                sustain.offset = scaledTime(at: sustain.offset, tempoEvents: effectiveTempoEvents, constantTempo: constantTempo)
             }
         }
         
         self.tempo.contents = [MIDITempoTrack.Tempo(timestamp: 0, tempo: constantTempo)]
     }
     
-    /// - Parameters:
-    ///   - tempos: The timestamps are defined in *currentTempo*. Such values will be scaled in the results.
-    ///   - currentTempo: The current tempo of the container. The tempo is 120 by default, or can be access via `self.tempo`
-    mutating func adjustMIDINotesToVariadicTempo(_ tempos: [MIDITempoTrack.Tempo], currentTempo: Double) {
-        guard !tempos.isEmpty else { return }
-        
-        // *= newTempo / originalTempo
-        
-        var tempos = tempos
-        tempos[0] = MIDITempoTrack.Tempo(timestamp: 0, tempo: tempos[0].tempo)
-        
-        // Function to calculate time scaled to the variadic tempo
-        func scaledTime(at timestamp: MusicTimeStamp, tempoEvents: [MIDITempoTrack.Tempo], constantTempo: Double) -> MusicTimeStamp {
-            
-            var scaled: Double = 0
-            var tempoIterator = tempoEvents.sorted(on: \.timestamp, by: <).makeIterator()
-            var currentTempo = tempoIterator.next()! // with the guard, this will never be `nil`.
-            
-            while let nextTempo = tempoIterator.next() {
-                if timestamp < nextTempo.timestamp { break }
-                
-                let duration = nextTempo.timestamp - currentTempo.timestamp
-                scaled += duration * (currentTempo.tempo / constantTempo)
-                
-                currentTempo = nextTempo
-            }
-            
-            let duration = timestamp - currentTempo.timestamp
-            scaled += duration * (currentTempo.tempo / constantTempo)
-            
-            return scaled
-        }
-        
-        self.tracks.mutatingForEach { index, track in
-            track.notes.mutatingForEach { _, note in
-                note.onset = scaledTime(at: note.onset, tempoEvents: tempos, constantTempo: currentTempo)
-                note.offset = scaledTime(at: note.offset, tempoEvents: tempos, constantTempo: currentTempo)
-            }
-            
-            track.sustains.mutatingForEach { _, sustain in
-                sustain.onset = scaledTime(at: sustain.onset, tempoEvents: tempos, constantTempo: currentTempo)
-                sustain.offset = scaledTime(at: sustain.offset, tempoEvents: tempos, constantTempo: currentTempo)
-            }
-        }
-        
-        self.tempo.contents = tempos.map {
-            MIDITempoTrack.Tempo(timestamp: scaledTime(at: $0.timestamp, tempoEvents: tempos, constantTempo: currentTempo), tempo: $0.tempo)
-        }
+    /// Deprecated compatibility wrapper for ``normalizeToConstantTempo(_:)``.
+    @available(*, deprecated, renamed: "normalizeToConstantTempo(_:)")
+    mutating func adjustMIDINotesToConstantTempo(_ constantTempo: Double) {
+        self.normalizeToConstantTempo(constantTempo)
     }
-    
 }

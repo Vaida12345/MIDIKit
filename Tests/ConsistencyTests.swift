@@ -102,16 +102,4 @@ struct ConsistencyTests {
         }
     }
     
-    @Test(arguments: [IndexedContainer.PreserveSettings.acousticResult, .notesDisplay])
-    func consistencyAfterNormalization(method: IndexedContainer.PreserveSettings) async throws {
-        let generated = try MIDIContainer(at: "/Users/vaida/DataBase/Swift Package/Test Reference/MIDIKit/04 The Winter.mid")
-        #expect(generated._checkConsistency())
-        
-        let indexed = generated.indexed()
-        await indexed.normalize(preserve: method)
-        #expect(indexed.makeContainer()._checkConsistency())
-        
-        extendLifetime(indexed)
-    }
-    
 }

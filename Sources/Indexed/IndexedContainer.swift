@@ -15,6 +15,8 @@ import Optimization
 /// In the implementation, methods that involve insertion or removal of notes returns a new container, as this structure has two properties containing the notes, for efficient lookup.
 ///
 /// An `IndexedContainer` is never sendable, crossing domain could corrupt memory. Sendable `MIDIContainer` instead. However, some operations could be heavy, hence it is recommended to put the entire operation in async.
+///
+/// - Note: A `IndexedContainer` always use 120BPM and tempo is converted automatically during initialization.
 public final class IndexedContainer {
     
     /// The notes grouped by the key.
@@ -93,10 +95,15 @@ extension IndexedContainer {
     ///   - runningLength: The length for calculating the running average. The default value is `4` beats, that is one measure in a 4/4 sheet.
     ///
     /// Any methods that returns a new ``IndexedContainer`` will use the parameters set in the initializer.
+    ///
+    /// - Note: A `IndexedContainer` always use 120BPM and tempo is converted automatically.
     func _init(
         container: MIDIContainer,
         minimumConsecutiveNotesGap: Double = 1/128
     ) {
+        var copy = container
+        copy.normalizeToConstantTempo(120)
+        
         var notes: [MIDINote] = []
         let sustains: MIDISustainEvents
         
@@ -117,7 +124,7 @@ extension IndexedContainer {
                     index &+= 1
                 }
             }
-            sustains = MIDISustainEvents(container.tracks.flatMap(\.sustains))
+            sustains = MIDISustainEvents(container.tracks.flatMap(\.sustains).unique())
         }
         
         notes.sort { $0.onset < $1.onset }

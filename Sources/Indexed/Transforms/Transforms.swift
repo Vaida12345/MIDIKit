@@ -20,6 +20,7 @@ extension IndexedContainer {
     ///   - velocity is incorrect.
     ///
     /// `self` will not be mutated.
+    @available(*, deprecated, message: "Use `timeWarp` instead.")
     public func applyVelocity(to other: IndexedContainer) {
         guard !self.isEmpty && !other.isEmpty else { return }
         
