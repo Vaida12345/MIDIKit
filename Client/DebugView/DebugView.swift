@@ -68,9 +68,9 @@ struct DebugView: View {
     }
     
     
-    init(container: IndexedContainer) async {
+    init(container: IndexedContainer) {
         self.container = container
-        self.downbeats = await container.downbeats()
+        self.downbeats = container.downbeats()
     }
     
 }
