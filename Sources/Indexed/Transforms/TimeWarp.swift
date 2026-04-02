@@ -310,7 +310,7 @@ extension IndexedContainer {
         public static let identity = TimeWarpMapping(xs: [0], ys: [0], fallbackSlope: 1)
 
         /// - Complexity: O(1).
-        fileprivate init(xs: [Double], ys: [Double], fallbackSlope: Double = 1) {
+        init(xs: [Double], ys: [Double], fallbackSlope: Double = 1) {
             self.xs = xs
             self.ys = ys
             self.fallbackSlope = fallbackSlope
@@ -982,8 +982,7 @@ private extension IndexedContainer {
 
     /// - Complexity: O(n log n), where n is the number of values.
     static func mad(_ values: [Double]) -> Double? {
-        guard !values.isEmpty, let median = values.median else { return nil }
-        return values.map { abs($0 - median) }.median
+        Self.medianAbsoluteDeviation(values)
     }
 
     /// - Complexity: O(1).
@@ -1016,3 +1015,16 @@ private extension IndexedContainer {
         return 0.08
     }
 }
+
+extension IndexedContainer {
+
+    /// Median absolute deviation for robust 1D scale estimation.
+    ///
+    /// - Complexity: O(n log n).
+    internal static func medianAbsoluteDeviation(_ values: [Double]) -> Double? {
+        guard !values.isEmpty, let median = values.median else { return nil }
+        return values.map { abs($0 - median) }.median
+    }
+
+}
+

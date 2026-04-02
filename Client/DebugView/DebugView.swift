@@ -35,17 +35,17 @@ struct DebugView: View {
                     }
                 }
                 
-                Canvas { context, size in
-                    var x = 0.0
-                    while x < size.width {
-                        context.fill(
-                            Path(CGRect(x: x, y: 0, width: 1, height: size.height)),
-                            with: .color(.secondary.opacity(0.5))
-                        )
-                        
-                        x += pixelsPerBeat * 4
-                    }
-                }
+//                Canvas { context, size in
+//                    var x = 0.0
+//                    while x < size.width {
+//                        context.fill(
+//                            Path(CGRect(x: x, y: 0, width: 1, height: size.height)),
+//                            with: .color(.secondary.opacity(0.5))
+//                        )
+//                        
+//                        x += pixelsPerBeat * 4
+//                    }
+//                }
                 
                 Rectangle()
                     .fill(.secondary.opacity(0.5))

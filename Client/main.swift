@@ -12,29 +12,25 @@ import MIDIKit
 import DetailedDescription
 import SwiftUI
 
-let score = FinderItem.desktopDirectory/"score.mid"
-let transcription = FinderItem.desktopDirectory/"transcription.mid"
+//let container = try MIDIContainer(at: "'/Users/vaida/Music/Piano Transcription/Nuvole Bianche.mid'")
+//let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Ashes on The Fire - Shingeki no Kyojin.mid")
+let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Owari no Sekai kara.mid")
+//let container = try MIDIContainer(at: "'/Users/vaida/Music/Piano Transcription/14 Ballade No. 1 in G minor, Op. 23.mid'")
+//let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Variations on the Kanon.mid")
 
-let score_container = try await score.load(.MIDIContainer).indexed()
-let transcription_container = try await transcription.load(.MIDIContainer).indexed()
+var indexed = container.indexed()
 
-let warping = score_container.timeWarp(other: transcription_container)
-
-var copy = score_container.makeContainer()
-
-copy.tracks[0].notes.mutatingForEach { i, note in
-    let _onset = note.onset
-    let _duration = note.duration
-    note.onset = warping.map(_onset)
-    note.duration = _duration
+let regions = indexed.regions()
+for (i, region) in regions.enumerated() {
+    for note in region.notes {
+        note.channel = UInt8(i % 16)
+    }
 }
-copy.tracks[0].sustains.mutatingForEach { i, sustain in
-    let _duration = sustain.duration
-    sustain.onset = warping.map(sustain.onset)
-    sustain.duration = _duration
-}
-try copy.write(to: .desktopDirectory/"copy.mid")
+//let _ = await indexed.splitStaves()
+indexed.normalize(preserve: .notesDisplay)
+indexed.alignFirstNoteToZero()
 
-await DebugView(container: copy.indexed()).render(to: .desktopDirectory/"copy.pdf")
-await DebugView(container: transcription_container).render(to: .desktopDirectory/"transcription.pdf")
+print("base length", indexed.baselineBarLength())
+
+await DebugView(container: indexed).render(to: .desktopDirectory/"debug.pdf", format: .pdf, scale: 1)
 #endif
