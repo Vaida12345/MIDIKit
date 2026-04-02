@@ -9,11 +9,24 @@ import Foundation
 import Accelerate
 
 extension IndexedContainer {
-
-    /// Creates a time warp between `self` and `other` using default parameters.
-    /// - Complexity: O(nA log nA + nB log nB + NA * NB), where n* are note counts and N* are chord-event counts.
-    public func timeWarp(other: IndexedContainer) -> TimeWarpMapping {
-        self.timeWarp(other: other, parameters: .init())
+    
+    /// Projects `self` into another time space using `TimeWarpMapping`.
+    public func projection(_ mapping: TimeWarpMapping) {
+        var i = self.contents.startIndex
+        while i < self.contents.endIndex {
+            let duration = self.contents[i].duration
+            self.contents[i].onset = mapping.map(self.contents[i].onset)
+            self.contents[i].duration = duration
+            i &+= 1
+        }
+        
+        i = self.sustains.startIndex
+        while i < self.sustains.endIndex {
+            let duration = self.sustains[i].duration
+            self.sustains[i].onset = mapping.map(self.sustains[i].onset)
+            self.sustains[i].duration = duration
+            i &+= 1
+        }
     }
 
     /// Creates a time warp between `self` and `other`.
@@ -25,7 +38,38 @@ extension IndexedContainer {
     ///   - other: Target container to project into.
     ///   - parameters: Alignment and fitting controls.
     /// - Returns: A mapping function from this container's beat timeline to `other`'s beat timeline.
-    /// - Complexity: O(nA log nA + nB log nB + NA * NB), where n* are note counts and N* are chord-event counts.
+    /// - Complexity: O(nA log nA + nB log nB + NA * NB), where *n* are note counts and *N* are chord-event counts.
+    ///
+    /// 1. **Extract note-on events** from MIDI A and B.
+    /// 2. **Sort and clean duplicates**.
+    /// 3. Compute `ε_A`, `ε_B`.
+    /// 4. Run `makeChords()` on each file.
+    /// 5. Build chord-event sequences with:
+    ///     - median chord time
+    ///     - pitch set
+    /// 6. Implement **pass-1 semiglobal affine-gap alignment** using pitch-only score.
+    /// 7. Extract high-confidence anchors and build rough `f0`.
+    /// 8. Implement **pass-2 semiglobal affine-gap alignment** using pitch + timing score.
+    /// 9. Extract final anchors.
+    /// 10. Fit robust **monotone piecewise-linear warp** `f`.
+    /// 11. Warp all original onset times in A via `f`.
+    /// 12. Produce diagnostics:
+    ///     - anchor plot
+    ///     - residual plot
+    ///     - coverage / Dice stats
+    ///
+    /// ## Core
+    ///
+    /// We use **two-pass chord-sequence alignment in the Needleman–Wunsch / pair-HMM family**.
+    ///
+    /// | Approach | Handles missing / extra notes well? | Handles gradual tempo drift? | Handles abrupt tempo changes / pauses? | Good fit for piano MIDI onset+pitch? | Main issue here |
+    /// |---|---:|---:|---:|---:|---|
+    /// | **DTW** | Medium | Excellent | Good if unconstrained | Medium | Standard DTW forces everything to align; gaps are implicit and often pathological for symbolic note sequences |
+    /// | **Constrained DTW** | Medium | Good | Medium | Medium | Band/slope constraints reduce false paths, but can fail under abrupt tempo changes unless band is wide |
+    /// | **soft-DTW** | Medium | Good | Good | Low-Medium | Mainly useful as a differentiable loss in learning; not usually more accurate than hard alignment offline |
+    /// | **Edit distance / Needleman–Wunsch** | **Excellent** | Indirectly yes | **Yes**, via later warp fit | **Excellent** | Timing is not modeled strongly unless you add a second pass or timing term |
+    /// | **HMM / Viterbi (offline)** | **Excellent** | **Excellent** | **Excellent** | **Excellent** | Most flexible, but significantly more tuning / state design / implementation complexity |
+    /// | **MIR frame/piano-roll DTW variants** | Medium | Good | Good | Medium | Often assume duration-based features or time discretization; less natural when you only trust note-on events |
     public func timeWarp(other: IndexedContainer, parameters: TimeWarpParameters = .init()) -> TimeWarpMapping {
         guard !self.isEmpty, !other.isEmpty else { return .identity }
 
