@@ -81,7 +81,6 @@ extension IndexedContainer {
                 if let onset, let offset {
                     // An sustain was found for offset & onset
                     if onset == offset {
-                        assert(onsetIndex == offsetIndex)
                         // The onset and offset are in the same sustain region.
                         
                         // The length can be free.

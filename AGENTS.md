@@ -1,0 +1,2 @@
+- Use Xcode tools to read and edit files
+- use Accelerate when possible.
