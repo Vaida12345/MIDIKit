@@ -52,7 +52,7 @@ extension MIDINotes {
     /// Draw a histogram of the notes distances from direct previous notes.
     @MainActor public func drawDistanceDistribution(
         minimumNoteDistance: Double = Double(sign: .plus, exponent: -4, significand: 1)
-    ) {
+    ) throws {
         let distances = [Double](unsafeUninitializedCapacity: self.contents.count - 1) { buffer, initializedCount in
             initializedCount = 0
             
@@ -68,7 +68,7 @@ extension MIDINotes {
             }
         }
         
-        DistributionView(values: distances)
+        try DistributionView(values: distances)
             .frame(width: 800, height: 400)
             .render(to: FinderItem.desktopDirectory.appending(path: "frequency.pdf"))
     }

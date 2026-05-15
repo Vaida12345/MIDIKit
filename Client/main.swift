@@ -32,5 +32,5 @@ indexed.alignFirstNoteToZero()
 
 print("base length", indexed.baselineBarLength())
 
-await DebugView(container: indexed).render(to: .desktopDirectory/"debug.pdf", format: .pdf, scale: 1)
+try DebugView(container: indexed).render(to: .desktopDirectory/"debug.pdf", format: .pdf, scale: 1)
 #endif

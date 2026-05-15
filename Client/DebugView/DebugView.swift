@@ -17,7 +17,7 @@ struct DebugView: View {
     
     let pixelsPerBeat: CGFloat = 100
     let pixelsPerNote: CGFloat = 20
-    let downbeats: [Double]
+    let downbeats: [IndexedContainer.LocalBarRegion]
     
     var body: some View {
         let width = pixelsPerBeat * container.contents.max(of: \.offset)!
@@ -29,9 +29,11 @@ struct DebugView: View {
                 Canvas { context, size in
                     for downbeat in downbeats {
                         context.fill(
-                            Path(CGRect(x: pixelsPerBeat * downbeat , y: 0, width: 1, height: size.height)),
+                            Path(CGRect(x: pixelsPerBeat * downbeat.onset, y: 0, width: 1, height: size.height)),
                             with: .color(.blue)
                         )
+                        
+                        context.draw(Text(downbeat.barLength, format: .number.precision(2)), in: CGRect(x: pixelsPerBeat * downbeat.onset, y: 0, width: 100, height: 20))
                     }
                 }
                 
@@ -70,7 +72,7 @@ struct DebugView: View {
     
     init(container: IndexedContainer) {
         self.container = container
-        self.downbeats = container.downbeats()
+        self.downbeats = container.localBarRegions()
     }
     
 }
