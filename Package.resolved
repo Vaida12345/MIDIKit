@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Vaida12345/ConcurrentStream.git",
       "state" : {
-        "revision" : "5b38deff93bc99abea5abfcd5290772d935cec78",
-        "version" : "1.0.3"
+        "revision" : "873ac568097997dc309df9b0553d8e056a89bd01",
+        "version" : "1.1.0"
       }
     },
     {
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Vaida12345/DetailedDescription.git",
       "state" : {
-        "revision" : "d4ae923e6cc5dadc7219d54cbf31912889f7bf33",
-        "version" : "2.1.1"
+        "revision" : "199b2c999f0a85108dd2f61fb2b00fe2e13ccfc8",
+        "version" : "2.2.0"
       }
     },
     {
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Vaida12345/Essentials.git",
       "state" : {
-        "revision" : "d23d500fd0222289b16469e8b0d6735058bff33a",
-        "version" : "1.1.12"
+        "revision" : "290c44728aa3d4a1bc1f55e9499d931c5e96444a",
+        "version" : "1.2.0"
       }
     },
     {
@@ -33,8 +33,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Vaida12345/FinderItem.git",
       "state" : {
-        "revision" : "7b2a205302c6b3738daddd64139311d48377ab78",
-        "version" : "2.0.1"
+        "revision" : "6b1b16f440d10bf6107171b7045c33da5c3f5fa2",
+        "version" : "2.2.1"
       }
     },
     {
@@ -51,8 +51,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Vaida12345/Optimization.git",
       "state" : {
-        "revision" : "0d6b6957986cd8c4b8f7afb3816cd09a8da3798d",
-        "version" : "1.0.12"
+        "revision" : "b44f55507dd56cb9fb621b90229d2549ea04d4f9",
+        "version" : "1.1.0"
       }
     }
   ],

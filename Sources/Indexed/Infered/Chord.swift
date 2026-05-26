@@ -184,16 +184,19 @@ public struct Chord: RandomAccessCollection, Hashable {
         }
         
         // merges
+        var removedIndices: Set<InlineDeque<Chord>.Index> = []
         while let cluster = merged.removeFirst() {
+            guard !removedIndices.contains(cluster) else { continue }
             let lhs = queue.index(before: cluster)
             let rhs = queue.index(after: cluster)
-            
+
             let lhsCanMerge = lhs.map { clustersCanMerge(queue[$0], queue[cluster]) } ?? false
             let rhsCanMerge = rhs.map { clustersCanMerge(queue[cluster], queue[$0]) } ?? false
-            
+
             if rhsCanMerge && (lhsCanMerge => minDistance(queue[lhs!], queue[cluster]) > minDistance(queue[cluster], queue[rhs!])) {
                 queue.update(at: cluster) { $0.prepend(contentsOf: queue[rhs!]) }
                 merged.append(cluster)
+                removedIndices.insert(rhs!)
                 queue.remove(at: rhs!)
             }
             // Can ever only merge right, if left merge is better, simply don't, and wait for next right merge
