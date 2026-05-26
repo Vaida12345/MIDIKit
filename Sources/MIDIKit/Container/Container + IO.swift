@@ -16,7 +16,7 @@ extension MIDIContainer {
     public func writeData(to destination: FinderItem) throws {
         try destination.removeIfExists()
         try withErrorCaptured {
-            try MusicSequenceFileCreate(self.makeSequence(), destination.url as CFURL, .midiType, .eraseFile, .max)
+            try MusicSequenceFileCreate(self.makeSequence(), destination.url as CFURL, .midiType, .eraseFile, 960)
         }
     }
     
@@ -29,7 +29,7 @@ extension MIDIContainer {
         
         try destination.removeIfExists()
         try withErrorCaptured {
-            try MusicSequenceFileCreate(self.makeSequence(), destination.url as CFURL, .midiType, .eraseFile, .max)
+            try MusicSequenceFileCreate(self.makeSequence(), destination.url as CFURL, .midiType, .eraseFile, 960)
         }
     }
     
@@ -42,7 +42,7 @@ extension MIDIContainer {
         
         var data: Unmanaged<CFData>?
         try withErrorCaptured {
-            try MusicSequenceFileCreateData(self.makeSequence(), .midiType, [], .max, &data)
+            try MusicSequenceFileCreateData(self.makeSequence(), .midiType, [], 960, &data)
         }
         return data!.takeRetainedValue() as Data
     }

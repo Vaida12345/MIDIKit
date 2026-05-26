@@ -36,7 +36,7 @@ extension Range<Double>: Interval, @retroactive Comparable {
     
     @inlinable
     public var offset: Double {
-        self.lowerBound
+        self.upperBound
     }
     
 }

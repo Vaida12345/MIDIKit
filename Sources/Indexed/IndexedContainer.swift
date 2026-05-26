@@ -107,14 +107,14 @@ extension IndexedContainer {
         var notes: [MIDINote] = []
         let sustains: MIDISustainEvents
         
-        if container.tracks.count == 1,
-           let track = container.tracks.first {
+        if copy.tracks.count == 1,
+           let track = copy.tracks.first {
             notes = track.notes.contents
             
             sustains = track.sustains
         } else {
-            notes.reserveCapacity(container.tracks.map(\.notes.count).sum)
-            for (trackIndex, track) in container.tracks.enumerated() {
+            notes.reserveCapacity(copy.tracks.map(\.notes.count).sum)
+            for (trackIndex, track) in copy.tracks.enumerated() {
                 var index = 0
                 while index < track.notes.count {
                     var note = track.notes[index]
@@ -124,7 +124,7 @@ extension IndexedContainer {
                     index &+= 1
                 }
             }
-            sustains = MIDISustainEvents(container.tracks.flatMap(\.sustains).unique())
+            sustains = MIDISustainEvents(copy.tracks.flatMap(\.sustains).unique())
         }
         
         notes.sort { $0.onset < $1.onset }

@@ -12,25 +12,16 @@ import MIDIKit
 import DetailedDescription
 import SwiftUI
 
-//let container = try MIDIContainer(at: "'/Users/vaida/Music/Piano Transcription/Nuvole Bianche.mid'")
-//let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Ashes on The Fire - Shingeki no Kyojin.mid")
-let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Owari no Sekai kara.mid")
-//let container = try MIDIContainer(at: "'/Users/vaida/Music/Piano Transcription/14 Ballade No. 1 in G minor, Op. 23.mid'")
-//let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Variations on the Kanon.mid")
+let source: FinderItem = "/Volumes/Vaida's T9/Library/Machine Learning/Dataset/PDMX/mid_two_tracks"
+let destination: FinderItem = "/Users/vaida/Desktop/midi2hands/src/midi2hands/data/train"
 
-var indexed = container.indexed()
-
-let regions = indexed.regions()
-for (i, region) in regions.enumerated() {
-    for note in region.notes {
-        note.channel = UInt8(i % 16)
-    }
+var counter = 0
+for child in try source.children(range: .enumeration.noOrder) {
+    guard child.extension == "mid" else { continue }
+    
+    let dest = destination.appending(path: child.relativePath(to: source)!.replacingOccurrences(of: "/", with: ":"))
+    try child.copy(to: dest)
+    counter += 1
 }
-//let _ = await indexed.splitStaves()
-indexed.normalize(preserve: .notesDisplay)
-indexed.alignFirstNoteToZero()
-
-print("base length", indexed.baselineBarLength())
-
-try DebugView(container: indexed).render(to: .desktopDirectory/"debug.pdf", format: .pdf, scale: 1)
+print(counter)
 #endif

@@ -152,9 +152,12 @@ extension MIDIContainer {
         var tempoTrack: MusicTrack?
         MusicSequenceGetTempoTrack(sequence, &tempoTrack)
         var additionInfo = AdditionalInfo(tempos: [])
-        let midiTempoTrack = try processTrack(track: tempoTrack!, additionalInfo: &additionInfo)
+        guard let tempoTrack else { throw OSStatusError(code: -1) }
+        guard let midiTempoTrack = try processTrack(track: tempoTrack, additionalInfo: &additionInfo) else {
+            throw OSStatusError(code: -1)
+        }
         
-        self.init(tracks: midiTracks, tempo: .init(events: midiTempoTrack!.metaEvents, tempos: additionInfo.tempos))
+        self.init(tracks: midiTracks, tempo: .init(events: midiTempoTrack.metaEvents, tempos: additionInfo.tempos))
     }
     
 }

@@ -142,7 +142,7 @@ extension DisjointIntervals {
         let closestRight = left < self.count ? self[left] : nil
         
         if let leftInterval = closestLeft, let rightInterval = closestRight {
-            return abs(leftInterval.offset - timeStamp) <= abs(rightInterval.onset - timeStamp) ? right : left
+            return abs(leftInterval.onset - timeStamp) <= abs(rightInterval.onset - timeStamp) ? right : left
         } else if closestLeft != nil {
             return right
         } else {

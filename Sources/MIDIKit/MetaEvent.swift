@@ -97,7 +97,7 @@ extension MIDIMetaEvent: CustomStringConvertible {
         case .trackName: "track name"
         case .none: "(unknown)"
         default:
-            fatalError()
+            "(unknown type \(self.type))"
         }
         
         let content: Any? = switch AVMIDIMetaEvent.EventType(rawValue: Int(self.type)) {

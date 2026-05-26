@@ -7,6 +7,7 @@
 
 import Foundation
 import Accelerate
+import Essentials
 
 
 extension IndexedContainer {
@@ -577,7 +578,3 @@ public extension Collection where Index == Int, Element: BinaryFloatingPoint {
 
 }
 
-
-private func clamp(_ value: Double, min: Double, max: Double) -> Double {
-    Swift.min(Swift.max(value, min), max)
-}

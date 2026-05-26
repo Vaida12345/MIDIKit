@@ -289,10 +289,7 @@ public struct Chord: RandomAccessCollection, Hashable {
         ///
         /// This effectively is the min duration of a note.
         let duration: Double
-        
-//        /// Width of a single hand, defaults to 15, which is octave plus two white keys
-//        let handWidth: UInt8 = 13 + 3
-        
+
         public init(duration: Double = 0.1) {
             self.duration = duration
         }

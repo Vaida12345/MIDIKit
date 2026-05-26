@@ -207,8 +207,8 @@ extension IndexedContainer {
                 // MARK: - proximity based
                 
                 var nextProximateOnset: Double? = nil
-                for i in stride(from: note.note - 5, through: note.note + 5, by: 1) {
-                    guard let note = self.notes[i]?.first(after: note.onset + minimumLength) else { continue }
+                for i in stride(from: Swift.max(0, Int(note.note) - 5), through: Int(note.note) + 5, by: 1) {
+                    guard let note = self.notes[UInt8(i)]?.first(after: note.onset + minimumLength) else { continue }
                     
                     if nextProximateOnset == nil || nextProximateOnset! > note.onset {
                         nextProximateOnset = note.onset

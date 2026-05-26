@@ -43,7 +43,6 @@ public struct KeyFeatures: ArrayRepresentable {
             var similarity = self[index].similarity(to: self[index + 1])
             
             var isConsecutive: Bool {
-                print(similarity)
                 return similarity.count(where: { $0 == 0 }) <= 1
             }
             
@@ -53,7 +52,6 @@ public struct KeyFeatures: ArrayRepresentable {
                 similarity = self[index].similarity(to: self[index + 1])
             }
             
-            print("^pivot^")
             pivots.append(Pivot(onset: beat, duration: 0, similarity: similarity))
             index &+= 1
         }

@@ -51,7 +51,7 @@ extension MIDINotes {
         
         /// - Complexity: O(*n*).
         func loss(distances: [Double], reference: Double) -> Double {
-            var i = 1
+            var i = 0
             var loss: Double = 0
             while i < distances.count {
                 let remainder = distances[i].truncatingRemainder(dividingBy: reference)

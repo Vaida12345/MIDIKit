@@ -38,7 +38,7 @@ public struct MIDISustainEvent: Sendable, Equatable, Interval, Hashable {
 extension MIDISustainEvent: CustomStringConvertible {
     
     public var description: String {
-        "Sustain(range: \(onset.formatted(.number.precision(.fractionLength(2)))) - \(offset.formatted(.number.precision(.fractionLength(2)))))"
+        "Sustain(range: \(onset.formatted(.number.precision(.fractionLength(2)))) - \(offset.formatted(.number.precision(.fractionLength(2))))"
     }
     
 }

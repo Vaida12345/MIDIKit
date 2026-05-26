@@ -180,7 +180,7 @@ extension OverlappingIntervals {
             if interval.onset > range.upperBound {
                 break
             }
-            if interval.offset >= range.upperBound {
+            if interval.offset >= range.lowerBound {
                 result.append(interval)
             }
         }
