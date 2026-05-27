@@ -29,8 +29,9 @@ extension MIDIContainer {
         }
         
         tempo.events.forEach { _, event in
-            event.withUnsafePointer { pointer in
-                _ = MusicTrackNewMetaEvent(tempoTrack, event.timestamp, pointer)
+            event.withAudioToolbox { toolboxEvent in
+                var toolboxEvent = toolboxEvent
+                _ = MusicTrackNewMetaEvent(tempoTrack, event.timestamp, &toolboxEvent)
             }
         }
         tempo.contents.forEach { _, tempo in
@@ -99,12 +100,12 @@ extension MIDIContainer {
                 
                 switch eventType {
                 case kMusicEventType_MIDINoteMessage:
-                    let event = dataPointer.bindMemory(to: MIDINoteMessage.self, capacity: 1).pointee
+                    let event = dataPointer.load(as: MIDINoteMessage.self)
                     guard event.duration > 0 else { continue }
                     midiTrack.notes.append(MIDINote(onset: timeStamp, message: event))
-                    
+
                 case kMusicEventType_MIDIChannelMessage:
-                    let event = dataPointer.bindMemory(to: MIDIChannelMessage.self, capacity: 1).pointee
+                    let event = dataPointer.load(as: MIDIChannelMessage.self)
                     guard event.status == 0xB0 && event.data1 == 64 else { break } // ensure is sustain
                     if event.data2 == 127 {
                         sustainOpen = true
@@ -112,19 +113,19 @@ extension MIDIContainer {
                     } else if sustainOpen {
                         sustains.append(MIDITrack.SustainEvent(onset: sustainStart, offset: timeStamp))
                     }
-                    
+
                 case kMusicEventType_Meta:
-                    let event = dataPointer.bindMemory(to: AudioToolbox.MIDIMetaEvent.self, capacity: 1).pointee
+                    let event = dataPointer.load(as: AudioToolbox.MIDIMetaEvent.self)
                     let data = Data(bytes: dataPointer + 8, count: Int(event.dataLength))
-                    
+
                     midiTrack.metaEvents.append(.init(timestamp: timeStamp, type: event.metaEventType, data: data))
-                    
+
                 case kMusicEventType_ExtendedTempo:
                     let tempo = dataPointer.load(as: Double.self)
                     additionalInfo.tempos.append(MIDITempoTrack.Tempo(timestamp: timeStamp, tempo: tempo))
-                    
+
                 case kMusicEventType_MIDIRawData:
-                    let event = dataPointer.bindMemory(to: AudioToolbox.MIDIRawData.self, capacity: 1).pointee
+                    let event = dataPointer.load(as: AudioToolbox.MIDIRawData.self)
                     let data = Data(bytes: dataPointer + 4, count: Int(event.length))
                     midiTrack.rawData.append(MIDIRawData(data: data))
                     

@@ -59,7 +59,7 @@ public struct MIDIMetaEvent: Sendable, Equatable {
     }
     
     
-    func withUnsafePointer<T>(body: (UnsafePointer<AudioToolbox.MIDIMetaEvent>) throws -> T) rethrows -> T {
+    func withAudioToolbox<T>(body: (AudioToolbox.MIDIMetaEvent) throws -> T) rethrows -> T {
         let data = Swift.withUnsafePointer(to: type) { pointer in
             Data(bytes: pointer, count: 1)
         } + Data(repeating: 0, count: 3) + Swift.withUnsafePointer(to: UInt32(data.count)) { pointer in
@@ -67,7 +67,7 @@ public struct MIDIMetaEvent: Sendable, Equatable {
         } + data
         
         return try data.withUnsafeBytes { pointer in
-            try body(pointer.baseAddress!.assumingMemoryBound(to: AudioToolbox.MIDIMetaEvent.self))
+            try body(pointer.load(as: AudioToolbox.MIDIMetaEvent.self))
         }
     }
     

@@ -13,7 +13,7 @@ import SwiftUI
 /// A MIDI note message.
 ///
 /// `MIDINote`s are comparable using their ``onset``.
-public struct MIDINote: Sendable, Hashable, Interval, Comparable {
+public struct MIDINote: Sendable, Hashable, Interval, Comparable, BitwiseCopyable {
     
     /// The onset, in beats.
     public var onset: MusicTimeStamp

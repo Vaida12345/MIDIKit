@@ -34,6 +34,7 @@ extension MIDINotes {
     public func deriveReferenceNoteLength(
         minimumNoteDistance: Double = Double(sign: .plus, exponent: -4, significand: 1)
     ) -> Double {
+        guard self.contents.count > 1 else { return 0 }
         let distances = [Double](unsafeUninitializedCapacity: self.contents.count - 1) { buffer, initializedCount in
             initializedCount = 0
             
