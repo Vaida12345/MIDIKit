@@ -29,9 +29,8 @@ extension MIDIContainer {
         }
         
         tempo.events.forEach { _, event in
-            event.withAudioToolbox { toolboxEvent in
-                var toolboxEvent = toolboxEvent
-                _ = MusicTrackNewMetaEvent(tempoTrack, event.timestamp, &toolboxEvent)
+            event.withUnsafePointer { pointer in
+                _ = MusicTrackNewMetaEvent(tempoTrack, event.timestamp, pointer)
             }
         }
         tempo.contents.forEach { _, tempo in

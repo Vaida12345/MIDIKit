@@ -20,13 +20,15 @@ public struct MIDIRawData: Sendable, Equatable {
         self.data = data
     }
     
-    public func withAudioToolbox<T>(body: (AudioToolbox.MIDIRawData) throws -> T) rethrows -> T {
+    func withUnsafePointer<T>(body: (UnsafePointer<AudioToolbox.MIDIRawData>) throws -> T) rethrows -> T {
         let data = Swift.withUnsafePointer(to: UInt32(data.count)) { pointer in
             Data(bytes: pointer, count: 4)
         } + data
-        
+
         return try data.withUnsafeBytes { pointer in
-            try body(pointer.load(as: AudioToolbox.MIDIRawData.self))
+            try pointer.withMemoryRebound(to: AudioToolbox.MIDIRawData.self) { buffer in
+                try body(buffer.baseAddress!)
+            }
         }
     }
     

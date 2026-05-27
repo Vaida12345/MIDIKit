@@ -17,9 +17,8 @@ extension MIDITrack {
         MusicSequenceNewTrack(sequence, &musicTrack)
         
         metaEvents.forEach { _, metaEvent in
-            metaEvent.withAudioToolbox { toolboxEvent in
-                var toolboxEvent = toolboxEvent
-                _ = MusicTrackNewMetaEvent(musicTrack, metaEvent.timestamp, &toolboxEvent)
+            metaEvent.withUnsafePointer { pointer in
+                _ = MusicTrackNewMetaEvent(musicTrack, metaEvent.timestamp, pointer)
             }
         }
         

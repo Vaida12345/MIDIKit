@@ -22,7 +22,7 @@ struct TransformTests {
             MIDINote(onset: 0, offset: 3, note: 60, velocity: 10),
         ])
         let indexed = lhs.indexed()
-        await indexed.mergeNotesInSameInterval(in: rhs.indexed(), threshold: 70, difference: 0)
+        indexed.mergeNotesInSameInterval(in: rhs.indexed(), threshold: 70, difference: 0)
         let transformed = indexed.makeContainer()
         #expect(transformed == rhs)
     }

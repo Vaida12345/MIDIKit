@@ -16,7 +16,7 @@ struct ApplyGapTests {
         let container = try MIDIContainer(at: "/Users/vaida/DataBase/Swift Package/Test Reference/MIDIKit/Ashes on The Fire.mid")
         try #require(container._checkConsistency())
         let indexed = container.indexed()
-        await indexed.applyGap()
+        indexed.applyGap()
         #expect(indexed.makeContainer()._checkConsistency())
     }
     

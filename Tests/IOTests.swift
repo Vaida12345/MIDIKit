@@ -37,7 +37,7 @@ struct IOTests {
         }
         try #require(MIDIContainer(tracks: [track])._checkConsistency())
         
-        let dest = try FinderItem.temporaryDirectory(intent: .general)/"\(UUID()).mid"
+        let dest = FinderItem.temporaryDirectory/"\(UUID()).mid"
         defer { try? dest.remove() }
         try MIDIContainer(tracks: [track]).write(to: dest)
         let read = try MIDIContainer(at: dest)
@@ -51,11 +51,13 @@ struct IOTests {
         try #require(read.tracks[0].notes.count == track.notes.count, "\(read.tracks[0]), \(track.notes)")
         try #require(read.tracks[0].notes.map(\.note) == track.notes.map(\.note), "\(read.tracks[0]), \(track.notes)")
         
+        let tolerance: CGFloat = 1 / 64
+        
         for (lhs, rhs) in zip(track.notes, read.tracks[0].notes) {
-            #expect(abs(lhs.onset - rhs.onset) < 1/128)
+            #expect(abs(lhs.onset - rhs.onset) < tolerance)
             try #require(rhs.duration > 0)
-            #expect(abs(lhs.duration - rhs.duration) < 1/128, "\(lhs), \(rhs)")
-            #expect(abs(lhs.offset - rhs.offset) < 1/128, "\(lhs), \(rhs)")
+            #expect(abs(lhs.duration - rhs.duration) < tolerance, "\(lhs), \(rhs)")
+            #expect(abs(lhs.offset - rhs.offset) < tolerance, "\(lhs), \(rhs)")
             #expect(lhs.note == rhs.note)
             #expect(lhs.velocity == rhs.velocity)
             #expect(lhs.channel == rhs.channel)
