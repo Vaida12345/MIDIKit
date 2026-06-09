@@ -11,12 +11,14 @@ import FinderItem
 
 extension MIDIContainer {
     
+    public static let writeResolution: Int16 = 4800
+    
     @inlinable
     @available(*, deprecated, renamed: "write(to:)")
     public func writeData(to destination: FinderItem) throws {
         try destination.removeIfExists()
         try withErrorCaptured {
-            try MusicSequenceFileCreate(self.makeSequence(), destination.url as CFURL, .midiType, .eraseFile, 960)
+            try MusicSequenceFileCreate(self.makeSequence(), destination.url as CFURL, .midiType, .eraseFile, MIDIContainer.writeResolution)
         }
     }
     
@@ -29,7 +31,7 @@ extension MIDIContainer {
         
         try destination.removeIfExists()
         try withErrorCaptured {
-            try MusicSequenceFileCreate(self.makeSequence(), destination.url as CFURL, .midiType, .eraseFile, 960)
+            try MusicSequenceFileCreate(self.makeSequence(), destination.url as CFURL, .midiType, .eraseFile, MIDIContainer.writeResolution)
         }
     }
     
@@ -42,7 +44,7 @@ extension MIDIContainer {
         
         var data: Unmanaged<CFData>?
         try withErrorCaptured {
-            try MusicSequenceFileCreateData(self.makeSequence(), .midiType, [], 960, &data)
+            try MusicSequenceFileCreateData(self.makeSequence(), .midiType, [], MIDIContainer.writeResolution, &data)
         }
         return data!.takeRetainedValue() as Data
     }
