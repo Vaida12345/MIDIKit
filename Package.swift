@@ -32,7 +32,14 @@ let package = Package(
             dependencies: ["DetailedDescription", "FinderItem", "ConcurrentStream", "NativeImage", "Optimization", "Essentials"],
             path: "Sources"
         ),
-        .executableTarget(name: "Client", dependencies: ["MIDIKit"], path: "Client"),
+        .executableTarget(
+            name: "Client",
+            dependencies: ["MIDIKit"],
+            path: "Client",
+            swiftSettings: [
+                .unsafeFlags(["-Onone", "-Xfrontend", "-disable-llvm-optzns"])
+            ]
+        ),
         .testTarget(name: "Tests", dependencies: ["MIDIKit"], path: "Tests"),
     ],
     

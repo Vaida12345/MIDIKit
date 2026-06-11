@@ -6,6 +6,7 @@
 @testable
 import MIDIKit
 import Testing
+import FinderItem
 
 
 @Suite("IndexedContainer")

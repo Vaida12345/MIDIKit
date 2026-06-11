@@ -166,7 +166,7 @@ public struct Chord: RandomAccessCollection, Hashable {
                 }
                 guard next - clusterIndex > 10 else { continue }
                 
-                for i in clusterIndex ... next {
+                for i in clusterIndex ... Swift.min(next, clusters.count - 1) {
                     clusters[i].features.insert(.glissando)
                 }
                 clusterIndex = next
@@ -202,7 +202,6 @@ public struct Chord: RandomAccessCollection, Hashable {
             // Can ever only merge right, if left merge is better, simply don't, and wait for next right merge
             // otherwise the merged left is still in the `merged` queue, waiting to be merged (again)
         }
-        
         
         return Array(consume queue)
     }
