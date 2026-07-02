@@ -17,7 +17,8 @@ struct DebugView: View {
     
     let pixelsPerBeat: CGFloat = 100
     let pixelsPerNote: CGFloat = 20
-    let downbeats: [IndexedContainer.LocalBarRegion]
+    let downbeats: [Double]
+    let beats: [Double]
     
     var body: some View {
         let width = pixelsPerBeat * container.contents.max(of: \.offset)!
@@ -29,25 +30,18 @@ struct DebugView: View {
                 Canvas { context, size in
                     for downbeat in downbeats {
                         context.fill(
-                            Path(CGRect(x: pixelsPerBeat * downbeat.onset, y: 0, width: 1, height: size.height)),
+                            Path(CGRect(x: pixelsPerBeat * downbeat, y: 0, width: 2, height: size.height)),
                             with: .color(.blue)
                         )
-                        
-                        context.draw(Text(downbeat.barLength, format: .number.precision(2)), in: CGRect(x: pixelsPerBeat * downbeat.onset, y: 0, width: 100, height: 20))
+                    }
+                    
+                    for beat in beats {
+                        context.fill(
+                            Path(CGRect(x: pixelsPerBeat * beat, y: 0, width: 1, height: size.height)),
+                            with: .color(.gray)
+                        )
                     }
                 }
-                
-//                Canvas { context, size in
-//                    var x = 0.0
-//                    while x < size.width {
-//                        context.fill(
-//                            Path(CGRect(x: x, y: 0, width: 1, height: size.height)),
-//                            with: .color(.secondary.opacity(0.5))
-//                        )
-//                        
-//                        x += pixelsPerBeat * 4
-//                    }
-//                }
                 
                 Rectangle()
                     .fill(.secondary.opacity(0.5))
@@ -67,12 +61,6 @@ struct DebugView: View {
                 .padding(.vertical, 5)
             }
         }
-    }
-    
-    
-    init(container: IndexedContainer) {
-        self.container = container
-        self.downbeats = container.localBarRegions()
     }
     
 }

@@ -110,6 +110,7 @@ extension MIDIContainer {
                         sustainOpen = true
                         sustainStart = timeStamp
                     } else if sustainOpen {
+                        sustainOpen = false
                         sustains.append(MIDITrack.SustainEvent(onset: sustainStart, offset: timeStamp))
                     }
 

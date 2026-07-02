@@ -11,17 +11,22 @@ import Foundation
 import MIDIKit
 import DetailedDescription
 import SwiftUI
+import AVFoundation
+import MusicUnderstanding
 
-let source: FinderItem = "/Volumes/Vaida's T9/Library/Machine Learning/Dataset/PDMX/mid_two_tracks"
-let destination: FinderItem = "/Users/vaida/Desktop/midi2hands/src/midi2hands/data/train"
 
-var counter = 0
-for child in try source.children(range: .enumeration.noOrder) {
-    guard child.extension == "mid" else { continue }
-    
-    let dest = destination.appending(path: child.relativePath(to: source)!.replacingOccurrences(of: "/", with: ":"))
-    try child.copy(to: dest)
-    counter += 1
+let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Owari no Sekai kara.mid")
+let asset = AVURLAsset(url: FinderItem(at: "/Users/vaida/Music/Music/Media.localized/Music/Animenz/Animenz Audios Full Version/Owari no Sekai kara.m4a").url, options: [AVURLAssetPreferPreciseDurationAndTimingKey : true])
+
+if #available(macOS 27.0, *) {
+    let session = try await MusicUnderstandingSession(asset: asset)
+    let results = try await session.analyze()
+    print(results.rhythm?.beatsPerMinute)
+    let view = DebugView(
+        container: container.indexed(),
+        downbeats: results.rhythm!.bars.map({ $0.seconds * 2 }),
+        beats: results.rhythm!.beats.map({ $0.seconds * 2 })
+    )
+    try view.render(to: .desktopDirectory/"file.pdf")
 }
-print(counter)
 #endif
