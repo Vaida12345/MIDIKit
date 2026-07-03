@@ -30,7 +30,6 @@ extension IndexedContainer {
         let chords = Chord.makeChords(from: self)
         let margin: Double = 1/4 // the padding after sustain
         let minimumLength: Double = Chord.Spec().duration
-        let runningAverage = self.runningAverage()
         
         chords.forEach { __index, chord in
             
@@ -40,8 +39,22 @@ extension IndexedContainer {
             guard let nextNote = chords[__index + 1].min(of: \.onset) else { return }
             
             var indeterminate: Set<ReferenceNote> = []
+            var reliableDeterminants: Set<ReferenceNote> = []
+            
+            /// Infers a single unresolved chord tone from notes whose offsets were explicitly bounded by normalization.
+            ///
+            /// This avoids using untouched AI-provided durations as evidence, because those durations are the common failure mode this pass is correcting.
+            func inferSingleIndeterminateNote() {
+                guard indeterminate.count == 1 else { return }
+                let determinants = chord.contents.filter { reliableDeterminants.contains($0) && !indeterminate.contains($0) }
+                guard !determinants.isEmpty else { return }
+                guard let average = determinants.mean(of: \.offset) else { return }
+                let removed = indeterminate.removeFirst()
+                removed.offset = Swift.min(removed.offset, Swift.max(average, removed.onset + minimumLength))
+            }
             
             chord.forEach { _, note in
+                var isReliablyBounded = false
                 
                 // ensure the sustain is correct
                 // The naming ignores the keyword `sustainRegion`,.
@@ -86,6 +99,7 @@ extension IndexedContainer {
                         // The length can be free.
                         // context aware length. Check for next note
                         setNoteOffset(clamp(note.offset, max: nextNote))
+                        reliableDeterminants.insert(note)
                         return // no need to use proximity based method
                     } else if onsetNextIndex == offsetIndex && onsetNextIndex != nil {
                         // The onset and offset and in adjacent sustain regions.
@@ -104,7 +118,7 @@ extension IndexedContainer {
                         // The note spans across 2 sustain regions, without a leading sustain
                         setExcessiveSpan()
                     }
-                } else if let onsetIndex {
+                } else if onsetIndex != nil {
                     // An sustain was found for onset, but not offset
                     inconclusiveNoOffset()
                 } else {
@@ -119,7 +133,7 @@ extension IndexedContainer {
                         case .notesDisplay:
                             inconclusiveNoOffset()
                         }
-                    } else if onsetNextIndex == offsetPreviousIndex, let offsetPrevious {
+                    } else if onsetNextIndex == offsetPreviousIndex {
                         // spanned one region.
                         
                         inconclusiveNoOffset()
@@ -135,14 +149,13 @@ extension IndexedContainer {
                     case .acousticResult:
                         break
                     case .notesDisplay:
-                        setNoteOffset(
-                            clamp(nextNote, max: nextNote)
-                        )
+                        setNoteOffset(nextNote)
                     }
                     indeterminate.insert(note)
                 }
                 
                 func setNoteOffset(_ value: Double) {
+                    isReliablyBounded = true
                     note.offset = Swift.max(value, note.onset + minimumLength)
                 }
                 
@@ -165,10 +178,15 @@ extension IndexedContainer {
                     indeterminate.insert(note)
                 }
                 
-                /// note length must span to the found sustain.
+                /// Extends the note far enough to reach the found sustain while capping AI-transcribed tails.
                 func span(_ sustain: MIDISustainEvents.Element) {
                     if sustain.onset < nextNote {
-                        setNoteOffset(clamp(note.offset, min: sustain.onset + minimumLength))
+                        switch preserve {
+                        case .acousticResult:
+                            setNoteOffset(clamp(note.offset, min: sustain.onset + minimumLength, max: sustain.offset))
+                        case .notesDisplay:
+                            setNoteOffset(clamp(note.offset, min: sustain.onset + minimumLength, max: Swift.min(sustain.offset, nextNote)))
+                        }
                     } else {
                         switch preserve {
                         case .acousticResult:
@@ -180,34 +198,35 @@ extension IndexedContainer {
                     }
                 }
                 
-                
-                // MARK: - proximity based
-                
-                var nextProximateOnset: Double? = nil
-                for i in stride(from: Swift.max(0, Int(note.note) - 5), through: Int(note.note) + 5, by: 1) {
-                    guard let note = self.notes[UInt8(i)]?.first(after: note.onset + minimumLength) else { continue }
+                /// Trims an indeterminate note to the next nearby-pitch onset.
+                ///
+                /// Nearby notes are limited to a small pitch window so independent left-hand and right-hand durations do not force each other shorter.
+                func applyProximityTrim() {
+                    var nextProximateOnset: Double? = nil
+                    for i in stride(from: Swift.max(0, Int(note.note) - 5), through: Int(note.note) + 5, by: 1) {
+                        guard let proximateNote = self.notes[UInt8(i)]?.first(after: note.onset + minimumLength) else { continue }
+                        
+                        if nextProximateOnset == nil || nextProximateOnset! > proximateNote.onset {
+                            nextProximateOnset = proximateNote.onset
+                        }
+                    }
                     
-                    if nextProximateOnset == nil || nextProximateOnset! > note.onset {
-                        nextProximateOnset = note.onset
-                    }
+                    guard let nextProximateOnset else { return }
+                    guard note.offset > nextProximateOnset else { return }
+                    note.offset = nextProximateOnset
                 }
                 
-                if let nextProximateOnset {
-                    if note.offset > nextProximateOnset {
-                        note.offset = nextProximateOnset
+                guard indeterminate.contains(note) else {
+                    if isReliablyBounded {
+                        reliableDeterminants.insert(note)
                     }
+                    return
                 }
+                applyProximityTrim()
                 
             } // forEach
             
-            guard indeterminate.count == 1 else { return }
-            let determinants = chord.contents.filter({ !indeterminate.contains($0) })
-            guard !determinants.isEmpty else { return }
-            
-            // the indeterminate one could be inferred using
-            guard let average = determinants.mean(of: \.offset) else { return }
-            let removed = indeterminate.removeFirst()
-            removed.offset = Swift.min(removed.offset, Swift.max(average, removed.onset + minimumLength))
+            inferSingleIndeterminateNote()
         }
         
         // finally, make sure notes are not overlapping.
