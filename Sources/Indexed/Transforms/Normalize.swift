@@ -85,17 +85,14 @@ extension IndexedContainer {
                         
                         // The length can be free.
                         // context aware length. Check for next note
-                        setNoteOffset(
-                            clamp(note.offset, max: nextNote),
-                            channel: 0
-                        )
+                        setNoteOffset(clamp(note.offset, max: nextNote))
                         return // no need to use proximity based method
                     } else if onsetNextIndex == offsetIndex && onsetNextIndex != nil {
                         // The onset and offset and in adjacent sustain regions.
                         span(offset)
                     } else {
                         // The note spans across 3 sustain regions
-                        setExcessiveSpan(channel: 3)
+                        setExcessiveSpan()
                     }
                 } else if let offset {
                     // An sustain was found for offset, but not onset
@@ -105,11 +102,11 @@ extension IndexedContainer {
                         span(offset)
                     } else {
                         // The note spans across 2 sustain regions, without a leading sustain
-                        setExcessiveSpan(channel: 5)
+                        setExcessiveSpan()
                     }
                 } else if let onsetIndex {
                     // An sustain was found for onset, but not offset
-                    inconclusiveNoOffset(channel: 6)
+                    inconclusiveNoOffset()
                 } else {
                     // neither onset nor offset was found
                     
@@ -118,89 +115,69 @@ extension IndexedContainer {
                         switch preserve {
                         case .acousticResult:
                             // They are within the same non-sustained region. keep it as-is.
-                            debugChannel(7)
+                            break
                         case .notesDisplay:
-                            inconclusiveNoOffset(channel: 8)
+                            inconclusiveNoOffset()
                         }
                     } else if onsetNextIndex == offsetPreviousIndex, let offsetPrevious {
                         // spanned one region.
                         
-                        inconclusiveNoOffset(channel: 9)
+                        inconclusiveNoOffset()
                     } else {
                         // spanned more than one region
-                        setExcessiveSpan(channel: 10)
+                        setExcessiveSpan()
                     }
                 }
                 
                 
-                func inconclusiveNoOffset(channel: UInt8) {
+                func inconclusiveNoOffset() {
                     switch preserve {
                     case .acousticResult:
-                        debugChannel(channel)
+                        break
                     case .notesDisplay:
                         setNoteOffset(
-                            clamp(nextNote, max: nextNote),
-                            channel: channel
+                            clamp(nextNote, max: nextNote)
                         )
                     }
                     indeterminate.insert(note)
                 }
                 
-                func setNoteOffset(_ value: Double, channel: UInt8) {
+                func setNoteOffset(_ value: Double) {
                     note.offset = Swift.max(value, note.onset + minimumLength)
-                    debugChannel(channel)
                 }
                 
                 /// note has spanned at least three sustains
-                func setExcessiveSpan(channel: UInt8) {
-                    guard preserve == .acousticResult else {
-                        // The note has spanned at least three sustains, consider this a duration error.
-                        setNoteOffset(
-                            clamp(note.offset, max: nextNote),
-                            channel: channel
-                        )
-                        indeterminate.insert(note)
-                        return
+                func setExcessiveSpan() {
+                    switch preserve {
+                    case .acousticResult:
+                        // leave it
+                        break
+                    case .notesDisplay:
+                        // make it at least next sustain long
+                        if let nextSustain = onsetNextIndex {
+                            span(sustains[nextSustain])
+                        } else {
+                            assertionFailure("Should be a sustain")
+                            setNoteOffset(clamp(note.offset, max: nextNote))
+                        }
                     }
                     
-                    guard let average = runningAverage[at: note.onset] else { return }
-                    if note.note < average.note {
-                        // maybe this is the left hand, leave it. For example, Moonlight I.
-                    } else {
-                        setNoteOffset(
-                            clamp(note.offset, max: nextNote),
-                            channel: channel
-                        )
-                        indeterminate.insert(note)
-                    }
+                    indeterminate.insert(note)
                 }
                 
                 /// note length must span to the found sustain.
                 func span(_ sustain: MIDISustainEvents.Element) {
                     if sustain.onset < nextNote {
-                        setNoteOffset(
-                            clamp(note.offset, min: sustain.onset + minimumLength),
-                            channel: 1
-                        )
+                        setNoteOffset(clamp(note.offset, min: sustain.onset + minimumLength))
                     } else {
                         switch preserve {
                         case .acousticResult:
                             setNoteOffset(
-                                sustain.onset + minimumLength, // ensure it is as short as possible
-                                channel: 2
+                                sustain.onset + minimumLength // ensure it is as short as possible
                             )
-                        case .notesDisplay: setNoteOffset(
-                            clamp(nextNote, max: nextNote),
-                            channel: 2
-                        )
+                        case .notesDisplay: setNoteOffset(clamp(nextNote, max: nextNote))
                         }
                     }
-                }
-                
-                func debugChannel(_ channel: UInt8) {
-//#if DEBUG
-//                    note.channel = channel
-//#endif
                 }
                 
                 
@@ -218,7 +195,6 @@ extension IndexedContainer {
                 if let nextProximateOnset {
                     if note.offset > nextProximateOnset {
                         note.offset = nextProximateOnset
-                        debugChannel(11)
                     }
                 }
                 
@@ -232,9 +208,6 @@ extension IndexedContainer {
             guard let average = determinants.mean(of: \.offset) else { return }
             let removed = indeterminate.removeFirst()
             removed.offset = Swift.min(removed.offset, Swift.max(average, removed.onset + minimumLength))
-#if DEBUG
-            removed.channel = 12
-#endif
         }
         
         // finally, make sure notes are not overlapping.
