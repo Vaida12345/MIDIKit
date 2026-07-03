@@ -181,12 +181,7 @@ extension IndexedContainer {
                 /// Extends the note far enough to reach the found sustain while capping AI-transcribed tails.
                 func span(_ sustain: MIDISustainEvents.Element) {
                     if sustain.onset < nextNote {
-                        switch preserve {
-                        case .acousticResult:
-                            setNoteOffset(clamp(note.offset, min: sustain.onset + minimumLength, max: sustain.offset))
-                        case .notesDisplay:
-                            setNoteOffset(clamp(note.offset, min: sustain.onset + minimumLength, max: Swift.min(sustain.offset, nextNote)))
-                        }
+                        setNoteOffset(clamp(note.offset, min: sustain.onset + minimumLength))
                     } else {
                         switch preserve {
                         case .acousticResult:
@@ -241,7 +236,7 @@ extension IndexedContainer {
                 guard let next = _next else { break }
                 defer { _curr = next; _next = iterator.next() }
                 
-                curr.offset = clamp(curr.offset, min: curr.onset, max: next.onset - .leastNonzeroMagnitude)
+                curr.offset = clamp(curr.offset, min: curr.onset, max: Swift.max(next.onset - .leastNonzeroMagnitude, curr.onset + .leastNonzeroMagnitude))
             }
         }
     }
