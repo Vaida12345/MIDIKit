@@ -41,9 +41,8 @@ extension MIDIContainer {
     }
     
     
+    /// - Note: This initializer does not dispose `sequence`.
     public init(sequence: MusicSequence) throws {
-        defer { DisposeMusicSequence(sequence) }
-        
         var count: UInt32 = 0
         try withErrorCaptured {
             MusicSequenceGetTrackCount(sequence, &count)
@@ -80,7 +79,9 @@ extension MIDIContainer {
                 var timeStamp: MusicTimeStamp = 0
                 var eventType: MusicEventType = kMusicEventType_NULL
                 
-                MusicEventIteratorGetEventInfo(iterator, &timeStamp, &eventType, &dataPointer, &dataSize)
+                try withErrorCaptured {
+                    MusicEventIteratorGetEventInfo(iterator, &timeStamp, &eventType, &dataPointer, &dataSize)
+                }
                 defer { MusicEventIteratorNextEvent(iterator) }
                 guard let dataPointer else { continue }
                 
@@ -105,10 +106,12 @@ extension MIDIContainer {
 
                 case kMusicEventType_MIDIChannelMessage:
                     let event = dataPointer.load(as: MIDIChannelMessage.self)
-                    guard event.status == 0xB0 && event.data1 == 64 else { break } // ensure is sustain
-                    if event.data2 == 127 {
-                        sustainOpen = true
-                        sustainStart = timeStamp
+                    guard (event.status & 0xF0) == 0xB0 && event.data1 == 64 else { continue } // ensure is sustain, ignore non-sustain channel message
+                    if event.data2 >= 64 {
+                        if !sustainOpen { // update sustainOpen only if it is not open.
+                            sustainOpen = true
+                            sustainStart = timeStamp
+                        }
                     } else if sustainOpen {
                         sustainOpen = false
                         sustains.append(MIDITrack.SustainEvent(onset: sustainStart, offset: timeStamp))
@@ -142,7 +145,9 @@ extension MIDIContainer {
         
         for i in 0..<count {
             var track: MusicTrack?
-            MusicSequenceGetIndTrack(sequence, i, &track)
+            try withErrorCaptured {
+                MusicSequenceGetIndTrack(sequence, i, &track)
+            }
             guard let track else { continue }
             
             var additionInfo = AdditionalInfo(tempos: [])
@@ -151,7 +156,9 @@ extension MIDIContainer {
         }
         
         var tempoTrack: MusicTrack?
-        MusicSequenceGetTempoTrack(sequence, &tempoTrack)
+        try withErrorCaptured {
+            MusicSequenceGetTempoTrack(sequence, &tempoTrack)
+        }
         var additionInfo = AdditionalInfo(tempos: [])
         guard let tempoTrack else { throw OSStatusError(code: -1) }
         guard let midiTempoTrack = try processTrack(track: tempoTrack, additionalInfo: &additionInfo) else {

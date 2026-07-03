@@ -17,8 +17,12 @@ extension MIDIContainer {
     @available(*, deprecated, renamed: "write(to:)")
     public func writeData(to destination: FinderItem) throws {
         try destination.removeIfExists()
+        
+        let sequence = try self.makeSequence()
+        defer { DisposeMusicSequence(sequence) }
+        
         try withErrorCaptured {
-            try MusicSequenceFileCreate(self.makeSequence(), destination.url as CFURL, .midiType, .eraseFile, MIDIContainer.writeResolution)
+            MusicSequenceFileCreate(sequence, destination.url as CFURL, .midiType, .eraseFile, MIDIContainer.writeResolution)
         }
     }
     
@@ -29,9 +33,12 @@ extension MIDIContainer {
         self._checkConsistency()
 #endif
         
+        let sequence = try self.makeSequence()
+        defer { DisposeMusicSequence(sequence) }
+        
         try destination.removeIfExists()
         try withErrorCaptured {
-            try MusicSequenceFileCreate(self.makeSequence(), destination.url as CFURL, .midiType, .eraseFile, MIDIContainer.writeResolution)
+            MusicSequenceFileCreate(sequence, destination.url as CFURL, .midiType, .eraseFile, MIDIContainer.writeResolution)
         }
     }
     
@@ -42,9 +49,12 @@ extension MIDIContainer {
         self._checkConsistency()
 #endif
         
+        let sequence = try self.makeSequence()
+        defer { DisposeMusicSequence(sequence) }
+        
         var data: Unmanaged<CFData>?
         try withErrorCaptured {
-            try MusicSequenceFileCreateData(self.makeSequence(), .midiType, [], MIDIContainer.writeResolution, &data)
+            MusicSequenceFileCreateData(sequence, .midiType, [], MIDIContainer.writeResolution, &data)
         }
         return data!.takeRetainedValue() as Data
     }
@@ -57,6 +67,7 @@ extension MIDIContainer {
         try withErrorCaptured {
             NewMusicSequence(&sequence)
         }
+        defer { DisposeMusicSequence(sequence) }
         
         try withErrorCaptured {
             MusicSequenceFileLoad(sequence, source.url as CFURL, .midiType, .smf_PreserveTracks)
@@ -71,6 +82,7 @@ extension MIDIContainer {
         try withErrorCaptured {
             NewMusicSequence(&sequence)
         }
+        defer { DisposeMusicSequence(sequence) }
         
         try withErrorCaptured {
             MusicSequenceFileLoadData(sequence, data as CFData, .midiType, .smf_PreserveTracks)
