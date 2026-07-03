@@ -157,7 +157,7 @@ public struct Chord: RandomAccessCollection, Hashable {
                 var next = clusterIndex + 1
                 while next < clusters.count {
                     let _next = clusters[next].first!
-                    guard _next.offset < _next.offset + 0.2,
+                    guard _next.offset < _next.onset + 0.2,
                           order(_next.note, prev.note),
                           _next.onset - prev.onset <= 0.2
                     else { break }
@@ -166,7 +166,7 @@ public struct Chord: RandomAccessCollection, Hashable {
                 }
                 guard next - clusterIndex > 10 else { continue }
                 
-                for i in clusterIndex ... Swift.min(next, clusters.count - 1) {
+                for i in clusterIndex ..< Swift.min(next, clusters.count) {
                     clusters[i].features.insert(.glissando)
                 }
                 clusterIndex = next
