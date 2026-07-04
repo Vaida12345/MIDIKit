@@ -33,6 +33,8 @@ public struct MIDITrack: CustomStringConvertible, DetailedStringConvertible, Sen
     
     public var rawData: [MIDIRawData]
     
+    public var controlEvents: MIDIControlEvents
+    
     /// The range of the notes in the track.
     @inlinable
     public var range: ClosedRange<MusicTimeStamp> {
@@ -45,27 +47,30 @@ public struct MIDITrack: CustomStringConvertible, DetailedStringConvertible, Sen
     }
     
     @inlinable
-    public init(notes: [Note] = [], sustains: [SustainEvent] = [], metaEvents: [MetaEvent] = []) {
+    public init(notes: [Note] = [], sustains: [SustainEvent] = [], metaEvents: [MetaEvent] = [], controlEvents: MIDIControlEvents = []) {
         self.notes = Notes(notes)
         self.sustains = MIDISustainEvents(sustains)
         self.metaEvents = metaEvents
         self.rawData = []
+        self.controlEvents = []
     }
     
     @inlinable
-    public init(notes: [Note], sustains: MIDISustainEvents, metaEvents: [MetaEvent] = []) {
+    public init(notes: [Note], sustains: MIDISustainEvents, metaEvents: [MetaEvent] = [], controlEvents: MIDIControlEvents = []) {
         self.notes = Notes(notes)
         self.sustains = sustains
         self.metaEvents = metaEvents
         self.rawData = []
+        self.controlEvents = controlEvents
     }
     
     @inlinable
-    public init(notes: Notes, sustains: MIDISustainEvents, metaEvents: [MetaEvent] = []) {
+    public init(notes: Notes, sustains: MIDISustainEvents, metaEvents: [MetaEvent] = [], controlEvents: MIDIControlEvents = []) {
         self.notes = notes
         self.sustains = sustains
         self.metaEvents = metaEvents
         self.rawData = []
+        self.controlEvents = controlEvents
     }
     
     public typealias Note = MIDINote

@@ -72,6 +72,7 @@ extension MIDIContainer {
             var sustainOpen: Bool = false
             var sustainStart: MusicTimeStamp = 0
             var sustains: [MIDISustainEvent] = []
+            var controlEvents: [MIDIControlEvent] = []
             
             while iteratorHasNextEvent {
                 var dataPointer: UnsafeRawPointer?
@@ -106,15 +107,20 @@ extension MIDIContainer {
 
                 case kMusicEventType_MIDIChannelMessage:
                     let event = dataPointer.load(as: MIDIChannelMessage.self)
-                    guard (event.status & 0xF0) == 0xB0 && event.data1 == 64 else { continue } // ensure is sustain, ignore non-sustain channel message
-                    if event.data2 >= 64 {
-                        if !sustainOpen { // update sustainOpen only if it is not open.
-                            sustainOpen = true
-                            sustainStart = timeStamp
+                    guard (event.status & 0xF0) == 0xB0 else { continue } // only parse MIDI channel 1 events.
+                    if event.data1 == 64 {
+                        // sustain
+                        if event.data2 >= 64 {
+                            if !sustainOpen { // update sustainOpen only if it is not open.
+                                sustainOpen = true
+                                sustainStart = timeStamp
+                            }
+                        } else if sustainOpen {
+                            sustainOpen = false
+                            sustains.append(MIDITrack.SustainEvent(onset: sustainStart, offset: timeStamp))
                         }
-                    } else if sustainOpen {
-                        sustainOpen = false
-                        sustains.append(MIDITrack.SustainEvent(onset: sustainStart, offset: timeStamp))
+                    } else {
+                        controlEvents.append(MIDIControlEvent(onset: timeStamp, channel: event.data1, velocity: event.data2))
                     }
 
                 case kMusicEventType_Meta:
@@ -130,7 +136,7 @@ extension MIDIContainer {
                 case kMusicEventType_MIDIRawData:
                     let event = dataPointer.load(as: AudioToolbox.MIDIRawData.self)
                     let data = Data(bytes: dataPointer + 4, count: Int(event.length))
-                    midiTrack.rawData.append(MIDIRawData(data: data))
+                    midiTrack.rawData.append(MIDIRawData(timestamp: timeStamp, data: data))
                     
                 default:
                     let logger = Logger(subsystem: "MIDIKit", category: "MIDIContainer.init")
@@ -139,6 +145,7 @@ extension MIDIContainer {
                 }
             }
             midiTrack.sustains = MIDISustainEvents(sustains)
+            midiTrack.controlEvents = MIDIControlEvents(controlEvents)
             
             return midiTrack
         }

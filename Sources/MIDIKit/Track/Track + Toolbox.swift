@@ -34,6 +34,13 @@ extension MIDITrack {
             MusicTrackNewMIDIChannelEvent(musicTrack, sustain.offset, &last)
         }
         
+        controlEvents.forEach { _, control in
+            var message = MIDIChannelMessage(status: 0xB0, data1: control.channel, data2: control.velocity, reserved: 0)
+            MusicTrackNewMIDIChannelEvent(musicTrack, control.onset, &message)
+        }
+        
+        // there is no way to write back raw data, as AudioToolbox raw data expects encoding `Data` as `UInt8`, which is unsafe in Swift.
+        
         return musicTrack
     }
     
