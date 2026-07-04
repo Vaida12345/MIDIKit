@@ -52,7 +52,7 @@ public struct MIDITrack: CustomStringConvertible, DetailedStringConvertible, Sen
         self.sustains = MIDISustainEvents(sustains)
         self.metaEvents = metaEvents
         self.rawData = []
-        self.controlEvents = []
+        self.controlEvents = controlEvents
     }
     
     @inlinable
