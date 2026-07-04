@@ -14,18 +14,12 @@ import SwiftUI
 import AVFoundation
 
 
-//let container = try MIDIContainer(at: "/Users/vaida/Music/Piano Transcription/Owari no Sekai kara.mid")
-//let asset = AVURLAsset(url: FinderItem(at: "/Users/vaida/Music/Music/Media.localized/Music/Animenz/Animenz Audios Full Version/Owari no Sekai kara.m4a").url, options: [AVURLAssetPreferPreciseDurationAndTimingKey : true])
-//
-//if #available(macOS 27.0, *) {
-//    let session = try await MusicUnderstandingSession(asset: asset)
-//    let results = try await session.analyze()
-//    print(results.rhythm?.beatsPerMinute)
-//    let view = DebugView(
-//        container: container.indexed(),
-//        downbeats: results.rhythm!.bars.map({ $0.seconds * 2 }),
-//        beats: results.rhythm!.beats.map({ $0.seconds * 2 })
-//    )
-//    try view.render(to: .desktopDirectory/"file.pdf")
-//}
+let folder: FinderItem = "/Volumes/Vaida's T9/Library/Machine Learning/Dataset/maestro-v3.0.0"
+for file in try folder.children(range: .enumeration) {
+    guard file.extension.contains("mid") else { continue }
+    let container = try MIDIContainer(at: file)
+    
+    // check note offset is local
+    let indexed = container.indexed()
+}
 #endif
