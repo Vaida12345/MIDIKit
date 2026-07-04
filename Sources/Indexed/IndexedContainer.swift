@@ -36,6 +36,9 @@ public final class IndexedContainer {
     /// The sustain events.
     public var sustains: MIDISustainEvents
     
+    public var controlEvents: MIDIControlEvents
+    public var metaEvents: [MIDIMetaEvent]
+    
     
     /// Whether the container is empty
     @inlinable
@@ -58,7 +61,7 @@ public final class IndexedContainer {
             $1 = self.count
         }
         
-        let track = MIDITrack(notes: MIDINotes(consume notes), sustains: self.sustains)
+        let track = MIDITrack(notes: MIDINotes(consume notes), sustains: self.sustains, metaEvents: metaEvents, controlEvents: self.controlEvents)
         return MIDIContainer(tracks: [track])
     }
     
@@ -78,6 +81,8 @@ public final class IndexedContainer {
         self.notes = [:]
         self.contents = .allocate(capacity: 0)
         self.sustains = []
+        self.controlEvents = []
+        self.metaEvents = []
         
         self._init(container: container, minimumConsecutiveNotesGap: minimumConsecutiveNotesGap)
     }
@@ -182,6 +187,10 @@ extension IndexedContainer {
         self.contents.deallocate()
         self.contents = contents
         self.sustains = sustains
+        
+        self.controlEvents = MIDIControlEvents(container.tracks.flatMap(\.controlEvents))
+        self.metaEvents = container.tracks.flatMap(\.metaEvents)
+        // tempo track is ignored as IndexedContainer is 120BPM.
         
         // construct grouped
         var grouped: [UInt8 : [ReferenceNote]] = [:]

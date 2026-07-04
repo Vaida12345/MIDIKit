@@ -154,8 +154,21 @@ extension IndexedContainer {
             self.sustains[i].offset -= firstNoteOnset
             i &+= 1
         }
-        
         self.sustains.contents.removeAll(where: { $0.onset < 0 })
+        
+        i = self.controlEvents.startIndex
+        while i < self.controlEvents.endIndex {
+            self.controlEvents[i].onset -= firstNoteOnset
+            i &+= 1
+        }
+        self.controlEvents.contents.removeAll(where: { $0.onset < 0 })
+        
+        i = self.metaEvents.startIndex
+        while i < self.metaEvents.endIndex {
+            self.metaEvents[i].timestamp -= firstNoteOnset
+            i &+= 1
+        }
+        self.metaEvents.removeAll(where: { $0.timestamp < 0 })
     }
     
     /// Merge all notes that share the same interval in `other`.

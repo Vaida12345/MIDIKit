@@ -27,6 +27,18 @@ extension IndexedContainer {
             self.sustains[i].duration = duration
             i &+= 1
         }
+        
+        i = self.controlEvents.startIndex
+        while i < self.controlEvents.endIndex {
+            self.controlEvents[i].onset = mapping.map(self.controlEvents[i].onset)
+            i &+= 1
+        }
+        
+        i = self.metaEvents.startIndex
+        while i < self.metaEvents.endIndex {
+            self.metaEvents[i].timestamp = mapping.map(self.metaEvents[i].timestamp)
+            i &+= 1
+        }
     }
 
     /// Creates a time warp between `self` and `other`.
