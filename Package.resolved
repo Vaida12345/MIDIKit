@@ -1,6 +1,15 @@
 {
-  "originHash" : "bdbb36a76a2a51e93e086befebaa277431707112a50a26009c042bace3d97d7b",
+  "originHash" : "73cc54585b90aab5771a3dfef80d812df887d8c0a766be0ba440aaafa104667e",
   "pins" : [
+    {
+      "identity" : "colorcomponents",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Vaida12345/ColorComponents.git",
+      "state" : {
+        "revision" : "440c5199e8b4283c03c93a4e567273f904d41749",
+        "version" : "1.1.0"
+      }
+    },
     {
       "identity" : "concurrentstream",
       "kind" : "remoteSourceControl",

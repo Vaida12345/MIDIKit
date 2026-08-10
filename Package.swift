@@ -25,11 +25,12 @@ let package = Package(
         .package(url: "https://github.com/Vaida12345/NativeImage.git", from: "1.0.3"),
         .package(url: "https://github.com/Vaida12345/Optimization.git", from: "1.1.0"),
         .package(url: "https://github.com/Vaida12345/Essentials.git", from: "1.2.1"),
+        .package(url: "https://github.com/Vaida12345/ColorComponents.git", from: "1.1.0"),
     ],
     targets: [
         .target(
             name: "MIDIKit",
-            dependencies: ["DetailedDescription", "FinderItem", "ConcurrentStream", "NativeImage", "Optimization", "Essentials"],
+            dependencies: ["DetailedDescription", "FinderItem", "ConcurrentStream", "NativeImage", "Optimization", "Essentials", "ColorComponents"],
             path: "Sources"
         ),
         .executableTarget(
