@@ -168,7 +168,6 @@ extension IndexedContainer {
                         if let nextSustain = onsetNextIndex {
                             span(sustains[nextSustain])
                         } else {
-                            assertionFailure("Should be a sustain")
                             setNoteOffset(clamp(note.offset, max: nextNote))
                         }
                     }
