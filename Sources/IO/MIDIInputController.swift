@@ -97,17 +97,31 @@ public final class MIDIInputController {
     public func initialize() throws {
         guard !hasCreatedMIDIClient else { return }
         
-        // This must be called exactly once, synchronously.
-        let clientStatus = MIDIClientCreateWithBlock("MIDIKit Input" as CFString, &midiClient) { [weak self] notification in
+        // Core MIDI invokes this block on an arbitrary thread.
+        let clientStatus = MIDIClientCreateWithBlock("MIDIKit Input" as CFString, &midiClient) { @Sendable [weak self] notification in
+            let messageID = notification.pointee.messageID
+            let changedEndpoint: MIDIEndpointRef?
+            
+            switch messageID {
+            case .msgObjectAdded, .msgObjectRemoved:
+                changedEndpoint = notification.withMemoryRebound(to: MIDIObjectAddRemoveNotification.self, capacity: 1) {
+                    $0.pointee.child
+                }
+            default:
+                changedEndpoint = nil
+            }
+            
             let logger = Logger(subsystem: "MIDIKit", category: "MIDIInput")
-            switch notification.pointee.messageID {
+            switch messageID {
             case .msgObjectAdded: logger.info("Received object added")
             case .msgSetupChanged: logger.info("Received setup changed")
             case .msgObjectRemoved: logger.info("Received object removed")
             default: logger.info("Received message")
             }
             
-            self?.handle(notification: notification)
+            Task { @MainActor [weak self] in
+                self?.handle(messageID: messageID, changedEndpoint: changedEndpoint)
+            }
         }
         guard clientStatus == noErr else {
             logger.error("Failed to create MIDI client: \(clientStatus)")
@@ -122,24 +136,29 @@ public final class MIDIInputController {
     private func createInputPortIfNeeded() throws {
         guard !hasCreatedInputPort else { return }
         
-        let portStatus = MIDIInputPortCreateWithProtocol(
-            midiClient,
-            "MIDIKit Input Port" as CFString,
-            ._1_0,
-            &inputPort
-        ) { [weak self] eventList, _ in
+        // Core MIDI invokes this block on a separate high-priority receive thread.
+        let receiveBlock: @Sendable (UnsafePointer<MIDIEventList>, UnsafeMutableRawPointer?) -> Void = { [weak self] eventList, _ in
             guard let self else { return }
             let contextPointer = Unmanaged.passUnretained(self).toOpaque()
             
             MIDIEventListForEachEvent(eventList, { contextPointer, timestamp, message in
                 guard let contextPointer else { return }
                 let controller = Unmanaged<MIDIInputController>.fromOpaque(contextPointer).takeUnretainedValue()
+                let event = MIDIInputEvent(timestamp: timestamp, message: message)
                 
                 Task { @MainActor [weak controller] in
-                    controller?.publish(timestamp: timestamp, message: message)
+                    controller?.publish(event)
                 }
             }, contextPointer)
         }
+        
+        let portStatus = MIDIInputPortCreateWithProtocol(
+            midiClient,
+            "MIDIKit Input Port" as CFString,
+            ._1_0,
+            &inputPort,
+            receiveBlock
+        )
         guard portStatus == noErr else {
             logger.error("Failed to create MIDI input port: \(portStatus)")
             throw ConnectError.cannotCreateInputPort
@@ -195,29 +214,25 @@ public final class MIDIInputController {
     }
     
     
-    /// Publishes one message from Core MIDI after it has safely crossed onto the main actor.
-    private func publish(timestamp: MIDITimeStamp, message: MIDIUniversalMessage) {
-        let event = MIDIInputEvent(timestamp: timestamp, message: message)
+    /// Publishes an event that has safely crossed from Core MIDI onto the main actor.
+    private func publish(_ event: MIDIInputEvent) {
         for continuation in eventContinuations.values {
             continuation.yield(event)
         }
     }
     
-    /// Responds to MIDI setup changes without disconnecting for unrelated devices.
-    private func handle(notification: UnsafePointer<MIDINotification>) {
-        switch notification.pointee.messageID {
+    /// Responds to MIDI setup changes without retaining Core MIDI callback memory.
+    private func handle(messageID: MIDINotificationMessageID, changedEndpoint: MIDIEndpointRef?) {
+        switch messageID {
         case .msgObjectRemoved:
             refreshAvailableSources()
             
-            let removal = notification.withMemoryRebound(to: MIDIObjectAddRemoveNotification.self, capacity: 1) {
-                $0.pointee
-            }
-            guard removal.child == connectedSource?.endpoint else { return }
+            guard changedEndpoint == connectedSource?.endpoint else { return }
             disconnect(preservingPreferredSource: true)
         case .msgObjectAdded:
             refreshAvailableSources()
             reconnectIfPossible()
-            connectToAddedSourceIfPossible(notification)
+            connectToAddedSourceIfPossible(changedEndpoint)
         case .msgSetupChanged, .msgPropertyChanged:
             refreshAvailableSources()
             reconnectIfPossible()
@@ -227,13 +242,12 @@ public final class MIDIInputController {
     }
     
     /// Connects to a newly added input source when no source is currently connected.
-    private func connectToAddedSourceIfPossible(_ notification: UnsafePointer<MIDINotification>) {
-        guard connectedSource == nil else { return }
-        
-        let addition = notification.withMemoryRebound(to: MIDIObjectAddRemoveNotification.self, capacity: 1) {
-            $0.pointee
+    private func connectToAddedSourceIfPossible(_ endpoint: MIDIEndpointRef?) {
+        guard connectedSource == nil,
+              let endpoint,
+              let source = availableSources.first(where: { $0.endpoint == endpoint }) else {
+            return
         }
-        guard let source = availableSources.first(where: { $0.endpoint == addition.child }) else { return }
         
         do {
             try connect(to: source)
