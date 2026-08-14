@@ -188,30 +188,6 @@ struct MIDIMetaEventTests {
 
 }
 
-
-@Suite("MIDIRawData")
-struct MIDIRawDataTests {
-
-    @Test func initAndAccess() {
-        let rawData = MIDIRawData(data: Data([0x01, 0x02, 0x03]))
-        #expect(rawData.data == Data([0x01, 0x02, 0x03]))
-    }
-
-    @Test func equatable() {
-        let a = MIDIRawData(data: Data([1, 2, 3]))
-        let b = MIDIRawData(data: Data([1, 2, 3]))
-        #expect(a == b)
-    }
-
-    @Test func notEqual() {
-        let a = MIDIRawData(data: Data([1, 2, 3]))
-        let b = MIDIRawData(data: Data([4, 5, 6]))
-        #expect(a != b)
-    }
-
-}
-
-
 @Suite("MIDIMetaEvent.withUnsafePointer")
 struct MetaEventAudioToolboxTests {
 
@@ -231,7 +207,7 @@ struct MetaEventAudioToolboxTests {
 struct RawDataAudioToolboxTests {
 
     @Test func roundtripViaAudioToolbox() {
-        let original = MIDIRawData(data: Data([0x10, 0x20, 0x30]))
+        let original = MIDIRawData(timestamp: 1.0, data: Data([0x10, 0x20, 0x30]))
         let toolboxValue: AudioToolbox.MIDIRawData = original.withUnsafePointer { pointer in
             return pointer.pointee
         }

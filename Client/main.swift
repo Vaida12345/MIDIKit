@@ -21,7 +21,7 @@ try resultFolder.makeDirectory()
 let audioFolder: FinderItem = "/Users/vaida/Music/Music/Media.localized/Music"
 let midiFolder: FinderItem = "/Users/vaida/Music/Piano Transcription"
 
-let targets: [String] = ["Owari no Sekai kara", "01 Piano Sonata No. 14, _Moonlight__ III", "Attack on Titan Main Theme", "What I Feel When I See Her", "Secret Base", "01 Summer", "Ashes on The Fire - Shingeki no Kyojin"]
+let targets: [String] = ["Attack on Titan Main Theme"]
 
 for target in targets {
     let midi = midiFolder/"\(target).mid"
@@ -40,6 +40,9 @@ for target in targets {
         let session = try await MusicUnderstandingSession(asset: asset)
         
         let result = try await session.analyze(for: [.rhythm])
+        
+        print(result.rhythm!.bars.map({ $0.seconds * 2 }))
+        print(result.rhythm!.beats.map({ $0.seconds * 2 }))
         
         let view = DebugView(container: container.indexed(), downbeats: result.rhythm!.bars.map({ $0.seconds * 2 }), beats: result.rhythm!.beats.map({ $0.seconds * 2 }))
         try view.render(to: resultFolder/"\(target).pdf", format: .pdf)
