@@ -41,12 +41,21 @@ public final class MIDIInputController {
     private var eventContinuations: [UUID: AsyncStream<MIDIInputEvent>.Continuation] = [:]
     
     @ObservationIgnored
-    private var hasBeenInitialized = false
+    private var hasCreatedMIDIClient = false
+    
+    @ObservationIgnored
+    private var hasCreatedInputPort = false
     
     @ObservationIgnored
     private var preferredSourceID: MIDIUniqueID?
     
     private let logger = Logger(subsystem: "MIDIInputController", category: "Connection")
+    
+    /// All currently online MIDI input sources with active network connections.
+    ///
+    /// This excludes the default Network MIDI source until its session is enabled and connected,
+    /// while retaining connected Bluetooth and other Core MIDI sources.
+    public private(set) var availableSources: [Source] = []
     
     /// The source currently connected to the input port.
     public private(set) var connectedSource: Source?
@@ -62,11 +71,13 @@ public final class MIDIInputController {
     private nonisolated init() {}
     
     
-    /// Returns all currently online MIDI input sources with active network connections.
-    ///
-    /// This excludes the default Network MIDI source until its session is enabled and connected,
-    /// while retaining connected Bluetooth and other Core MIDI sources.
-    public var availableSources: [Source] {
+    /// Refreshes the observable source snapshot from Core MIDI's current endpoint registry.
+    private func refreshAvailableSources() {
+        availableSources = currentAvailableSources()
+    }
+    
+    /// Returns a fresh snapshot of the currently online MIDI input sources.
+    private func currentAvailableSources() -> [Source] {
         let networkSession = MIDINetworkSession.default()
         let networkSource = networkSession.sourceEndpoint()
         
@@ -79,10 +90,14 @@ public final class MIDIInputController {
             .compactMap(Source.init)
     }
     
-    /// Creates the Core MIDI client and input port if they have not already been created.
+    /// Creates the Core MIDI client and refreshes the initial source snapshot.
+    ///
+    /// This method deliberately defers creating the input port until a source connects, keeping
+    /// app-start setup limited to the client registration required for setup notifications.
     public func initialize() throws {
-        guard !hasBeenInitialized else { return }
+        guard !hasCreatedMIDIClient else { return }
         
+        // This must be called exactly once, synchronously.
         let clientStatus = MIDIClientCreateWithBlock("MIDIKit Input" as CFString, &midiClient) { [weak self] notification in
             Task { @MainActor [weak self] in
                 self?.handle(notification: notification)
@@ -92,6 +107,14 @@ public final class MIDIInputController {
             logger.error("Failed to create MIDI client: \(clientStatus)")
             throw ConnectError.cannotCreateClient
         }
+        
+        hasCreatedMIDIClient = true
+        refreshAvailableSources()
+    }
+    
+    /// Creates the input port when a source is about to connect.
+    private func createInputPortIfNeeded() throws {
+        guard !hasCreatedInputPort else { return }
         
         let portStatus = MIDIInputPortCreateWithProtocol(
             midiClient,
@@ -116,7 +139,7 @@ public final class MIDIInputController {
             throw ConnectError.cannotCreateInputPort
         }
         
-        hasBeenInitialized = true
+        hasCreatedInputPort = true
     }
     
     /// Connects the input port to a specific MIDI source.
@@ -124,6 +147,7 @@ public final class MIDIInputController {
     /// The source becomes the preferred source for automatic reconnection.
     public func connect(to source: Source) throws {
         try initialize()
+        try createInputPortIfNeeded()
         disconnect(preservingPreferredSource: true)
         
         guard MIDIPortConnectSource(inputPort, source.endpoint, nil) == noErr else {
@@ -177,15 +201,19 @@ public final class MIDIInputController {
     private func handle(notification: UnsafePointer<MIDINotification>) {
         switch notification.pointee.messageID {
         case .msgObjectRemoved:
+            refreshAvailableSources()
+            
             let removal = notification.withMemoryRebound(to: MIDIObjectAddRemoveNotification.self, capacity: 1) {
                 $0.pointee
             }
             guard removal.child == connectedSource?.endpoint else { return }
             disconnect(preservingPreferredSource: true)
         case .msgObjectAdded:
+            refreshAvailableSources()
             reconnectIfPossible()
             connectToAddedSourceIfPossible(notification)
-        case .msgSetupChanged:
+        case .msgSetupChanged, .msgPropertyChanged:
+            refreshAvailableSources()
             reconnectIfPossible()
         default:
             break
