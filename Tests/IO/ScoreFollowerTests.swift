@@ -143,14 +143,27 @@ struct ScoreFollowerTests {
         #expect(positions.last?.beat == 7)
     }
 
-    @Test("recovers backward from an overrun using recent history")
-    func recoversBackwardFromOverrun() {
-        let follower = ScoreFollower(reference: reference([60, 62, 64, 65, 67, 69, 71, 72, 75, 77, 79, 81]))
+    @Test("jumps to a middle passage when performance begins there")
+    func jumpsToMiddlePassage() {
+        let pitches = Array(48...79).map(UInt8.init)
+        let follower = ScoreFollower(reference: reference(pitches))
+        let middlePassage = Array(pitches[16...23])
 
-        _ = consume([60, 62, 64, 65, 67, 69, 71, 72, 75, 77, 79, 81], with: follower)
-        let positions = consume([60, 62, 64, 65, 67, 69, 71, 72, 75], with: follower)
+        let positions = consume(middlePassage, with: follower)
 
-        #expect(positions.last?.beat == 8)
+        #expect(positions.last?.beat == 23)
+        #expect(positions.contains { $0.didJump })
+    }
+
+    @Test("jumps back to the first quarter after reaching the score end")
+    func jumpsBackAfterReachingEnd() {
+        let pitches = Array(48...79).map(UInt8.init)
+        let follower = ScoreFollower(reference: reference(pitches))
+
+        _ = consume(pitches, with: follower)
+        let positions = consume(Array(pitches[8...15]), with: follower)
+
+        #expect(positions.last?.beat == 15)
         #expect(positions.contains { $0.didJump })
     }
 

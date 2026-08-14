@@ -105,6 +105,7 @@ public final class ScoreFollower {
         static let beamWidth = 24
         static let localLookAhead = 4
         static let observationLimit = 12
+        static let recoveryObservationLimit = 6
         static let recoveryLookAhead = 12
         static let recoveryInterval = 4
         static let recoveryHypothesisLimit = 4
@@ -226,7 +227,7 @@ public final class ScoreFollower {
         }
         hypotheses = prune(expanded)
 
-        if shouldAttemptRecovery {
+        if shouldStartRecovery {
             hypotheses = prune(hypotheses + recoveryHypotheses(for: pitch, velocity: velocity, timestamp: timestamp))
         }
 
@@ -276,6 +277,24 @@ public final class ScoreFollower {
             return bestCommittedHypothesis?.score ?? 0 < -4
         }
         return true
+    }
+
+    /// Whether recovery should begin, including a fresh attempt when local continuity is at the score end.
+    private var shouldStartRecovery: Bool {
+        guard shouldAttemptRecovery else { return false }
+        guard bestCommittedHypothesis?.momentIndex != moments.indices.last else { return true }
+        return !hasEstablishedRecovery
+    }
+
+    /// Whether a recovery lineage at a different location has enough evidence to compete for commitment.
+    private var hasEstablishedRecovery: Bool {
+        guard let committed = bestCommittedHypothesis else { return false }
+        return hypotheses.contains {
+            $0.isRecovery &&
+            $0.momentIndex != committed.momentIndex &&
+            $0.recentExactMatches >= Configuration.recoveryExactMatches &&
+            $0.recentlyMatchedMoments.count >= Configuration.recoveryDistinctMoments
+        }
     }
 
     /// Creates bounded local interpretations of one timestamped performed pitch.
@@ -503,7 +522,7 @@ public final class ScoreFollower {
         moments: Set<Int>
     ) {
         let firstIndex = max(0, endingIndex - Configuration.observationLimit * Configuration.localLookAhead)
-        let history = observations.dropLast()
+        let history = observations.suffix(Configuration.recoveryObservationLimit).dropLast()
         var alignments = (firstIndex...endingIndex).map {
             RecoveryAlignment(nextMomentIndex: $0, score: 0, exactMatches: 0, matchedMoments: [])
         }
@@ -612,10 +631,19 @@ public final class ScoreFollower {
     }
 
     /// Requires sustained, multi-moment evidence before a remote lineage can replace continuity.
+    ///
+    /// At the final moment, a matching recovery may replace continuity without a score lead because
+    /// the committed path has no forward match available to validate its retained score.
     private func canCommit(recovery: Hypothesis, over committed: Hypothesis) -> Bool {
-        recovery.recentExactMatches >= Configuration.recoveryExactMatches &&
-        recovery.recentlyMatchedMoments.count >= Configuration.recoveryDistinctMoments &&
-        recovery.score >= committed.score + Configuration.recoveryScoreLead
+        guard recovery.momentIndex != committed.momentIndex,
+              recovery.recentExactMatches >= Configuration.recoveryExactMatches,
+              recovery.recentlyMatchedMoments.count >= Configuration.recoveryDistinctMoments else {
+            return false
+        }
+        guard committed.momentIndex == moments.indices.last else {
+            return recovery.score >= committed.score + Configuration.recoveryScoreLead
+        }
+        return true
     }
 
     /// Computes certainty from a materially different competing lineage.
