@@ -99,9 +99,15 @@ public final class MIDIInputController {
         
         // This must be called exactly once, synchronously.
         let clientStatus = MIDIClientCreateWithBlock("MIDIKit Input" as CFString, &midiClient) { [weak self] notification in
-            Task { @MainActor [weak self] in
-                self?.handle(notification: notification)
+            let logger = Logger(subsystem: "MIDIKit", category: "MIDIInput")
+            switch notification.pointee.messageID {
+            case .msgObjectAdded: logger.info("Received object added")
+            case .msgSetupChanged: logger.info("Received setup changed")
+            case .msgObjectRemoved: logger.info("Received object removed")
+            default: logger.info("Received message")
             }
+            
+            self?.handle(notification: notification)
         }
         guard clientStatus == noErr else {
             logger.error("Failed to create MIDI client: \(clientStatus)")
