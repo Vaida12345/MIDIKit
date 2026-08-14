@@ -16,8 +16,9 @@ import Testing
 struct ScoreFollowerTests {
 
     @Test("follows a correctly performed monophonic melody")
-    func followsMelody() {
-        let follower = ScoreFollower(reference: reference([60, 62, 64]))
+    func followsMelody() async {
+        let follower = ScoreFollower()
+        await follower.update(reference: reference([60, 62, 64]))
 
         let positions = consume([60, 62, 64], with: follower)
 
@@ -26,8 +27,9 @@ struct ScoreFollowerTests {
     }
 
     @Test("recovers after a wrong note")
-    func recoversAfterWrongNote() {
-        let follower = ScoreFollower(reference: reference([60, 62, 64]))
+    func recoversAfterWrongNote() async {
+        let follower = ScoreFollower()
+        await follower.update(reference: reference([60, 62, 64]))
 
         _ = consume(60, with: follower, at: 1_000)
         _ = consume(61, with: follower, at: 2_000)
@@ -38,8 +40,9 @@ struct ScoreFollowerTests {
     }
 
     @Test("advances across missing reference notes")
-    func handlesMissingNotes() {
-        let follower = ScoreFollower(reference: reference([60, 62, 64, 65]))
+    func handlesMissingNotes() async {
+        let follower = ScoreFollower()
+        await follower.update(reference: reference([60, 62, 64, 65]))
 
         _ = consume(60, with: follower, at: 1_000)
         let position = consume(65, with: follower, at: 4_000)
@@ -48,8 +51,9 @@ struct ScoreFollowerTests {
     }
 
     @Test("retains its position for extra performed notes")
-    func handlesExtraNotes() {
-        let follower = ScoreFollower(reference: reference([60, 62]))
+    func handlesExtraNotes() async {
+        let follower = ScoreFollower()
+        await follower.update(reference: reference([60, 62]))
 
         _ = consume(60, with: follower, at: 1_000)
         let extraPosition = consume(61, with: follower, at: 2_000)
@@ -61,8 +65,9 @@ struct ScoreFollowerTests {
 
     /// Ensures local alignment continues after a performed phrase omits a score note.
     @Test("matches later notes after a skipped score note")
-    func toleratesSkippedNote() {
-        let follower = ScoreFollower(reference: reference([60, 62, 64, 65, 67]))
+    func toleratesSkippedNote() async {
+        let follower = ScoreFollower()
+        await follower.update(reference: reference([60, 62, 64, 65, 67]))
 
         let positions = consume([60, 64, 65, 67], with: follower)
 
@@ -71,8 +76,9 @@ struct ScoreFollowerTests {
 
     /// Ensures an extra performed pitch does not prevent later score alignment.
     @Test("matches later notes after an extra performed note")
-    func toleratesExtraNote() {
-        let follower = ScoreFollower(reference: reference([60, 62, 64, 65, 67]))
+    func toleratesExtraNote() async {
+        let follower = ScoreFollower()
+        await follower.update(reference: reference([60, 62, 64, 65, 67]))
 
         let positions = consume([60, 62, 61, 64, 65, 67], with: follower)
 
@@ -81,8 +87,9 @@ struct ScoreFollowerTests {
 
     /// Ensures one incorrect performed pitch can be treated as a substitution.
     @Test("matches later notes after an incorrect performed note")
-    func toleratesIncorrectNote() {
-        let follower = ScoreFollower(reference: reference([60, 62, 64, 65, 67]))
+    func toleratesIncorrectNote() async {
+        let follower = ScoreFollower()
+        await follower.update(reference: reference([60, 62, 64, 65, 67]))
 
         let positions = consume([60, 62, 63, 65, 67], with: follower)
 
@@ -90,8 +97,9 @@ struct ScoreFollowerTests {
     }
 
     @Test("matches chord pitches independent of arrival order")
-    func matchesChordInAnyOrder() {
-        let follower = ScoreFollower(reference: [
+    func matchesChordInAnyOrder() async {
+        let follower = ScoreFollower()
+        await follower.update(reference: [
             .init(beat: 0, pitch: 60),
             .init(beat: 0, pitch: 64),
             .init(beat: 0, pitch: 67),
@@ -108,8 +116,9 @@ struct ScoreFollowerTests {
     }
 
     @Test("keeps an incomplete chord open across a slow roll")
-    func keepsSlowChordOpen() {
-        let follower = ScoreFollower(reference: [
+    func keepsSlowChordOpen() async {
+        let follower = ScoreFollower()
+        await follower.update(reference: [
             .init(beat: 0, pitch: 60),
             .init(beat: 0, pitch: 64),
             .init(beat: 0, pitch: 67),
@@ -126,8 +135,9 @@ struct ScoreFollowerTests {
     }
 
     @Test("closes an incomplete chord when a later score moment begins")
-    func closesIncompleteChord() {
-        let follower = ScoreFollower(reference: [
+    func closesIncompleteChord() async {
+        let follower = ScoreFollower()
+        await follower.update(reference: [
             .init(beat: 0, pitch: 60),
             .init(beat: 0, pitch: 64),
             .init(beat: 0, pitch: 67),
@@ -141,8 +151,9 @@ struct ScoreFollowerTests {
     }
 
     @Test("allows a partial chord before continuing")
-    func handlesPartialChord() {
-        let follower = ScoreFollower(reference: [
+    func handlesPartialChord() async {
+        let follower = ScoreFollower()
+        await follower.update(reference: [
             .init(beat: 0, pitch: 60),
             .init(beat: 0, pitch: 64),
             .init(beat: 1, pitch: 67)
@@ -155,8 +166,9 @@ struct ScoreFollowerTests {
     }
 
     @Test("repeated notes do not produce a false jump")
-    func repeatedNotesDoNotJump() {
-        let follower = ScoreFollower(reference: reference([60, 60, 60, 60, 60, 60]))
+    func repeatedNotesDoNotJump() async {
+        let follower = ScoreFollower()
+        await follower.update(reference: reference([60, 60, 60, 60, 60, 60]))
 
         let positions = consume([60, 60, 60, 60, 60, 60], with: follower)
 
@@ -165,8 +177,9 @@ struct ScoreFollowerTests {
     }
 
     @Test("starts from a matching middle passage")
-    func startsFromMiddle() {
-        let follower = ScoreFollower(reference: reference([48, 50, 70, 71, 72, 73, 74, 75]))
+    func startsFromMiddle() async {
+        let follower = ScoreFollower()
+        await follower.update(reference: reference([48, 50, 70, 71, 72, 73, 74, 75]))
 
         let positions = consume([70, 71, 72, 73, 74, 75], with: follower)
 
@@ -174,9 +187,10 @@ struct ScoreFollowerTests {
     }
 
     @Test("jumps to a middle passage when performance begins there")
-    func jumpsToMiddlePassage() {
+    func jumpsToMiddlePassage() async {
         let pitches = Array(48...79).map(UInt8.init)
-        let follower = ScoreFollower(reference: reference(pitches))
+        let follower = ScoreFollower()
+        await follower.update(reference: reference(pitches))
         let middlePassage = Array(pitches[16...23])
 
         let positions = consume(middlePassage, with: follower)
@@ -186,9 +200,10 @@ struct ScoreFollowerTests {
     }
 
     @Test("jumps back to the first quarter after reaching the score end")
-    func jumpsBackAfterReachingEnd() {
+    func jumpsBackAfterReachingEnd() async {
         let pitches = Array(48...79).map(UInt8.init)
-        let follower = ScoreFollower(reference: reference(pitches))
+        let follower = ScoreFollower()
+        await follower.update(reference: reference(pitches))
 
         _ = consume(pitches, with: follower)
         let positions = consume(Array(pitches[8...15]), with: follower)
@@ -200,12 +215,13 @@ struct ScoreFollowerTests {
 
     /// Ensures a remote exact phrase can replace an established but error-prone local continuation.
     @Test("jumps to a perfect remote phrase over an imperfect local continuation")
-    func prefersPerfectRemotePhrase() {
+    func prefersPerfectRemotePhrase() async {
         let prefix: [UInt8] = [40, 41, 42, 43]
         let localContinuation: [UInt8] = [60, 61, 70, 71, 72, 73, 74]
         let bridge: [UInt8] = [80, 81, 82, 83, 84, 85, 86, 87, 88, 89]
         let remoteContinuation: [UInt8] = [60, 61, 62, 63, 64, 65, 66, 67]
-        let follower = ScoreFollower(
+        let follower = ScoreFollower()
+        await follower.update(
             reference: reference(prefix + localContinuation + bridge + remoteContinuation)
         )
 
@@ -216,8 +232,9 @@ struct ScoreFollowerTests {
     }
 
     @Test("retains quiet note-ons as soft alignment evidence")
-    func retainsQuietNotes() {
-        let follower = ScoreFollower(reference: reference([60, 62]))
+    func retainsQuietNotes() async {
+        let follower = ScoreFollower()
+        await follower.update(reference: reference([60, 62]))
 
         _ = follower.consume(noteOn: 60, velocity: 1, timestamp: 1_000)
         let position = follower.consume(noteOn: 62, velocity: 1, timestamp: 2_000)
@@ -226,8 +243,9 @@ struct ScoreFollowerTests {
     }
 
     @Test("note-offs confirm a released chord without advancing")
-    func noteOffsInformChordEvidence() {
-        let follower = ScoreFollower(reference: [
+    func noteOffsInformChordEvidence() async {
+        let follower = ScoreFollower()
+        await follower.update(reference: [
             .init(beat: 0, pitch: 60),
             .init(beat: 0, pitch: 64),
             .init(beat: 1, pitch: 67)
@@ -245,8 +263,9 @@ struct ScoreFollowerTests {
     }
 
     @Test("a released repeated pitch is treated as a re-articulation")
-    func recognizesReleasedRepeatedPitch() {
-        let follower = ScoreFollower(reference: reference([60, 60]))
+    func recognizesReleasedRepeatedPitch() async {
+        let follower = ScoreFollower()
+        await follower.update(reference: reference([60, 60]))
 
         _ = follower.consume(noteOn: 60, timestamp: 1_000)
         follower.consume(noteOff: 60)
@@ -256,8 +275,9 @@ struct ScoreFollowerTests {
     }
 
     @Test("zero timestamps retain pitch-only alignment")
-    func zeroTimestampsRetainPitchOnlyAlignment() {
-        let follower = ScoreFollower(reference: reference([60, 62, 64]))
+    func zeroTimestampsRetainPitchOnlyAlignment() async {
+        let follower = ScoreFollower()
+        await follower.update(reference: reference([60, 62, 64]))
 
         let positions = [60, 62, 64].compactMap {
             consume($0, with: follower, at: 0)
@@ -267,14 +287,31 @@ struct ScoreFollowerTests {
     }
 
     @Test("reset restores the initial state")
-    func resetRestoresInitialState() {
-        let follower = ScoreFollower(reference: reference([60, 62]))
+    func resetRestoresInitialState() async {
+        let follower = ScoreFollower()
+        await follower.update(reference: reference([60, 62]))
 
         _ = consume(60, with: follower, at: 1_000)
         follower.reset()
 
         #expect(follower.lastPosition == nil)
         #expect(consume(62, with: follower, at: 2_000)?.beat == 1)
+    }
+
+    @Test("updates from pre-grouped reference moments")
+    func updatesReferenceMoments() async {
+        let follower = ScoreFollower()
+        await follower.update(referenceMoments: [
+            .init(beat: 0, pitches: [60, 64]),
+            .init(beat: 1, pitches: [67])
+        ])
+
+        _ = consume(64, with: follower, at: 1_000)
+        #expect(consume(67, with: follower, at: 2_000)?.beat == 1)
+
+        await follower.update(referenceMoments: [.init(beat: 4, pitches: [72])])
+        #expect(follower.lastPosition == nil)
+        #expect(consume(72, with: follower, at: 3_000)?.beat == 4)
     }
 
     private func consume(

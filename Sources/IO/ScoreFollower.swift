@@ -119,18 +119,26 @@ public final class ScoreFollower {
     /// The most recently returned position, if a reference moment has been established.
     public private(set) var lastPosition: Position?
 
-    private let moments: [ReferenceMoment]
-    private let momentsByPitch: [UInt8: [Int]]
+    private var moments: [ReferenceMoment] = []
+    private var momentsByPitch: [UInt8: [Int]] = [:]
     private var hypotheses: [Hypothesis] = []
     private var committedLineageID = 0
     private var nextLineageID = 1
     private var winningJumpLineageID: Int?
     private var jumpWinningStreak = 0
 
-    /// Creates a follower for the supplied score reference.
+    /// Creates an empty score follower.
     ///
-    /// Notes are sorted and grouped into simultaneous reference moments.
-    public convenience init(reference: [ReferenceNote]) {
+    /// Call `update(reference:)` or `update(referenceMoments:)` before consuming MIDI events.
+    public init() {
+        reset()
+    }
+
+    /// Updates the follower with a score reference.
+    ///
+    /// Notes are sorted and grouped into simultaneous reference moments. Updating replaces the
+    /// current reference and resets the follower's alignment state.
+    public func update(reference: [ReferenceNote]) async {
         let sorted = reference.sorted {
             $0.beat == $1.beat ? $0.pitch < $1.pitch : $0.beat < $1.beat
         }
@@ -144,13 +152,14 @@ public final class ScoreFollower {
             }
             grouped[grouped.count - 1].insert(note.pitch)
         }
-        self.init(referenceMoments: grouped)
+        await update(referenceMoments: grouped)
     }
 
-    /// Creates a follower from pre-grouped reference moments.
+    /// Updates the follower from pre-grouped reference moments.
     ///
     /// Moments are sorted by onset before indexing. No intermediary reference notes are created.
-    public init(referenceMoments: [ReferenceMoment]) {
+    /// Updating replaces the current reference and resets the follower's alignment state.
+    public func update(referenceMoments: [ReferenceMoment]) async {
         let sortedMoments = referenceMoments.sorted { $0.beat < $1.beat }
         moments = sortedMoments
 
