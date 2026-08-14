@@ -73,6 +73,7 @@ public final class ScoreFollower {
     private struct Hypothesis {
         var momentIndex: Int
         var matchedPitches: Set<UInt8>
+        var releasedPitches: Set<UInt8>
         var score: Double
         var recentExactMatches: Int
         var recentlyMatchedMoments: Set<Int>
@@ -98,6 +99,9 @@ public final class ScoreFollower {
         static let recoveryInterval = 4
         static let recoveryHypothesisLimit = 4
         static let exactMatchReward = 4.0
+        static let quietNoteMinimumWeight = 0.5
+        static let releasedChordPitchReward = 0.2
+        static let releasedPitchRearticulationReward = 0.5
         static let unmatchedPitchPenalty = 0.75
         static let completelySkippedMomentPenalty = 1.0
         static let extraPerformedNotePenalty = 2.0
@@ -171,24 +175,35 @@ public final class ScoreFollower {
         reset()
     }
 
-    /// Consumes one timestamped MIDI message and returns the currently inferred position.
+    /// Consumes one timestamped MIDI 1.0 UMP message and returns the inferred score position.
     ///
-    /// Only nonzero-velocity MIDI 1.0 note-on messages affect alignment. Provide the
-    /// Core MIDI receive timestamp unchanged; a zero or non-monotonic timestamp disables
-    /// timing evidence for the affected transition.
+    /// Note-ons contribute pitch and velocity evidence. Note-offs record chord-release evidence
+    /// but do not advance the inferred position. Provide the Core MIDI receive timestamp unchanged;
+    /// a zero or non-monotonic timestamp disables timing evidence for the affected transition.
     public func consume(
         _ message: MIDIUniversalMessage,
         timestamp: MIDITimeStamp
     ) -> Position? {
-        guard let pitch = noteOnPitch(from: message) else { return nil }
-        return consume(noteOn: pitch, timestamp: timestamp)
+        guard let event = noteEvent(from: message) else { return nil }
+
+        switch event {
+        case let .noteOn(pitch, velocity):
+            return consume(noteOn: pitch, velocity: velocity, timestamp: timestamp)
+        case let .noteOff(pitch):
+            consume(noteOff: pitch)
+            return nil
+        }
     }
 
-    /// Consumes a decoded nonzero-velocity note-on pitch with its receive timestamp.
+    /// Consumes a decoded nonzero-velocity note-on with its receive timestamp.
     ///
     /// This internal entry point keeps alignment independent of Core MIDI packet decoding
     /// and supports deterministic package-level verification.
-    func consume(noteOn pitch: UInt8, timestamp: MIDITimeStamp) -> Position? {
+    func consume(
+        noteOn pitch: UInt8,
+        velocity: UInt8 = 127,
+        timestamp: MIDITimeStamp
+    ) -> Position? {
         guard !moments.isEmpty else { return nil }
 
         acceptedNoteCount += 1
@@ -197,14 +212,29 @@ public final class ScoreFollower {
             observations.removeFirst()
         }
 
-        let expanded = hypotheses.flatMap { expand($0, with: pitch, timestamp: timestamp) }
+        let expanded = hypotheses.flatMap {
+            expand($0, with: pitch, velocity: velocity, timestamp: timestamp)
+        }
         hypotheses = prune(expanded)
 
         if shouldAttemptRecovery {
-            hypotheses = prune(hypotheses + recoveryHypotheses(for: pitch, timestamp: timestamp))
+            hypotheses = prune(hypotheses + recoveryHypotheses(for: pitch, velocity: velocity, timestamp: timestamp))
         }
 
         return commitPosition()
+    }
+
+    /// Records that a performed pitch has been released from every currently matching chord.
+    ///
+    /// Releases are retained as soft evidence that the performer completed the current chord;
+    /// they do not independently cause a score advance.
+    func consume(noteOff pitch: UInt8) {
+        hypotheses = hypotheses.map { hypothesis in
+            guard hypothesis.matchedPitches.contains(pitch) else { return hypothesis }
+            var updated = hypothesis
+            updated.releasedPitches.insert(pitch)
+            return updated
+        }
     }
 
     /// Restores the follower to the state before the first reference moment.
@@ -212,6 +242,7 @@ public final class ScoreFollower {
         hypotheses = [Hypothesis(
             momentIndex: -1,
             matchedPitches: [],
+            releasedPitches: [],
             score: 0,
             recentExactMatches: 0,
             recentlyMatchedMoments: [],
@@ -230,19 +261,34 @@ public final class ScoreFollower {
         lastPosition = nil
     }
 
-    /// Extracts MIDI 1.0 UMP note-ons while keeping packet decoding out of the aligner.
-    private func noteOnPitch(from message: MIDIUniversalMessage) -> UInt8? {
-        // `MIDIUniversalMessage` is an inline UMP word container. Reading its first
-        // word by layout keeps this decoding compatible with the SDK's C-imported type.
-        let word = withUnsafeBytes(of: message) { $0.load(as: UInt32.self) }
+    /// A MIDI 1.0 note event decoded from a Universal MIDI Packet.
+    private enum NoteEvent {
+        case noteOn(pitch: UInt8, velocity: UInt8)
+        case noteOff(pitch: UInt8)
+    }
+
+    /// Extracts MIDI 1.0 UMP note events while keeping packet decoding out of the aligner.
+    private func noteEvent(from message: MIDIUniversalMessage) -> NoteEvent? {
+        // `MIDIUniversalMessage` is an inline UMP word container. The UMP words are
+        // native-endian, so reading the first word directly preserves the Core MIDI layout.
+        let word = withUnsafeBytes(of: message) { $0.loadUnaligned(as: UInt32.self) }
         let messageType = UInt8((word >> 28) & 0x0F)
         guard messageType == 0x2 else { return nil }
 
         let status = UInt8((word >> 16) & 0xFF)
         let pitch = UInt8((word >> 8) & 0x7F)
         let velocity = UInt8(word & 0x7F)
-        guard status & 0xF0 == 0x90, velocity > 0 else { return nil }
-        return pitch
+
+        switch status & 0xF0 {
+        case 0x80:
+            return .noteOff(pitch: pitch)
+        case 0x90:
+            return velocity > 0
+                ? .noteOn(pitch: pitch, velocity: velocity)
+                : .noteOff(pitch: pitch)
+        default:
+            return nil
+        }
     }
 
     private var shouldAttemptRecovery: Bool {
@@ -260,6 +306,7 @@ public final class ScoreFollower {
     private func expand(
         _ hypothesis: Hypothesis,
         with pitch: UInt8,
+        velocity: UInt8,
         timestamp: MIDITimeStamp
     ) -> [Hypothesis] {
         var base = hypothesis
@@ -269,7 +316,7 @@ public final class ScoreFollower {
         if base.momentIndex >= 0,
            moments[base.momentIndex].pitches.contains(pitch),
            !base.matchedPitches.contains(pitch) {
-            expansions.append(match(pitch, in: base.momentIndex, from: base, timestamp: timestamp))
+            expansions.append(match(pitch, velocity: velocity, in: base.momentIndex, from: base, timestamp: timestamp))
         }
 
         var extra = base
@@ -283,7 +330,10 @@ public final class ScoreFollower {
         for target in firstTarget...lastTarget {
             guard moments[target].pitches.contains(pitch) else { continue }
             var advanced = advance(base, to: target, timestamp: timestamp)
-            advanced = match(pitch, in: target, from: advanced, timestamp: timestamp)
+            if base.releasedPitches.contains(pitch) {
+                advanced.score += Configuration.releasedPitchRearticulationReward
+            }
+            advanced = match(pitch, velocity: velocity, in: target, from: advanced, timestamp: timestamp)
             expansions.append(advanced)
         }
 
@@ -314,17 +364,24 @@ public final class ScoreFollower {
             }
         }
 
+        let releasedExpectedPitches = hypothesis.releasedPitches
+            .intersection(hypothesis.matchedPitches)
+            .count
+        advanced.score += Configuration.releasedChordPitchReward * Double(releasedExpectedPitches)
+
         applyTimingEvidence(to: &advanced, advancingTo: target, timestamp: timestamp)
         advanced.momentIndex = target
         advanced.matchedPitches = []
+        advanced.releasedPitches = []
         advanced.momentStartedAt = valid(timestamp) ? timestamp : nil
         advanced.lastMatchedAt = valid(timestamp) ? timestamp : nil
         return advanced
     }
 
-    /// Records an exact pitch match and retains only recent, bounded jump evidence.
+    /// Records a velocity-weighted exact pitch match and retains bounded jump evidence.
     private func match(
         _ pitch: UInt8,
+        velocity: UInt8,
         in momentIndex: Int,
         from hypothesis: Hypothesis,
         timestamp: MIDITimeStamp
@@ -332,7 +389,8 @@ public final class ScoreFollower {
         var matched = hypothesis
         matched.momentIndex = momentIndex
         matched.matchedPitches.insert(pitch)
-        matched.score += Configuration.exactMatchReward
+        matched.releasedPitches.remove(pitch)
+        matched.score += Configuration.exactMatchReward * velocityWeight(for: velocity)
         matched.recentExactMatches = min(Configuration.observationLimit, matched.recentExactMatches + 1)
         matched.recentlyMatchedMoments.insert(momentIndex)
         if matched.recentlyMatchedMoments.count > 6,
@@ -346,6 +404,13 @@ public final class ScoreFollower {
             matched.lastMatchedAt = timestamp
         }
         return matched
+    }
+
+    /// Converts MIDI velocity to a bounded confidence weight without excluding quiet notes.
+    private func velocityWeight(for velocity: UInt8) -> Double {
+        let normalized = Double(velocity) / 127
+        return Configuration.quietNoteMinimumWeight
+            + (1 - Configuration.quietNoteMinimumWeight) * normalized
     }
 
     /// Applies soft tempo-relative evidence and updates tempo from complete, reliable moments.
@@ -398,8 +463,9 @@ public final class ScoreFollower {
     private func prune(_ candidates: [Hypothesis]) -> [Hypothesis] {
         var bestByState: [String: Hypothesis] = [:]
         for candidate in candidates {
-            let pitches = candidate.matchedPitches.sorted().map(String.init).joined(separator: ",")
-            let key = "\(candidate.momentIndex)|\(pitches)|\(candidate.lineageID)"
+            let matchedPitches = candidate.matchedPitches.sorted().map(String.init).joined(separator: ",")
+            let releasedPitches = candidate.releasedPitches.sorted().map(String.init).joined(separator: ",")
+            let key = "\(candidate.momentIndex)|\(matchedPitches)|\(releasedPitches)|\(candidate.lineageID)"
             if bestByState[key]?.score ?? -.infinity < candidate.score {
                 bestByState[key] = candidate
             }
@@ -412,6 +478,7 @@ public final class ScoreFollower {
     /// Produces globally located candidates supported by several recent observations.
     private func recoveryHypotheses(
         for latestPitch: UInt8,
+        velocity: UInt8,
         timestamp: MIDITimeStamp
     ) -> [Hypothesis] {
         // The newest pitch anchors candidate endings. Nearby backward alignment then
@@ -438,7 +505,9 @@ public final class ScoreFollower {
             return Hypothesis(
                 momentIndex: candidate.momentIndex,
                 matchedPitches: [latestPitch],
-                score: Configuration.exactMatchReward * Double(candidate.exactMatches) - Configuration.jumpPenalty,
+                releasedPitches: [],
+                score: Configuration.exactMatchReward * Double(candidate.exactMatches) * velocityWeight(for: velocity)
+                    - Configuration.jumpPenalty,
                 recentExactMatches: candidate.exactMatches,
                 recentlyMatchedMoments: candidate.matchedMoments,
                 lineageID: lineageID,

@@ -143,6 +143,46 @@ struct ScoreFollowerTests {
         #expect(positions.last?.beat == 7)
     }
 
+    @Test("retains quiet note-ons as soft alignment evidence")
+    func retainsQuietNotes() {
+        let follower = ScoreFollower(reference: reference([60, 62]))
+
+        _ = follower.consume(noteOn: 60, velocity: 1, timestamp: 1_000)
+        let position = follower.consume(noteOn: 62, velocity: 1, timestamp: 2_000)
+
+        #expect(position?.beat == 1)
+    }
+
+    @Test("note-offs confirm a released chord without advancing")
+    func noteOffsInformChordEvidence() {
+        let follower = ScoreFollower(reference: [
+            .init(beat: 0, pitch: 60),
+            .init(beat: 0, pitch: 64),
+            .init(beat: 1, pitch: 67)
+        ])
+
+        _ = follower.consume(noteOn: 60, timestamp: 1_000)
+        follower.consume(noteOff: 60)
+        #expect(follower.lastPosition?.beat == 0)
+
+        _ = follower.consume(noteOn: 64, timestamp: 2_000)
+        follower.consume(noteOff: 64)
+        let position = follower.consume(noteOn: 67, timestamp: 3_000)
+
+        #expect(position?.beat == 1)
+    }
+
+    @Test("a released repeated pitch is treated as a re-articulation")
+    func recognizesReleasedRepeatedPitch() {
+        let follower = ScoreFollower(reference: reference([60, 60]))
+
+        _ = follower.consume(noteOn: 60, timestamp: 1_000)
+        follower.consume(noteOff: 60)
+        let position = follower.consume(noteOn: 60, timestamp: 2_000)
+
+        #expect(position?.beat == 1)
+    }
+
     @Test("zero timestamps retain pitch-only alignment")
     func zeroTimestampsRetainPitchOnlyAlignment() {
         let follower = ScoreFollower(reference: reference([60, 62, 64]))
