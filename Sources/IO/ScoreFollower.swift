@@ -78,6 +78,9 @@ public final class ScoreFollower {
         var recentlyMatchedMoments: Set<Int>
         var lineageID: Int
         var isRecovery: Bool
+        var momentStartedAt: MIDITimeStamp?
+        var lastMatchedAt: MIDITimeStamp?
+        var ticksPerBeat: Double?
     }
 
     /// A reference location and its bounded evidence from recent performed pitches.
@@ -105,6 +108,10 @@ public final class ScoreFollower {
         static let recoveryWinningStreak = 2
         static let recoveryExactMatches = 4
         static let recoveryDistinctMoments = 3
+        static let timingPenaltyWeight = 0.75
+        static let timingRatioTolerance = 2.0
+        static let practicePauseRatio = 4.0
+        static let tempoSmoothing = 0.25
     }
 
     /// A flattened note representation of the reference, generated only when requested.
@@ -164,20 +171,24 @@ public final class ScoreFollower {
         reset()
     }
 
-    /// Consumes one MIDI message and returns the currently inferred position.
+    /// Consumes one timestamped MIDI message and returns the currently inferred position.
     ///
-    /// Only nonzero-velocity note-on messages affect alignment; all other messages,
-    /// including note-offs and MIDI 2.0 packets, are ignored.
-    public func consume(_ message: MIDIUniversalMessage) -> Position? {
+    /// Only nonzero-velocity MIDI 1.0 note-on messages affect alignment. Provide the
+    /// Core MIDI receive timestamp unchanged; a zero or non-monotonic timestamp disables
+    /// timing evidence for the affected transition.
+    public func consume(
+        _ message: MIDIUniversalMessage,
+        timestamp: MIDITimeStamp
+    ) -> Position? {
         guard let pitch = noteOnPitch(from: message) else { return nil }
-        return consume(noteOn: pitch)
+        return consume(noteOn: pitch, timestamp: timestamp)
     }
 
-    /// Consumes a decoded nonzero-velocity note-on pitch.
+    /// Consumes a decoded nonzero-velocity note-on pitch with its receive timestamp.
     ///
     /// This internal entry point keeps alignment independent of Core MIDI packet decoding
     /// and supports deterministic package-level verification.
-    func consume(noteOn pitch: UInt8) -> Position? {
+    func consume(noteOn pitch: UInt8, timestamp: MIDITimeStamp) -> Position? {
         guard !moments.isEmpty else { return nil }
 
         acceptedNoteCount += 1
@@ -186,11 +197,11 @@ public final class ScoreFollower {
             observations.removeFirst()
         }
 
-        let expanded = hypotheses.flatMap { expand($0, with: pitch) }
+        let expanded = hypotheses.flatMap { expand($0, with: pitch, timestamp: timestamp) }
         hypotheses = prune(expanded)
 
         if shouldAttemptRecovery {
-            hypotheses = prune(hypotheses + recoveryHypotheses(for: pitch))
+            hypotheses = prune(hypotheses + recoveryHypotheses(for: pitch, timestamp: timestamp))
         }
 
         return commitPosition()
@@ -205,7 +216,10 @@ public final class ScoreFollower {
             recentExactMatches: 0,
             recentlyMatchedMoments: [],
             lineageID: 0,
-            isRecovery: false
+            isRecovery: false,
+            momentStartedAt: nil,
+            lastMatchedAt: nil,
+            ticksPerBeat: nil
         )]
         observations.removeAll(keepingCapacity: true)
         acceptedNoteCount = 0
@@ -239,8 +253,15 @@ public final class ScoreFollower {
         return true
     }
 
-    /// Creates bounded local interpretations of one performed pitch from an existing state.
-    private func expand(_ hypothesis: Hypothesis, with pitch: UInt8) -> [Hypothesis] {
+    /// Creates bounded local interpretations of one timestamped performed pitch.
+    ///
+    /// An incomplete reference moment remains open while later notes can complete it. Timing
+    /// only changes the score of alternatives that advance to another reference moment.
+    private func expand(
+        _ hypothesis: Hypothesis,
+        with pitch: UInt8,
+        timestamp: MIDITimeStamp
+    ) -> [Hypothesis] {
         var base = hypothesis
         base.score *= Configuration.scoreDecay
 
@@ -248,7 +269,7 @@ public final class ScoreFollower {
         if base.momentIndex >= 0,
            moments[base.momentIndex].pitches.contains(pitch),
            !base.matchedPitches.contains(pitch) {
-            expansions.append(match(pitch, in: base.momentIndex, from: base))
+            expansions.append(match(pitch, in: base.momentIndex, from: base, timestamp: timestamp))
         }
 
         var extra = base
@@ -260,26 +281,29 @@ public final class ScoreFollower {
         guard firstTarget <= lastTarget else { return expansions }
 
         for target in firstTarget...lastTarget {
-            if moments[target].pitches.contains(pitch) {
-                var advanced = advance(base, to: target)
-                advanced = match(pitch, in: target, from: advanced)
-                expansions.append(advanced)
-            }
+            guard moments[target].pitches.contains(pitch) else { continue }
+            var advanced = advance(base, to: target, timestamp: timestamp)
+            advanced = match(pitch, in: target, from: advanced, timestamp: timestamp)
+            expansions.append(advanced)
         }
 
         // A substitution advances one moment even when the pitch is wrong, avoiding a
         // permanent stall after a single wrong note.
         let substitutionTarget = max(0, base.momentIndex + 1)
         if substitutionTarget < moments.count {
-            var substitution = advance(base, to: substitutionTarget)
+            var substitution = advance(base, to: substitutionTarget, timestamp: timestamp)
             substitution.score -= Configuration.substitutionPenalty
             expansions.append(substitution)
         }
         return expansions
     }
 
-    /// Applies the missing-note costs incurred when advancing between reference moments.
-    private func advance(_ hypothesis: Hypothesis, to target: Int) -> Hypothesis {
+    /// Closes the current moment and applies its missing-note and timing costs before advancing.
+    private func advance(
+        _ hypothesis: Hypothesis,
+        to target: Int,
+        timestamp: MIDITimeStamp
+    ) -> Hypothesis {
         var advanced = hypothesis
         let firstOmitted = max(0, hypothesis.momentIndex)
         if firstOmitted < target {
@@ -289,13 +313,22 @@ public final class ScoreFollower {
                 advanced.score -= Configuration.completelySkippedMomentPenalty
             }
         }
+
+        applyTimingEvidence(to: &advanced, advancingTo: target, timestamp: timestamp)
         advanced.momentIndex = target
         advanced.matchedPitches = []
+        advanced.momentStartedAt = valid(timestamp) ? timestamp : nil
+        advanced.lastMatchedAt = valid(timestamp) ? timestamp : nil
         return advanced
     }
 
     /// Records an exact pitch match and retains only recent, bounded jump evidence.
-    private func match(_ pitch: UInt8, in momentIndex: Int, from hypothesis: Hypothesis) -> Hypothesis {
+    private func match(
+        _ pitch: UInt8,
+        in momentIndex: Int,
+        from hypothesis: Hypothesis,
+        timestamp: MIDITimeStamp
+    ) -> Hypothesis {
         var matched = hypothesis
         matched.momentIndex = momentIndex
         matched.matchedPitches.insert(pitch)
@@ -306,7 +339,59 @@ public final class ScoreFollower {
            let oldest = matched.recentlyMatchedMoments.min() {
             matched.recentlyMatchedMoments.remove(oldest)
         }
+        if valid(timestamp) {
+            if matched.momentStartedAt == nil {
+                matched.momentStartedAt = timestamp
+            }
+            matched.lastMatchedAt = timestamp
+        }
         return matched
+    }
+
+    /// Applies soft tempo-relative evidence and updates tempo from complete, reliable moments.
+    private func applyTimingEvidence(
+        to hypothesis: inout Hypothesis,
+        advancingTo target: Int,
+        timestamp: MIDITimeStamp
+    ) {
+        guard hypothesis.momentIndex >= 0,
+              let momentStartedAt = hypothesis.momentStartedAt,
+              let elapsed = elapsedTicks(from: momentStartedAt, to: timestamp) else {
+            return
+        }
+
+        let beatDistance = moments[target].beat - moments[hypothesis.momentIndex].beat
+        guard beatDistance > 0 else { return }
+
+        let observedTicksPerBeat = elapsed / beatDistance
+        guard observedTicksPerBeat > 0 else { return }
+
+        if let ticksPerBeat = hypothesis.ticksPerBeat {
+            let ratio = observedTicksPerBeat / ticksPerBeat
+            guard ratio <= Configuration.practicePauseRatio else { return }
+
+            let deviation = max(0, abs(Foundation.log(ratio)) - Foundation.log(Configuration.timingRatioTolerance))
+            hypothesis.score -= deviation * Configuration.timingPenaltyWeight
+
+            guard hypothesis.matchedPitches == moments[hypothesis.momentIndex].pitches else {
+                return
+            }
+            hypothesis.ticksPerBeat = ticksPerBeat * (1 - Configuration.tempoSmoothing)
+                + observedTicksPerBeat * Configuration.tempoSmoothing
+        } else if hypothesis.matchedPitches == moments[hypothesis.momentIndex].pitches {
+            hypothesis.ticksPerBeat = observedTicksPerBeat
+        }
+    }
+
+    /// Returns whether a Core MIDI timestamp can be used as timing evidence.
+    private func valid(_ timestamp: MIDITimeStamp) -> Bool {
+        timestamp != 0
+    }
+
+    /// Returns the positive host-clock delta in ticks, ignoring unavailable or reversed input.
+    private func elapsedTicks(from earlier: MIDITimeStamp, to later: MIDITimeStamp) -> Double? {
+        guard valid(later), later > earlier else { return nil }
+        return Double(later - earlier)
     }
 
     /// Keeps only the strongest representative of each alignment state.
@@ -325,7 +410,10 @@ public final class ScoreFollower {
     }
 
     /// Produces globally located candidates supported by several recent observations.
-    private func recoveryHypotheses(for latestPitch: UInt8) -> [Hypothesis] {
+    private func recoveryHypotheses(
+        for latestPitch: UInt8,
+        timestamp: MIDITimeStamp
+    ) -> [Hypothesis] {
         // The newest pitch anchors candidate endings. Nearby backward alignment then
         // favors locations supported by the full observation suffix, not just one pitch.
         var candidates: [RecoveryCandidate] = []
@@ -354,7 +442,10 @@ public final class ScoreFollower {
                 recentExactMatches: candidate.exactMatches,
                 recentlyMatchedMoments: candidate.matchedMoments,
                 lineageID: lineageID,
-                isRecovery: true
+                isRecovery: true,
+                momentStartedAt: valid(timestamp) ? timestamp : nil,
+                lastMatchedAt: valid(timestamp) ? timestamp : nil,
+                ticksPerBeat: nil
             )
         }
     }
