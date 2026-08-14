@@ -11,9 +11,9 @@ import Foundation
 
 /// Follows a reference score from incoming MIDI note-on messages.
 ///
-/// The follower deliberately uses note identity only: tempo, timestamps, durations, and
-/// velocity magnitude do not influence alignment. This makes it suitable for live input
-/// where timing may be expressive or unavailable.
+/// The follower ranks a bounded set of score-alignment hypotheses. Local advances and
+/// distant restarts use the same evidence model, allowing an exact remote phrase to
+/// replace an increasingly implausible local continuation.
 public final class ScoreFollower {
 
     /// A note in the score used as alignment reference.
@@ -39,7 +39,7 @@ public final class ScoreFollower {
         /// The follower's certainty in the selected alignment, from zero through one.
         public let confidence: Double
 
-        /// Whether this update committed a global recovery jump.
+        /// Whether this update committed a distant alignment jump.
         public let didJump: Bool
 
         /// Creates an inferred score position.
@@ -75,40 +75,20 @@ public final class ScoreFollower {
         var matchedPitches: Set<UInt8>
         var releasedPitches: Set<UInt8>
         var score: Double
-        var recentExactMatches: Int
-        var recentlyMatchedMoments: Set<Int>
         var lineageID: Int
-        var isRecovery: Bool
+        var jumpOriginIndex: Int?
+        var jumpExactMatches: Int
+        var jumpMatchedMoments: Set<Int>
         var momentStartedAt: MIDITimeStamp?
         var lastMatchedAt: MIDITimeStamp?
         var ticksPerBeat: Double?
-    }
-
-    /// A reference location and its bounded, chronological alignment with recent performed pitches.
-    private struct RecoveryCandidate {
-        let momentIndex: Int
-        let alignmentScore: Double
-        let exactMatches: Int
-        let matchedMoments: Set<Int>
-    }
-
-    /// One partial forward alignment of the observation history through a reference window.
-    private struct RecoveryAlignment {
-        let nextMomentIndex: Int
-        let score: Double
-        let exactMatches: Int
-        let matchedMoments: Set<Int>
     }
 
     private enum Configuration {
         static let simultaneousBeatEpsilon = 1e-6
         static let beamWidth = 24
         static let localLookAhead = 4
-        static let observationLimit = 12
-        static let recoveryObservationLimit = 6
-        static let recoveryLookAhead = 12
-        static let recoveryInterval = 4
-        static let recoveryHypothesisLimit = 4
+        static let regionSize = 8
         static let exactMatchReward = 4.0
         static let quietNoteMinimumWeight = 0.5
         static let releasedChordPitchReward = 0.2
@@ -119,10 +99,10 @@ public final class ScoreFollower {
         static let substitutionPenalty = 3.0
         static let jumpPenalty = 8.0
         static let scoreDecay = 0.9
-        static let recoveryScoreLead = 6.0
-        static let recoveryWinningStreak = 2
-        static let recoveryExactMatches = 4
-        static let recoveryDistinctMoments = 3
+        static let jumpScoreLead = 6.0
+        static let jumpWinningStreak = 2
+        static let jumpExactMatches = 4
+        static let jumpDistinctMoments = 3
         static let timingPenaltyWeight = 0.75
         static let timingRatioTolerance = 2.0
         static let practicePauseRatio = 4.0
@@ -142,12 +122,10 @@ public final class ScoreFollower {
     private let moments: [ReferenceMoment]
     private let momentsByPitch: [UInt8: [Int]]
     private var hypotheses: [Hypothesis] = []
-    private var observations: [UInt8] = []
-    private var acceptedNoteCount = 0
     private var committedLineageID = 0
     private var nextLineageID = 1
-    private var recoveryWinningLineageID: Int?
-    private var recoveryWinningStreak = 0
+    private var winningJumpLineageID: Int?
+    private var jumpWinningStreak = 0
 
     /// Creates a follower for the supplied score reference.
     ///
@@ -216,21 +194,10 @@ public final class ScoreFollower {
     ) -> Position? {
         guard !moments.isEmpty else { return nil }
 
-        acceptedNoteCount += 1
-        observations.append(pitch)
-        if observations.count > Configuration.observationLimit {
-            observations.removeFirst()
-        }
-
         let expanded = hypotheses.flatMap {
             expand($0, with: pitch, velocity: velocity, timestamp: timestamp)
         }
         hypotheses = prune(expanded)
-
-        if shouldStartRecovery {
-            hypotheses = prune(hypotheses + recoveryHypotheses(for: pitch, velocity: velocity, timestamp: timestamp))
-        }
-
         return commitPosition()
     }
 
@@ -254,53 +221,22 @@ public final class ScoreFollower {
             matchedPitches: [],
             releasedPitches: [],
             score: 0,
-            recentExactMatches: 0,
-            recentlyMatchedMoments: [],
             lineageID: 0,
-            isRecovery: false,
+            jumpOriginIndex: nil,
+            jumpExactMatches: 0,
+            jumpMatchedMoments: [],
             momentStartedAt: nil,
             lastMatchedAt: nil,
             ticksPerBeat: nil
         )]
-        observations.removeAll(keepingCapacity: true)
-        acceptedNoteCount = 0
         committedLineageID = 0
         nextLineageID = 1
-        recoveryWinningLineageID = nil
-        recoveryWinningStreak = 0
+        winningJumpLineageID = nil
+        jumpWinningStreak = 0
         lastPosition = nil
     }
 
-    private var shouldAttemptRecovery: Bool {
-        guard !observations.isEmpty else { return false }
-        guard acceptedNoteCount.isMultiple(of: Configuration.recoveryInterval) else {
-            return bestCommittedHypothesis?.score ?? 0 < -4
-        }
-        return true
-    }
-
-    /// Whether recovery should begin, including a fresh attempt when local continuity is at the score end.
-    private var shouldStartRecovery: Bool {
-        guard shouldAttemptRecovery else { return false }
-        guard bestCommittedHypothesis?.momentIndex != moments.indices.last else { return true }
-        return !hasEstablishedRecovery
-    }
-
-    /// Whether a recovery lineage at a different location has enough evidence to compete for commitment.
-    private var hasEstablishedRecovery: Bool {
-        guard let committed = bestCommittedHypothesis else { return false }
-        return hypotheses.contains {
-            $0.isRecovery &&
-            $0.momentIndex != committed.momentIndex &&
-            $0.recentExactMatches >= Configuration.recoveryExactMatches &&
-            $0.recentlyMatchedMoments.count >= Configuration.recoveryDistinctMoments
-        }
-    }
-
-    /// Creates bounded local interpretations of one timestamped performed pitch.
-    ///
-    /// An incomplete reference moment remains open while later notes can complete it. Timing
-    /// only changes the score of alternatives that advance to another reference moment.
+    /// Produces every local and distant interpretation of one performed pitch.
     private func expand(
         _ hypothesis: Hypothesis,
         with pitch: UInt8,
@@ -321,29 +257,45 @@ public final class ScoreFollower {
         extra.score -= Configuration.extraPerformedNotePenalty
         expansions.append(extra)
 
-        let firstTarget = max(0, base.momentIndex + 1)
-        let lastTarget = min(moments.count - 1, base.momentIndex + Configuration.localLookAhead)
-        guard firstTarget <= lastTarget else { return expansions }
-
-        for target in firstTarget...lastTarget {
-            guard moments[target].pitches.contains(pitch) else { continue }
-            var advanced = advance(base, to: target, timestamp: timestamp)
-            if base.releasedPitches.contains(pitch) {
-                advanced.score += Configuration.releasedPitchRearticulationReward
+        let firstLocalTarget = max(0, base.momentIndex + 1)
+        let lastLocalTarget = min(moments.count - 1, base.momentIndex + Configuration.localLookAhead)
+        if firstLocalTarget <= lastLocalTarget {
+            for target in firstLocalTarget...lastLocalTarget {
+                guard moments[target].pitches.contains(pitch) else { continue }
+                var advanced = advance(base, to: target, timestamp: timestamp)
+                if base.releasedPitches.contains(pitch) {
+                    advanced.score += Configuration.releasedPitchRearticulationReward
+                }
+                expansions.append(match(pitch, velocity: velocity, in: target, from: advanced, timestamp: timestamp))
             }
-            advanced = match(pitch, velocity: velocity, in: target, from: advanced, timestamp: timestamp)
-            expansions.append(advanced)
+
+            let substitutionTarget = max(0, base.momentIndex + 1)
+            if substitutionTarget < moments.count {
+                var substitution = advance(base, to: substitutionTarget, timestamp: timestamp)
+                substitution.score -= Configuration.substitutionPenalty
+                expansions.append(substitution)
+            }
         }
 
-        // A substitution advances one moment even when the pitch is wrong, avoiding a
-        // permanent stall after a single wrong note.
-        let substitutionTarget = max(0, base.momentIndex + 1)
-        if substitutionTarget < moments.count {
-            var substitution = advance(base, to: substitutionTarget, timestamp: timestamp)
-            substitution.score -= Configuration.substitutionPenalty
-            expansions.append(substitution)
+        for target in momentsByPitch[pitch, default: []] {
+            guard isDistant(target, from: base.momentIndex) else { continue }
+            var restart = restart(from: base, to: target, timestamp: timestamp)
+            restart.score -= Configuration.jumpPenalty
+            restart.lineageID = nextLineageID
+            nextLineageID += 1
+            restart.jumpOriginIndex = base.momentIndex
+            restart.jumpExactMatches = 0
+            restart.jumpMatchedMoments = []
+            expansions.append(match(pitch, velocity: velocity, in: target, from: restart, timestamp: timestamp))
         }
+
         return expansions
+    }
+
+    /// Returns whether transitioning to a score moment should be treated as a distant restart.
+    private func isDistant(_ target: Int, from origin: Int) -> Bool {
+        guard origin >= 0 else { return target > Configuration.localLookAhead }
+        return target < origin || target > origin + Configuration.localLookAhead
     }
 
     /// Closes the current moment and applies its missing-note and timing costs before advancing.
@@ -357,7 +309,8 @@ public final class ScoreFollower {
         if firstOmitted < target {
             for index in firstOmitted..<target {
                 let alreadyMatched = index == hypothesis.momentIndex ? hypothesis.matchedPitches : []
-                advanced.score -= Configuration.unmatchedPitchPenalty * Double(moments[index].pitches.subtracting(alreadyMatched).count)
+                advanced.score -= Configuration.unmatchedPitchPenalty
+                    * Double(moments[index].pitches.subtracting(alreadyMatched).count)
                 advanced.score -= Configuration.completelySkippedMomentPenalty
             }
         }
@@ -376,7 +329,23 @@ public final class ScoreFollower {
         return advanced
     }
 
-    /// Records a velocity-weighted exact pitch match and retains bounded jump evidence.
+    /// Moves a hypothesis to a distant moment without charging local skipped-moment costs.
+    private func restart(
+        from hypothesis: Hypothesis,
+        to target: Int,
+        timestamp: MIDITimeStamp
+    ) -> Hypothesis {
+        var restarted = hypothesis
+        restarted.momentIndex = target
+        restarted.matchedPitches = []
+        restarted.releasedPitches = []
+        restarted.momentStartedAt = valid(timestamp) ? timestamp : nil
+        restarted.lastMatchedAt = valid(timestamp) ? timestamp : nil
+        restarted.ticksPerBeat = nil
+        return restarted
+    }
+
+    /// Records a velocity-weighted exact pitch match and updates any pending jump evidence.
     private func match(
         _ pitch: UInt8,
         velocity: UInt8,
@@ -389,12 +358,12 @@ public final class ScoreFollower {
         matched.matchedPitches.insert(pitch)
         matched.releasedPitches.remove(pitch)
         matched.score += Configuration.exactMatchReward * velocityWeight(for: velocity)
-        matched.recentExactMatches = min(Configuration.observationLimit, matched.recentExactMatches + 1)
-        matched.recentlyMatchedMoments.insert(momentIndex)
-        if matched.recentlyMatchedMoments.count > 6,
-           let oldest = matched.recentlyMatchedMoments.min() {
-            matched.recentlyMatchedMoments.remove(oldest)
+
+        if matched.jumpOriginIndex != nil {
+            matched.jumpExactMatches += 1
+            matched.jumpMatchedMoments.insert(momentIndex)
         }
+
         if valid(timestamp) {
             if matched.momentStartedAt == nil {
                 matched.momentStartedAt = timestamp
@@ -433,12 +402,13 @@ public final class ScoreFollower {
             let ratio = observedTicksPerBeat / ticksPerBeat
             guard ratio <= Configuration.practicePauseRatio else { return }
 
-            let deviation = max(0, abs(Foundation.log(ratio)) - Foundation.log(Configuration.timingRatioTolerance))
+            let deviation = max(
+                0,
+                abs(Foundation.log(ratio)) - Foundation.log(Configuration.timingRatioTolerance)
+            )
             hypothesis.score -= deviation * Configuration.timingPenaltyWeight
 
-            guard hypothesis.matchedPitches == moments[hypothesis.momentIndex].pitches else {
-                return
-            }
+            guard hypothesis.matchedPitches == moments[hypothesis.momentIndex].pitches else { return }
             hypothesis.ticksPerBeat = ticksPerBeat * (1 - Configuration.tempoSmoothing)
                 + observedTicksPerBeat * Configuration.tempoSmoothing
         } else if hypothesis.matchedPitches == moments[hypothesis.momentIndex].pitches {
@@ -457,208 +427,120 @@ public final class ScoreFollower {
         return Double(later - earlier)
     }
 
-    /// Keeps only the strongest representative of each alignment state.
+    /// Retains strong, geographically diverse candidate alignments.
     private func prune(_ candidates: [Hypothesis]) -> [Hypothesis] {
         var bestByState: [String: Hypothesis] = [:]
         for candidate in candidates {
-            let matchedPitches = candidate.matchedPitches.sorted().map(String.init).joined(separator: ",")
-            let releasedPitches = candidate.releasedPitches.sorted().map(String.init).joined(separator: ",")
-            let key = "\(candidate.momentIndex)|\(matchedPitches)|\(releasedPitches)|\(candidate.lineageID)"
+            let matched = candidate.matchedPitches.sorted().map(String.init).joined(separator: ",")
+            let released = candidate.releasedPitches.sorted().map(String.init).joined(separator: ",")
+            let key = [
+                String(candidate.momentIndex),
+                matched,
+                released,
+                String(candidate.lineageID)
+            ].joined(separator: "|")
             if bestByState[key]?.score ?? -.infinity < candidate.score {
                 bestByState[key] = candidate
             }
         }
-        return bestByState.values.sorted {
-            $0.score == $1.score ? $0.lineageID < $1.lineageID : $0.score > $1.score
-        }.prefix(Configuration.beamWidth).map { $0 }
+
+        let sorted = bestByState.values.sorted(by: sortHypotheses)
+        var selected: [Hypothesis] = []
+        var representedRegions: Set<Int> = []
+        for candidate in sorted {
+            let region = candidate.momentIndex < 0 ? -1 : candidate.momentIndex / Configuration.regionSize
+            guard representedRegions.insert(region).inserted else { continue }
+            selected.append(candidate)
+            if selected.count == Configuration.beamWidth { return selected }
+        }
+
+        for candidate in sorted where !selected.contains(where: { $0.lineageID == candidate.lineageID && $0.momentIndex == candidate.momentIndex && $0.matchedPitches == candidate.matchedPitches }) {
+            selected.append(candidate)
+            if selected.count == Configuration.beamWidth { break }
+        }
+        return selected
     }
 
-    /// Produces global candidates by aligning the chronological observation history to each endpoint.
-    private func recoveryHypotheses(
-        for latestPitch: UInt8,
-        velocity: UInt8,
-        timestamp: MIDITimeStamp
-    ) -> [Hypothesis] {
-        var candidates: [RecoveryCandidate] = []
-        for momentIndex in momentsByPitch[latestPitch, default: []] {
-            let evidence = recoveryEvidence(endingAt: momentIndex)
-            guard evidence.exactMatches >= 2 else { continue }
-            candidates.append(RecoveryCandidate(
-                momentIndex: momentIndex,
-                alignmentScore: evidence.score,
-                exactMatches: evidence.exactMatches,
-                matchedMoments: evidence.moments
-            ))
-        }
-        candidates.sort {
-            $0.alignmentScore == $1.alignmentScore
-                ? $0.momentIndex < $1.momentIndex
-                : $0.alignmentScore > $1.alignmentScore
-        }
-
-        return candidates.prefix(Configuration.recoveryHypothesisLimit).map { candidate in
-            let lineageID = nextLineageID
-            nextLineageID += 1
-            return Hypothesis(
-                momentIndex: candidate.momentIndex,
-                matchedPitches: [latestPitch],
-                releasedPitches: [],
-                score: candidate.alignmentScore * velocityWeight(for: velocity) - Configuration.jumpPenalty,
-                recentExactMatches: candidate.exactMatches,
-                recentlyMatchedMoments: candidate.matchedMoments,
-                lineageID: lineageID,
-                isRecovery: true,
-                momentStartedAt: valid(timestamp) ? timestamp : nil,
-                lastMatchedAt: valid(timestamp) ? timestamp : nil,
-                ticksPerBeat: nil
-            )
-        }
+    /// Orders hypotheses by score while preserving a deterministic lineage tiebreaker.
+    private func sortHypotheses(_ lhs: Hypothesis, _ rhs: Hypothesis) -> Bool {
+        lhs.score == rhs.score ? lhs.lineageID < rhs.lineageID : lhs.score > rhs.score
     }
 
-    /// Aligns the observation history forward to a candidate endpoint, tolerating small omissions and extras.
-    private func recoveryEvidence(endingAt endingIndex: Int) -> (
-        score: Double,
-        exactMatches: Int,
-        moments: Set<Int>
-    ) {
-        let firstIndex = max(0, endingIndex - Configuration.observationLimit * Configuration.localLookAhead)
-        let history = observations.suffix(Configuration.recoveryObservationLimit).dropLast()
-        var alignments = (firstIndex...endingIndex).map {
-            RecoveryAlignment(nextMomentIndex: $0, score: 0, exactMatches: 0, matchedMoments: [])
-        }
-
-        for pitch in history {
-            var next: [RecoveryAlignment] = []
-            for alignment in alignments {
-                next.append(RecoveryAlignment(
-                    nextMomentIndex: alignment.nextMomentIndex,
-                    score: alignment.score - Configuration.extraPerformedNotePenalty,
-                    exactMatches: alignment.exactMatches,
-                    matchedMoments: alignment.matchedMoments
-                ))
-
-                let lastTarget = min(endingIndex - 1, alignment.nextMomentIndex + Configuration.recoveryLookAhead)
-                guard alignment.nextMomentIndex <= lastTarget else { continue }
-                for target in alignment.nextMomentIndex...lastTarget {
-                    guard moments[target].pitches.contains(pitch) else { continue }
-                    let skippedMoments = target - alignment.nextMomentIndex
-                    next.append(RecoveryAlignment(
-                        nextMomentIndex: target + 1,
-                        score: alignment.score
-                            + Configuration.exactMatchReward
-                            - Double(skippedMoments) * Configuration.completelySkippedMomentPenalty,
-                        exactMatches: alignment.exactMatches + 1,
-                        matchedMoments: alignment.matchedMoments.union([target])
-                    ))
-                }
-            }
-            alignments = pruneRecoveryAlignments(next)
-        }
-
-        let completed = alignments.compactMap { alignment -> RecoveryAlignment? in
-            guard alignment.nextMomentIndex <= endingIndex else { return nil }
-            let skippedMoments = endingIndex - alignment.nextMomentIndex
-            return RecoveryAlignment(
-                nextMomentIndex: endingIndex + 1,
-                score: alignment.score
-                    + Configuration.exactMatchReward
-                    - Double(skippedMoments) * Configuration.completelySkippedMomentPenalty,
-                exactMatches: alignment.exactMatches + 1,
-                matchedMoments: alignment.matchedMoments.union([endingIndex])
-            )
-        }
-
-        guard let best = completed.max(by: { $0.score < $1.score }) else {
-            return (-.infinity, 0, [])
-        }
-        return (best.score, best.exactMatches, best.matchedMoments)
-    }
-
-    /// Keeps a bounded set of the strongest partial recovery alignments at each score cursor.
-    private func pruneRecoveryAlignments(_ alignments: [RecoveryAlignment]) -> [RecoveryAlignment] {
-        var bestByCursor: [Int: RecoveryAlignment] = [:]
-        for alignment in alignments {
-            if bestByCursor[alignment.nextMomentIndex]?.score ?? -.infinity < alignment.score {
-                bestByCursor[alignment.nextMomentIndex] = alignment
-            }
-        }
-        return bestByCursor.values
-            .sorted { $0.score > $1.score }
-            .prefix(Configuration.beamWidth)
-            .map { $0 }
-    }
-
-    /// Selects the committed lineage and applies hysteresis before accepting a recovery.
+    /// Selects the committed lineage and applies confirmation before accepting a distant jump.
     private func commitPosition() -> Position? {
         guard let committed = bestCommittedHypothesis else { return nil }
 
-        if let recovery = hypotheses
-            .filter({ $0.isRecovery })
-            .sorted(by: { $0.score > $1.score })
-            .first,
-           canCommit(recovery: recovery, over: committed) {
-            if recoveryWinningLineageID == recovery.lineageID {
-                recoveryWinningStreak += 1
+        if let jump = bestJumpHypothesis,
+           canCommit(jump: jump, over: committed) {
+            if winningJumpLineageID == jump.lineageID {
+                jumpWinningStreak += 1
             } else {
-                recoveryWinningLineageID = recovery.lineageID
-                recoveryWinningStreak = 1
+                winningJumpLineageID = jump.lineageID
+                jumpWinningStreak = 1
             }
 
-            if recoveryWinningStreak >= Configuration.recoveryWinningStreak {
-                committedLineageID = recovery.lineageID
+            if jumpWinningStreak >= Configuration.jumpWinningStreak {
+                committedLineageID = jump.lineageID
                 hypotheses = hypotheses.map {
-                    guard $0.lineageID == recovery.lineageID else { return $0 }
+                    guard $0.lineageID == jump.lineageID else { return $0 }
                     var promoted = $0
-                    promoted.isRecovery = false
+                    promoted.jumpOriginIndex = nil
+                    promoted.jumpExactMatches = 0
+                    promoted.jumpMatchedMoments = []
                     return promoted
                 }
-                recoveryWinningLineageID = nil
-                recoveryWinningStreak = 0
-                return makePosition(from: recovery, didJump: true)
+                winningJumpLineageID = nil
+                jumpWinningStreak = 0
+                return makePosition(from: jump, didJump: true)
             }
         } else {
-            recoveryWinningLineageID = nil
-            recoveryWinningStreak = 0
+            winningJumpLineageID = nil
+            jumpWinningStreak = 0
         }
 
         return makePosition(from: committed, didJump: false)
     }
 
+    /// Returns the strongest hypothesis in the currently committed lineage.
     private var bestCommittedHypothesis: Hypothesis? {
         hypotheses
             .filter { $0.lineageID == committedLineageID }
-            .max { $0.score < $1.score }
+            .max(by: { $0.score < $1.score })
     }
 
-    /// Requires sustained, multi-moment evidence before a remote lineage can replace continuity.
-    ///
-    /// At the final moment, a matching recovery may replace continuity without a score lead because
-    /// the committed path has no forward match available to validate its retained score.
-    private func canCommit(recovery: Hypothesis, over committed: Hypothesis) -> Bool {
-        guard recovery.momentIndex != committed.momentIndex,
-              recovery.recentExactMatches >= Configuration.recoveryExactMatches,
-              recovery.recentlyMatchedMoments.count >= Configuration.recoveryDistinctMoments else {
+    /// Returns the strongest uncommitted hypothesis created by a distant restart.
+    private var bestJumpHypothesis: Hypothesis? {
+        hypotheses
+            .filter { $0.lineageID != committedLineageID && $0.jumpOriginIndex != nil }
+            .max(by: { $0.score < $1.score })
+    }
+
+    /// Returns whether a distant hypothesis has enough sustained evidence to replace continuity.
+    private func canCommit(jump: Hypothesis, over committed: Hypothesis) -> Bool {
+        guard jump.momentIndex != committed.momentIndex,
+              jump.jumpExactMatches >= Configuration.jumpExactMatches,
+              jump.jumpMatchedMoments.count >= Configuration.jumpDistinctMoments else {
             return false
         }
         guard committed.momentIndex == moments.indices.last else {
-            return recovery.score >= committed.score + Configuration.recoveryScoreLead
+            return jump.score >= committed.score + Configuration.jumpScoreLead
         }
         return true
     }
 
-    /// Computes certainty from a materially different competing lineage.
+    /// Creates a public position and derives confidence from the strongest competing lineage.
     private func makePosition(from hypothesis: Hypothesis, didJump: Bool) -> Position? {
         guard hypothesis.momentIndex >= 0 else { return nil }
 
         let alternative = hypotheses
             .filter { $0.lineageID != hypothesis.lineageID }
-            .max { $0.score < $1.score }
+            .max(by: { $0.score < $1.score })
         let confidence: Double
         if let alternative {
             let gap = hypothesis.score - alternative.score
             confidence = 1 / (1 + Foundation.exp(-gap / 3))
         } else {
-            confidence = min(0.9, 0.5 + 0.08 * Double(hypothesis.recentExactMatches))
+            confidence = 0.9
         }
 
         let position = Position(

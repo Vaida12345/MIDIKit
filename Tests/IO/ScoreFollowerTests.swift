@@ -59,6 +59,36 @@ struct ScoreFollowerTests {
         #expect(recoveredPosition?.beat == 1)
     }
 
+    /// Ensures local alignment continues after a performed phrase omits a score note.
+    @Test("matches later notes after a skipped score note")
+    func toleratesSkippedNote() {
+        let follower = ScoreFollower(reference: reference([60, 62, 64, 65, 67]))
+
+        let positions = consume([60, 64, 65, 67], with: follower)
+
+        #expect(positions.last?.beat == 4)
+    }
+
+    /// Ensures an extra performed pitch does not prevent later score alignment.
+    @Test("matches later notes after an extra performed note")
+    func toleratesExtraNote() {
+        let follower = ScoreFollower(reference: reference([60, 62, 64, 65, 67]))
+
+        let positions = consume([60, 62, 61, 64, 65, 67], with: follower)
+
+        #expect(positions.last?.beat == 4)
+    }
+
+    /// Ensures one incorrect performed pitch can be treated as a substitution.
+    @Test("matches later notes after an incorrect performed note")
+    func toleratesIncorrectNote() {
+        let follower = ScoreFollower(reference: reference([60, 62, 64, 65, 67]))
+
+        let positions = consume([60, 62, 63, 65, 67], with: follower)
+
+        #expect(positions.last?.beat == 4)
+    }
+
     @Test("matches chord pitches independent of arrival order")
     func matchesChordInAnyOrder() {
         let follower = ScoreFollower(reference: [
@@ -164,6 +194,24 @@ struct ScoreFollowerTests {
         let positions = consume(Array(pitches[8...15]), with: follower)
 
         #expect(positions.last?.beat == 15)
+        #expect(positions.contains { $0.didJump })
+    }
+
+
+    /// Ensures a remote exact phrase can replace an established but error-prone local continuation.
+    @Test("jumps to a perfect remote phrase over an imperfect local continuation")
+    func prefersPerfectRemotePhrase() {
+        let prefix: [UInt8] = [40, 41, 42, 43]
+        let localContinuation: [UInt8] = [60, 61, 70, 71, 72, 73, 74]
+        let bridge: [UInt8] = [80, 81, 82, 83, 84, 85, 86, 87, 88, 89]
+        let remoteContinuation: [UInt8] = [60, 61, 62, 63, 64, 65, 66, 67]
+        let follower = ScoreFollower(
+            reference: reference(prefix + localContinuation + bridge + remoteContinuation)
+        )
+
+        let positions = consume(prefix + remoteContinuation, with: follower)
+
+        #expect(positions.last?.beat == 28)
         #expect(positions.contains { $0.didJump })
     }
 
