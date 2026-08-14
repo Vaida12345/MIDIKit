@@ -84,9 +84,18 @@ public final class ScoreFollower {
         var ticksPerBeat: Double?
     }
 
-    /// A reference location and its bounded evidence from recent performed pitches.
+    /// A reference location and its bounded, chronological alignment with recent performed pitches.
     private struct RecoveryCandidate {
         let momentIndex: Int
+        let alignmentScore: Double
+        let exactMatches: Int
+        let matchedMoments: Set<Int>
+    }
+
+    /// One partial forward alignment of the observation history through a reference window.
+    private struct RecoveryAlignment {
+        let nextMomentIndex: Int
+        let score: Double
         let exactMatches: Int
         let matchedMoments: Set<Int>
     }
@@ -96,6 +105,7 @@ public final class ScoreFollower {
         static let beamWidth = 24
         static let localLookAhead = 4
         static let observationLimit = 12
+        static let recoveryLookAhead = 12
         static let recoveryInterval = 4
         static let recoveryHypothesisLimit = 4
         static let exactMatchReward = 4.0
@@ -444,28 +454,27 @@ public final class ScoreFollower {
         }.prefix(Configuration.beamWidth).map { $0 }
     }
 
-    /// Produces globally located candidates supported by several recent observations.
+    /// Produces global candidates by aligning the chronological observation history to each endpoint.
     private func recoveryHypotheses(
         for latestPitch: UInt8,
         velocity: UInt8,
         timestamp: MIDITimeStamp
     ) -> [Hypothesis] {
-        // The newest pitch anchors candidate endings. Nearby backward alignment then
-        // favors locations supported by the full observation suffix, not just one pitch.
         var candidates: [RecoveryCandidate] = []
         for momentIndex in momentsByPitch[latestPitch, default: []] {
             let evidence = recoveryEvidence(endingAt: momentIndex)
             guard evidence.exactMatches >= 2 else { continue }
             candidates.append(RecoveryCandidate(
                 momentIndex: momentIndex,
+                alignmentScore: evidence.score,
                 exactMatches: evidence.exactMatches,
                 matchedMoments: evidence.moments
             ))
         }
         candidates.sort {
-            $0.exactMatches == $1.exactMatches
+            $0.alignmentScore == $1.alignmentScore
                 ? $0.momentIndex < $1.momentIndex
-                : $0.exactMatches > $1.exactMatches
+                : $0.alignmentScore > $1.alignmentScore
         }
 
         return candidates.prefix(Configuration.recoveryHypothesisLimit).map { candidate in
@@ -475,8 +484,7 @@ public final class ScoreFollower {
                 momentIndex: candidate.momentIndex,
                 matchedPitches: [latestPitch],
                 releasedPitches: [],
-                score: Configuration.exactMatchReward * Double(candidate.exactMatches) * velocityWeight(for: velocity)
-                    - Configuration.jumpPenalty,
+                score: candidate.alignmentScore * velocityWeight(for: velocity) - Configuration.jumpPenalty,
                 recentExactMatches: candidate.exactMatches,
                 recentlyMatchedMoments: candidate.matchedMoments,
                 lineageID: lineageID,
@@ -488,25 +496,77 @@ public final class ScoreFollower {
         }
     }
 
-    /// Matches the observation suffix backwards in a small reference neighbourhood.
-    private func recoveryEvidence(endingAt index: Int) -> (exactMatches: Int, moments: Set<Int>) {
-        var cursor = index
-        var exactMatches = 0
-        var matchedMoments: Set<Int> = []
+    /// Aligns the observation history forward to a candidate endpoint, tolerating small omissions and extras.
+    private func recoveryEvidence(endingAt endingIndex: Int) -> (
+        score: Double,
+        exactMatches: Int,
+        moments: Set<Int>
+    ) {
+        let firstIndex = max(0, endingIndex - Configuration.observationLimit * Configuration.localLookAhead)
+        let history = observations.dropLast()
+        var alignments = (firstIndex...endingIndex).map {
+            RecoveryAlignment(nextMomentIndex: $0, score: 0, exactMatches: 0, matchedMoments: [])
+        }
 
-        for pitch in observations.reversed() {
-            guard cursor >= 0 else { break }
-            if moments[cursor].pitches.contains(pitch) {
-                exactMatches += 1
-                matchedMoments.insert(cursor)
-                cursor -= 1
-            } else if cursor > 0, moments[cursor - 1].pitches.contains(pitch) {
-                exactMatches += 1
-                matchedMoments.insert(cursor - 1)
-                cursor -= 2
+        for pitch in history {
+            var next: [RecoveryAlignment] = []
+            for alignment in alignments {
+                next.append(RecoveryAlignment(
+                    nextMomentIndex: alignment.nextMomentIndex,
+                    score: alignment.score - Configuration.extraPerformedNotePenalty,
+                    exactMatches: alignment.exactMatches,
+                    matchedMoments: alignment.matchedMoments
+                ))
+
+                let lastTarget = min(endingIndex - 1, alignment.nextMomentIndex + Configuration.recoveryLookAhead)
+                guard alignment.nextMomentIndex <= lastTarget else { continue }
+                for target in alignment.nextMomentIndex...lastTarget {
+                    guard moments[target].pitches.contains(pitch) else { continue }
+                    let skippedMoments = target - alignment.nextMomentIndex
+                    next.append(RecoveryAlignment(
+                        nextMomentIndex: target + 1,
+                        score: alignment.score
+                            + Configuration.exactMatchReward
+                            - Double(skippedMoments) * Configuration.completelySkippedMomentPenalty,
+                        exactMatches: alignment.exactMatches + 1,
+                        matchedMoments: alignment.matchedMoments.union([target])
+                    ))
+                }
+            }
+            alignments = pruneRecoveryAlignments(next)
+        }
+
+        let completed = alignments.compactMap { alignment -> RecoveryAlignment? in
+            guard alignment.nextMomentIndex <= endingIndex else { return nil }
+            let skippedMoments = endingIndex - alignment.nextMomentIndex
+            return RecoveryAlignment(
+                nextMomentIndex: endingIndex + 1,
+                score: alignment.score
+                    + Configuration.exactMatchReward
+                    - Double(skippedMoments) * Configuration.completelySkippedMomentPenalty,
+                exactMatches: alignment.exactMatches + 1,
+                matchedMoments: alignment.matchedMoments.union([endingIndex])
+            )
+        }
+
+        guard let best = completed.max(by: { $0.score < $1.score }) else {
+            return (-.infinity, 0, [])
+        }
+        return (best.score, best.exactMatches, best.matchedMoments)
+    }
+
+    /// Keeps a bounded set of the strongest partial recovery alignments at each score cursor.
+    private func pruneRecoveryAlignments(_ alignments: [RecoveryAlignment]) -> [RecoveryAlignment] {
+        var bestByCursor: [Int: RecoveryAlignment] = [:]
+        for alignment in alignments {
+            if bestByCursor[alignment.nextMomentIndex]?.score ?? -.infinity < alignment.score {
+                bestByCursor[alignment.nextMomentIndex] = alignment
             }
         }
-        return (exactMatches, matchedMoments)
+        return bestByCursor.values
+            .sorted { $0.score > $1.score }
+            .prefix(Configuration.beamWidth)
+            .map { $0 }
     }
 
     /// Selects the committed lineage and applies hysteresis before accepting a recovery.

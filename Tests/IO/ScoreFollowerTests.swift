@@ -143,6 +143,17 @@ struct ScoreFollowerTests {
         #expect(positions.last?.beat == 7)
     }
 
+    @Test("recovers backward from an overrun using recent history")
+    func recoversBackwardFromOverrun() {
+        let follower = ScoreFollower(reference: reference([60, 62, 64, 65, 67, 69, 71, 72, 75, 77, 79, 81]))
+
+        _ = consume([60, 62, 64, 65, 67, 69, 71, 72, 75, 77, 79, 81], with: follower)
+        let positions = consume([60, 62, 64, 65, 67, 69, 71, 72, 75], with: follower)
+
+        #expect(positions.last?.beat == 8)
+        #expect(positions.contains { $0.didJump })
+    }
+
     @Test("retains quiet note-ons as soft alignment evidence")
     func retainsQuietNotes() {
         let follower = ScoreFollower(reference: reference([60, 62]))
