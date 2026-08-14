@@ -284,7 +284,7 @@ public final class MIDIInputController {
     
     
     /// A selectable Core MIDI input endpoint.
-    public struct Source: Identifiable, Equatable {
+    public struct Source: Identifiable, Equatable, Hashable, Sendable {
         
         /// A stable Core MIDI identifier for this source.
         public let id: MIDIUniqueID

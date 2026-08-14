@@ -17,7 +17,7 @@ import Foundation
 public final class ScoreFollower {
 
     /// A note in the score used as alignment reference.
-    public struct ReferenceNote: Sendable {
+    public struct ReferenceNote: Sendable, Hashable, BitwiseCopyable {
         /// Onset within the reference, measured in beats.
         public let beat: Double
 
@@ -32,7 +32,7 @@ public final class ScoreFollower {
     }
 
     /// The follower's current score location.
-    public struct Position: Sendable {
+    public struct Position: Sendable, Hashable, BitwiseCopyable {
         /// The beat of the matched reference moment.
         public let beat: Double
 
@@ -51,7 +51,7 @@ public final class ScoreFollower {
     }
 
     /// A simultaneous collection of pitches in the score reference.
-    public struct ReferenceMoment: Sendable {
+    public struct ReferenceMoment: Sendable, Hashable {
         /// Onset within the reference, measured in beats.
         public let beat: Double
 
