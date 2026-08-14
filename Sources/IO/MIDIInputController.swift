@@ -11,6 +11,22 @@ import OSLog
 
 
 /// Coordinates connections to Core MIDI input sources and publishes their incoming events.
+///
+/// ## Lifecycle
+///
+/// Keep one controller for the part of your app that receives MIDI—normally
+/// ``MIDIInputController/shared``. At each stage, use the following API:
+///
+/// 1. **Prepare:** Call ``initialize()`` if you want to report setup failures before a
+///    source is selected. This is optional because ``connect(to:)`` initializes lazily.
+/// 2. **Choose and connect:** Show ``availableSources`` and pass the selected source to
+///    ``connect(to:)``. For an automatic default, call ``connectToFirstAvailableSource()``.
+/// 3. **Receive:** Iterate over a new stream from ``events()`` in a task. Each caller gets
+///    an independent stream; cancel that task when the receiving view or feature ends.
+/// 4. **Reconnect or finish:** When a new input source appears while no source is connected,
+///    the controller connects to it automatically. Set ``automaticallyReconnect`` before
+///    connecting when a temporarily unavailable preferred device should reconnect. Call
+///    ``disconnect()`` when input is no longer needed or when the person explicitly disconnects.
 @MainActor
 @Observable
 public final class MIDIInputController {
@@ -37,7 +53,7 @@ public final class MIDIInputController {
     
     /// Whether the controller reconnects to the preferred source after the MIDI setup changes.
     @ObservationIgnored
-    public var automaticallyReconnect = false
+    public var automaticallyReconnect = true
     
     /// The process-wide MIDI input coordinator.
     public nonisolated static let shared = MIDIInputController()
@@ -166,10 +182,29 @@ public final class MIDIInputController {
             }
             guard removal.child == connectedSource?.endpoint else { return }
             disconnect(preservingPreferredSource: true)
-        case .msgObjectAdded, .msgSetupChanged:
+        case .msgObjectAdded:
+            reconnectIfPossible()
+            connectToAddedSourceIfPossible(notification)
+        case .msgSetupChanged:
             reconnectIfPossible()
         default:
             break
+        }
+    }
+    
+    /// Connects to a newly added input source when no source is currently connected.
+    private func connectToAddedSourceIfPossible(_ notification: UnsafePointer<MIDINotification>) {
+        guard connectedSource == nil else { return }
+        
+        let addition = notification.withMemoryRebound(to: MIDIObjectAddRemoveNotification.self, capacity: 1) {
+            $0.pointee
+        }
+        guard let source = availableSources.first(where: { $0.endpoint == addition.child }) else { return }
+        
+        do {
+            try connect(to: source)
+        } catch {
+            logger.error("Failed to connect to newly added MIDI source: \(error.localizedDescription)")
         }
     }
     
