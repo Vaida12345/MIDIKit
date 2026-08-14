@@ -180,17 +180,16 @@ public final class ScoreFollower {
     /// Note-ons contribute pitch and velocity evidence. Note-offs record chord-release evidence
     /// but do not advance the inferred position. Provide the Core MIDI receive timestamp unchanged;
     /// a zero or non-monotonic timestamp disables timing evidence for the affected transition.
-    public func consume(
-        _ message: MIDIUniversalMessage,
-        timestamp: MIDITimeStamp
-    ) -> Position? {
-        guard let event = noteEvent(from: message) else { return nil }
+    public func consume(_ input: MIDIInputEvent) -> Position? {
+        guard let event = input.parse() else { return nil }
 
         switch event {
         case let .noteOn(pitch, velocity):
-            return consume(noteOn: pitch, velocity: velocity, timestamp: timestamp)
+            return consume(noteOn: pitch, velocity: velocity, timestamp: input.timestamp)
         case let .noteOff(pitch):
             consume(noteOff: pitch)
+            return nil
+        default:
             return nil
         }
     }
@@ -259,36 +258,6 @@ public final class ScoreFollower {
         recoveryWinningLineageID = nil
         recoveryWinningStreak = 0
         lastPosition = nil
-    }
-
-    /// A MIDI 1.0 note event decoded from a Universal MIDI Packet.
-    private enum NoteEvent {
-        case noteOn(pitch: UInt8, velocity: UInt8)
-        case noteOff(pitch: UInt8)
-    }
-
-    /// Extracts MIDI 1.0 UMP note events while keeping packet decoding out of the aligner.
-    private func noteEvent(from message: MIDIUniversalMessage) -> NoteEvent? {
-        // `MIDIUniversalMessage` is an inline UMP word container. The UMP words are
-        // native-endian, so reading the first word directly preserves the Core MIDI layout.
-        let word = withUnsafeBytes(of: message) { $0.loadUnaligned(as: UInt32.self) }
-        let messageType = UInt8((word >> 28) & 0x0F)
-        guard messageType == 0x2 else { return nil }
-
-        let status = UInt8((word >> 16) & 0xFF)
-        let pitch = UInt8((word >> 8) & 0x7F)
-        let velocity = UInt8(word & 0x7F)
-
-        switch status & 0xF0 {
-        case 0x80:
-            return .noteOff(pitch: pitch)
-        case 0x90:
-            return velocity > 0
-                ? .noteOn(pitch: pitch, velocity: velocity)
-                : .noteOff(pitch: pitch)
-        default:
-            return nil
-        }
     }
 
     private var shouldAttemptRecovery: Bool {

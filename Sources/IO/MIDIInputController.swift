@@ -355,11 +355,48 @@ public struct MIDIInputEvent: @unchecked Sendable {
     public let message: MIDIUniversalMessage
     
     
+    /// Parse the input event
+    public func parse() -> ParsedInputEvent? {
+        switch message.type {
+        case .channelVoice1:
+            switch message.channelVoice1.status {
+            case .noteOn:
+                let velocity = message.channelVoice1.note.velocity
+                if velocity != 0 {
+                    return .noteOn(pitch: message.channelVoice1.note.number, velocity: velocity)
+                } else {
+                    return .noteOff(pitch: message.channelVoice1.note.number)
+                }
+                
+            case .noteOff:
+                return .noteOff(pitch: message.channelVoice1.note.number)
+                
+            case .controlChange:
+                let controlChange = message.channelVoice1.controlChange
+                return .controlChange(control: controlChange.index, value: controlChange.data)
+                
+            default:
+                return nil
+            }
+            
+        default:
+            return nil
+        }
+    }
+    
+    
     /// Creates an event from one Core MIDI message.
     public init(timestamp: MIDITimeStamp, message: MIDIUniversalMessage) {
         self.timestamp = timestamp
         self.message = message
     }
+}
+
+
+public enum ParsedInputEvent: Sendable, BitwiseCopyable, Hashable {
+    case noteOn(pitch: UInt8, velocity: UInt8)
+    case noteOff(pitch: UInt8)
+    case controlChange(control: UInt8, value: UInt8)
 }
 
 
