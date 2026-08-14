@@ -50,9 +50,24 @@ public final class ScoreFollower {
         }
     }
 
-    private struct ReferenceMoment {
-        let beat: Double
-        var pitches: Set<UInt8>
+    /// A simultaneous collection of pitches in the score reference.
+    public struct ReferenceMoment: Sendable {
+        /// Onset within the reference, measured in beats.
+        public let beat: Double
+
+        /// MIDI note numbers expected at this onset.
+        public private(set) var pitches: Set<UInt8>
+
+        /// Creates a reference moment.
+        public init(beat: Double, pitches: Set<UInt8>) {
+            self.beat = beat
+            self.pitches = pitches
+        }
+
+        /// Adds a pitch when normalizing adjacent moments with the same onset.
+        mutating func insert(_ pitch: UInt8) {
+            pitches.insert(pitch)
+        }
     }
 
     private struct Hypothesis {
@@ -92,8 +107,12 @@ public final class ScoreFollower {
         static let recoveryDistinctMoments = 3
     }
 
-    /// Reference notes in their supplied form. Alignment uses a sorted, chord-grouped copy.
-    public let reference: [ReferenceNote]
+    /// A flattened note representation of the reference, generated only when requested.
+    public var reference: [ReferenceNote] {
+        moments.flatMap { moment in
+            moment.pitches.map { ReferenceNote(beat: moment.beat, pitch: $0) }
+        }
+    }
 
     /// The most recently returned position, if a reference moment has been established.
     public private(set) var lastPosition: Position?
@@ -109,8 +128,9 @@ public final class ScoreFollower {
     private var recoveryWinningStreak = 0
 
     /// Creates a follower for the supplied score reference.
-    public init(reference: [ReferenceNote]) {
-        self.reference = reference
+    ///
+    /// Notes are sorted and grouped into simultaneous reference moments.
+    public convenience init(reference: [ReferenceNote]) {
         let sorted = reference.sorted {
             $0.beat == $1.beat ? $0.pitch < $1.pitch : $0.beat < $1.beat
         }
@@ -122,12 +142,20 @@ public final class ScoreFollower {
                 grouped.append(ReferenceMoment(beat: note.beat, pitches: [note.pitch]))
                 continue
             }
-            grouped[grouped.count - 1].pitches.insert(note.pitch)
+            grouped[grouped.count - 1].insert(note.pitch)
         }
-        moments = grouped
+        self.init(referenceMoments: grouped)
+    }
+
+    /// Creates a follower from pre-grouped reference moments.
+    ///
+    /// Moments are sorted by onset before indexing. No intermediary reference notes are created.
+    public init(referenceMoments: [ReferenceMoment]) {
+        let sortedMoments = referenceMoments.sorted { $0.beat < $1.beat }
+        moments = sortedMoments
 
         var index: [UInt8: [Int]] = [:]
-        for (momentIndex, moment) in grouped.enumerated() {
+        for (momentIndex, moment) in sortedMoments.enumerated() {
             for pitch in moment.pitches {
                 index[pitch, default: []].append(momentIndex)
             }
