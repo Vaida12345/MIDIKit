@@ -77,8 +77,9 @@ public final class ScoreFollower {
         var score: Double
         var lineageID: Int
         var jumpOriginIndex: Int?
-        var jumpExactMatches: Int
-        var jumpMatchedMoments: Set<Int>
+        var jumpTargetStartIndex: Int?
+        var jumpConsecutiveConfirmedMoments: Int
+        var jumpLastConfirmedMomentIndex: Int?
         var momentStartedAt: MIDITimeStamp?
         var lastMatchedAt: MIDITimeStamp?
         var ticksPerBeat: Double?
@@ -110,8 +111,8 @@ public final class ScoreFollower {
         static let scoreDecay = 0.9
         static let jumpScoreLead = 6.0
         static let jumpWinningStreak = 2
-        static let jumpExactMatches = 4
-        static let jumpDistinctMoments = 3
+        static let jumpConfirmedChordMoments = 4
+        static let jumpMinimumPitchDifferences = 2
         static let timingPenaltyWeight = 0.75
         static let timingRatioTolerance = 2.0
         static let practicePauseRatio = 4.0
@@ -260,8 +261,9 @@ public final class ScoreFollower {
             score: 0,
             lineageID: 0,
             jumpOriginIndex: nil,
-            jumpExactMatches: 0,
-            jumpMatchedMoments: [],
+            jumpTargetStartIndex: nil,
+            jumpConsecutiveConfirmedMoments: 0,
+            jumpLastConfirmedMomentIndex: nil,
             momentStartedAt: nil,
             lastMatchedAt: nil,
             ticksPerBeat: nil
@@ -322,8 +324,9 @@ public final class ScoreFollower {
                 restart.lineageID = nextLineageID
                 nextLineageID += 1
                 restart.jumpOriginIndex = base.momentIndex
-                restart.jumpExactMatches = 0
-                restart.jumpMatchedMoments = []
+                restart.jumpTargetStartIndex = target
+                restart.jumpConsecutiveConfirmedMoments = 0
+                restart.jumpLastConfirmedMomentIndex = nil
                 expansions.append(match(pitch, velocity: velocity, in: target, from: restart, timestamp: timestamp))
             }
         }
@@ -421,9 +424,17 @@ public final class ScoreFollower {
         matched.releasedPitches.remove(pitch)
         matched.score += Configuration.exactMatchReward * velocityWeight(for: velocity)
 
-        if matched.jumpOriginIndex != nil {
-            matched.jumpExactMatches += 1
-            matched.jumpMatchedMoments.insert(momentIndex)
+        if matched.jumpOriginIndex != nil,
+           matched.matchedPitches == moments[momentIndex].pitches {
+            if isStronglyDistinguishingJumpMoment(momentIndex, in: matched) {
+                matched.jumpConsecutiveConfirmedMoments = matched.jumpLastConfirmedMomentIndex == momentIndex - 1
+                    ? matched.jumpConsecutiveConfirmedMoments + 1
+                    : 1
+                matched.jumpLastConfirmedMomentIndex = momentIndex
+            } else {
+                matched.jumpConsecutiveConfirmedMoments = 0
+                matched.jumpLastConfirmedMomentIndex = nil
+            }
         }
 
         if valid(timestamp) {
@@ -433,6 +444,26 @@ public final class ScoreFollower {
             matched.lastMatchedAt = timestamp
         }
         return matched
+    }
+
+    /// Returns whether a remote moment differs enough from its uninterrupted local counterpart to confirm a jump.
+    private func isStronglyDistinguishingJumpMoment(_ momentIndex: Int, in hypothesis: Hypothesis) -> Bool {
+        guard let origin = hypothesis.jumpOriginIndex,
+              let targetStart = hypothesis.jumpTargetStartIndex else {
+            return false
+        }
+
+        let localIndex = origin + (momentIndex - targetStart) + 1
+        guard moments.indices.contains(localIndex) else { return true }
+
+        let remotePitches = moments[momentIndex].pitches
+        let localPitches = moments[localIndex].pitches
+        let minimumDistinctPitches = min(
+            Configuration.jumpMinimumPitchDifferences,
+            min(remotePitches.count, localPitches.count)
+        )
+        let differingPitchCount = remotePitches.symmetricDifference(localPitches).count
+        return differingPitchCount >= minimumDistinctPitches * 2
     }
 
     /// Converts MIDI velocity to a bounded confidence weight without excluding quiet notes.
@@ -567,8 +598,9 @@ public final class ScoreFollower {
                     guard $0.lineageID == jump.lineageID else { return $0 }
                     var promoted = $0
                     promoted.jumpOriginIndex = nil
-                    promoted.jumpExactMatches = 0
-                    promoted.jumpMatchedMoments = []
+                    promoted.jumpTargetStartIndex = nil
+                    promoted.jumpConsecutiveConfirmedMoments = 0
+                    promoted.jumpLastConfirmedMomentIndex = nil
                     return promoted
                 }
                 winningJumpLineageID = nil
@@ -600,8 +632,7 @@ public final class ScoreFollower {
     /// Returns whether a distant hypothesis has enough sustained evidence to replace continuity.
     private func canCommit(jump: Hypothesis, over committed: Hypothesis) -> Bool {
         guard jump.momentIndex != committed.momentIndex,
-              jump.jumpExactMatches >= Configuration.jumpExactMatches,
-              jump.jumpMatchedMoments.count >= Configuration.jumpDistinctMoments else {
+              jump.jumpConsecutiveConfirmedMoments >= Configuration.jumpConfirmedChordMoments else {
             return false
         }
         return jump.score >= committed.score + Configuration.jumpScoreLead

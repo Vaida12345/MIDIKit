@@ -38,6 +38,69 @@ struct ScoreFollowerLongSequenceTests {
         }
     }
 
+    /// Verifies that a brief, distinctive fragment of a similar later passage cannot override continuity.
+    @Test("does not jump to a similar later passage on weak evidence")
+    func doesNotJumpToSimilarLaterPassageOnWeakEvidence() async {
+        let passages = similarPassages()
+        let follower = ScoreFollower()
+        await follower.update(referenceMoments: referenceMoments(for: passages))
+
+        _ = consume(Array(passages.0.prefix(8)), with: follower, startingAt: 1_000)
+        let positions = consume(Array(passages.1.suffix(2)), with: follower, startingAt: 100_000)
+
+        #expect(!positions.contains { $0.didJump })
+        #expect(follower.lastPosition?.beat ?? 0 < 20)
+    }
+
+    /// Verifies that intermittent wrong notes resembling a later cadence do not trigger a false jump.
+    @Test("does not jump when mistakes resemble a later passage")
+    func doesNotJumpWhenMistakesResembleLaterPassage() async {
+        let passages = similarPassages()
+        let follower = ScoreFollower()
+        await follower.update(referenceMoments: referenceMoments(for: passages))
+
+        let performedChords = Array(passages.0.prefix(8)) + [
+            [41, 48, 53, 60], [43, 50, 55, 60], [45, 52, 57, 62], [47, 54, 59, 64]
+        ]
+        let positions = consume(performedChords, with: follower, startingAt: 1_000)
+
+        #expect(!positions.contains { $0.didJump })
+        #expect(follower.lastPosition?.beat ?? 0 < 20)
+    }
+
+    /// Reproduces a false passage switch caused by small top-voice mistakes that resemble a later repeat.
+    @Test("does not bounce between near-duplicate passages after small mistakes")
+    func doesNotBounceBetweenNearDuplicatePassagesAfterSmallMistakes() async {
+        let passages = nearDuplicatePassages()
+        let follower = ScoreFollower()
+        await follower.update(referenceMoments: referenceMoments(for: passages))
+
+        let mistakenContinuation = Array(passages.1[8...12])
+        let recovery = Array(passages.0[13...17])
+        let positions = consume(
+            Array(passages.0.prefix(8)) + mistakenContinuation + recovery,
+            with: follower,
+            startingAt: 1_000
+        )
+
+        #expect(positions.filter(\.didJump).count == 0)
+        #expect(follower.lastPosition?.beat ?? 0 < 20)
+    }
+
+    /// Verifies that an ambiguous later phrase cannot override the established local passage.
+    @Test("does not jump to a similar later passage after ambiguous history")
+    func doesNotJumpToSimilarLaterPassageAfterAmbiguousHistory() async {
+        let passages = similarPassages()
+        let follower = ScoreFollower()
+        await follower.update(referenceMoments: referenceMoments(for: passages))
+
+        _ = consume(Array(passages.0.prefix(8)), with: follower, startingAt: 1_000)
+        let positions = consume(Array(passages.1.suffix(5)), with: follower, startingAt: 100_000)
+
+        #expect(!positions.contains { $0.didJump })
+        #expect(positions.last?.beat == 19)
+    }
+
     /// Verifies that a dense, randomized score remains practical to follow at live-input speed.
     @Test("processes a dense randomized chord progression promptly")
     func processesDenseRandomizedChordProgressionPromptly() async {
@@ -78,6 +141,49 @@ struct ScoreFollowerLongSequenceTests {
         }
     }
 
+    /// Creates two 20-chord, piano-style passages that share a harmonic language but diverge at the cadence.
+    private func similarPassages() -> ([[UInt8]], [[UInt8]]) {
+        let firstPassage: [[UInt8]] = [
+            [48, 55, 60, 64], [47, 55, 59, 62], [45, 52, 55, 60], [43, 52, 55, 59],
+            [41, 48, 53, 57], [40, 48, 52, 55], [45, 52, 57, 60], [43, 50, 55, 59],
+            [41, 48, 53, 57], [43, 50, 55, 59], [45, 52, 57, 60], [47, 54, 59, 62],
+            [48, 55, 60, 64], [52, 55, 60, 64], [50, 57, 62, 65], [43, 50, 55, 59],
+            [45, 52, 57, 60], [41, 48, 53, 57], [43, 50, 55, 59], [48, 55, 60, 64]
+        ]
+        let secondPassage: [[UInt8]] = [
+            [48, 55, 60, 64], [47, 55, 59, 62], [45, 52, 55, 60], [43, 52, 55, 59],
+            [41, 48, 53, 57], [40, 48, 52, 55], [45, 52, 57, 60], [43, 50, 55, 59],
+            [41, 48, 53, 57], [43, 50, 55, 59], [45, 52, 57, 60], [47, 54, 59, 62],
+            [48, 55, 60, 64], [52, 55, 60, 64], [50, 57, 62, 65], [45, 52, 57, 60],
+            [41, 48, 53, 57], [45, 52, 57, 60], [43, 50, 55, 59], [48, 55, 60, 64]
+        ]
+        return (firstPassage, secondPassage)
+    }
+
+    /// Creates passages that differ only in their upper voice, as when a performer makes small voicing mistakes.
+    private func nearDuplicatePassages() -> ([[UInt8]], [[UInt8]]) {
+        let firstPassage = similarPassages().0
+        var secondPassage = firstPassage
+        secondPassage[8] = [41, 48, 53, 60]
+        secondPassage[9] = [43, 50, 55, 60]
+        secondPassage[10] = [45, 52, 57, 62]
+        secondPassage[11] = [47, 54, 59, 64]
+        secondPassage[12] = [48, 55, 60, 65]
+        secondPassage[13] = [52, 55, 60, 65]
+        secondPassage[14] = [50, 57, 62, 67]
+        secondPassage[15] = [43, 50, 55, 60]
+        secondPassage[16] = [45, 52, 57, 62]
+        secondPassage[17] = [41, 48, 53, 60]
+        return (firstPassage, secondPassage)
+    }
+
+    /// Converts the supplied passages into consecutive score moments.
+    private func referenceMoments(for passages: ([[UInt8]], [[UInt8]])) -> [ScoreFollower.ReferenceMoment] {
+        (passages.0 + passages.1).enumerated().map { index, pitches in
+            .init(beat: Double(index), pitches: Set(pitches))
+        }
+    }
+
     /// Feeds each chord in a reproducible shuffled order and records every inferred position.
     private func consume(
         _ chords: [[UInt8]],
@@ -90,6 +196,28 @@ struct ScoreFollowerLongSequenceTests {
 
         for chord in chords {
             for pitch in chord.shuffled(using: &generator) {
+                if let position = follower.consume(noteOn: pitch, timestamp: timestamp) {
+                    positions.append(position)
+                }
+                timestamp += 1_000
+            }
+        }
+
+        return positions
+    }
+
+
+    /// Feeds chords in score order from a specified timestamp for deterministic jump testing.
+    private func consume(
+        _ chords: [[UInt8]],
+        with follower: ScoreFollower,
+        startingAt initialTimestamp: MIDITimeStamp
+    ) -> [ScoreFollower.Position] {
+        var timestamp = initialTimestamp
+        var positions: [ScoreFollower.Position] = []
+
+        for chord in chords {
+            for pitch in chord {
                 if let position = follower.consume(noteOn: pitch, timestamp: timestamp) {
                     positions.append(position)
                 }
@@ -131,4 +259,124 @@ private extension Array {
         let offset = count % self.count
         return Array(self[offset...] + self[..<offset])
     }
+}
+
+
+@Suite("Score follower jump stability supplemental")
+struct ScoreFollowerJumpStabilitySupplementalTests {
+
+    /// Verifies that one-note variations cannot confirm a move to a similar later passage.
+    @Test("does not jump for one-note variations in a similar passage")
+    func doesNotJumpForOneNoteVariationsInSimilarPassage() async {
+        let passages = nearDuplicatePassages()
+        let follower = ScoreFollower()
+        await follower.update(referenceMoments: jumpReferenceMoments(for: passages))
+
+        let positions = consumeJumpChords(Array(passages.0.prefix(8)) + Array(passages.1[8...12]), with: follower)
+
+        #expect(positions.filter(\.didJump).isEmpty)
+        #expect(follower.lastPosition?.beat ?? 0 < 20)
+    }
+
+    /// Verifies that correcting near-duplicate mistakes cannot cause a false jump back.
+    @Test("does not bounce after recovering from near-duplicate mistakes")
+    func doesNotBounceAfterRecoveringFromNearDuplicateMistakes() async {
+        let passages = nearDuplicatePassages()
+        let follower = ScoreFollower()
+        await follower.update(referenceMoments: jumpReferenceMoments(for: passages))
+
+        let positions = consumeJumpChords(
+            Array(passages.0.prefix(8)) + Array(passages.1[8...12]) + Array(passages.0[13...17]),
+            with: follower
+        )
+
+        #expect(positions.filter(\.didJump).isEmpty)
+        #expect(follower.lastPosition?.beat ?? 0 < 20)
+    }
+
+    /// Verifies that three complete, strongly different remote chords remain insufficient confirmation.
+    @Test("does not jump for three distinct remote chords")
+    func doesNotJumpForThreeDistinctRemoteChords() async {
+        let passages = stronglyDistinctPassages()
+        let follower = ScoreFollower()
+        await follower.update(referenceMoments: jumpReferenceMoments(for: passages))
+
+        let positions = consumeJumpChords(Array(passages.0.prefix(8)) + Array(passages.1[8...10]), with: follower)
+
+        #expect(positions.filter(\.didJump).isEmpty)
+        #expect(follower.lastPosition?.beat ?? 0 < 20)
+    }
+
+    /// Verifies that four complete, strongly different remote chords permit exactly one intentional jump.
+    @Test("jumps after four distinct remote chords")
+    func jumpsAfterFourDistinctRemoteChords() async {
+        let passages = stronglyDistinctPassages()
+        let follower = ScoreFollower()
+        await follower.update(referenceMoments: jumpReferenceMoments(for: passages))
+
+        let positions = consumeJumpChords(Array(passages.0.prefix(8)) + Array(passages.1[8...12]), with: follower)
+
+        #expect(positions.filter(\.didJump).count == 1)
+        #expect(follower.lastPosition?.beat == 32)
+    }
+
+    /// Creates 20-chord passages with an ambiguous single-note upper-voice variation.
+    private func nearDuplicatePassages() -> ([[UInt8]], [[UInt8]]) {
+        let firstPassage = jumpBasePassage()
+        var secondPassage = firstPassage
+        secondPassage[8] = [41, 48, 53, 60]
+        secondPassage[9] = [43, 50, 55, 60]
+        secondPassage[10] = [45, 52, 57, 62]
+        secondPassage[11] = [47, 54, 59, 64]
+        secondPassage[12] = [48, 55, 60, 65]
+        return (firstPassage, secondPassage)
+    }
+
+    /// Creates 20-chord passages with a clearly distinct second cadence.
+    private func stronglyDistinctPassages() -> ([[UInt8]], [[UInt8]]) {
+        let firstPassage = jumpBasePassage()
+        var secondPassage = firstPassage
+        secondPassage[8] = [20, 24, 27, 31]
+        secondPassage[9] = [21, 25, 28, 32]
+        secondPassage[10] = [22, 26, 29, 33]
+        secondPassage[11] = [23, 27, 30, 34]
+        secondPassage[12] = [24, 28, 31, 35]
+        return (firstPassage, secondPassage)
+    }
+}
+
+
+/// Creates a realistic 20-chord piano passage.
+private func jumpBasePassage() -> [[UInt8]] {
+    [
+        [48, 55, 60, 64], [47, 55, 59, 62], [45, 52, 55, 60], [43, 52, 55, 59],
+        [41, 48, 53, 57], [40, 48, 52, 55], [45, 52, 57, 60], [43, 50, 55, 59],
+        [41, 48, 53, 57], [43, 50, 55, 59], [45, 52, 57, 60], [47, 54, 59, 62],
+        [48, 55, 60, 64], [52, 55, 60, 64], [50, 57, 62, 65], [43, 50, 55, 59],
+        [45, 52, 57, 60], [41, 48, 53, 57], [43, 50, 55, 59], [48, 55, 60, 64]
+    ]
+}
+
+/// Converts two passages into consecutive score moments.
+private func jumpReferenceMoments(for passages: ([[UInt8]], [[UInt8]])) -> [ScoreFollower.ReferenceMoment] {
+    (passages.0 + passages.1).enumerated().map { index, pitches in
+        .init(beat: Double(index), pitches: Set(pitches))
+    }
+}
+
+/// Feeds chords in score order and records every inferred position.
+private func consumeJumpChords(_ chords: [[UInt8]], with follower: ScoreFollower) -> [ScoreFollower.Position] {
+    var timestamp: MIDITimeStamp = 1_000
+    var positions: [ScoreFollower.Position] = []
+
+    for chord in chords {
+        for pitch in chord {
+            if let position = follower.consume(noteOn: pitch, timestamp: timestamp) {
+                positions.append(position)
+            }
+            timestamp += 1_000
+        }
+    }
+
+    return positions
 }
