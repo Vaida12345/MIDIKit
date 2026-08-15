@@ -166,14 +166,26 @@ public final class ScoreFollower {
 
     /// Updates the follower from pre-grouped reference moments.
     ///
-    /// Moments are sorted by onset before indexing. No intermediary reference notes are created.
-    /// Updating replaces the current reference and resets the follower's alignment state.
+    /// Moments are sorted by onset and near-simultaneous moments are merged before indexing.
+    /// No intermediary reference notes are created. Updating replaces the current reference and resets
+    /// the follower's alignment state.
     public func update(referenceMoments: [ReferenceMoment]) async {
         let sortedMoments = referenceMoments.sorted { $0.beat < $1.beat }
-        moments = sortedMoments
+        var groupedMoments: [ReferenceMoment] = []
+        for moment in sortedMoments {
+            guard let last = groupedMoments.last,
+                  abs(last.beat - moment.beat) <= Configuration.simultaneousBeatEpsilon else {
+                groupedMoments.append(moment)
+                continue
+            }
+            for pitch in moment.pitches {
+                groupedMoments[groupedMoments.count - 1].insert(pitch)
+            }
+        }
+        moments = groupedMoments
 
         var index: [UInt8: [Int]] = [:]
-        for (momentIndex, moment) in sortedMoments.enumerated() {
+        for (momentIndex, moment) in groupedMoments.enumerated() {
             for pitch in moment.pitches {
                 index[pitch, default: []].append(momentIndex)
             }

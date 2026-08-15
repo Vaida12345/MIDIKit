@@ -456,6 +456,20 @@ struct ScoreFollowerTests {
         #expect(consume(72, with: follower, at: 3_000)?.beat == 4)
     }
 
+    @Test("merges near-simultaneous pre-grouped reference moments")
+    func mergesNearSimultaneousReferenceMoments() async {
+        let follower = ScoreFollower()
+        await follower.update(referenceMoments: [
+            .init(beat: 0, pitches: [60]),
+            .init(beat: 0.0000005, pitches: [64])
+        ])
+
+        #expect(Set(follower.reference) == [
+            .init(beat: 0, pitch: 60),
+            .init(beat: 0, pitch: 64)
+        ])
+    }
+
     private func consume(
         _ pitch: UInt8,
         with follower: ScoreFollower,
