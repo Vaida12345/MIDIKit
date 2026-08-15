@@ -358,7 +358,7 @@ public struct MIDIInputEvent: @unchecked Sendable {
     /// Parse the input event
     public func parse() -> ParsedInputEvent? {
         switch message.type {
-        case .channelVoice1:
+        case .channelVoice1: // This corresponds to MIDI 1.0 messages, which is what this MIDI Client requests.
             switch message.channelVoice1.status {
             case .noteOn:
                 let velocity = message.channelVoice1.note.velocity

@@ -84,11 +84,20 @@ public final class ScoreFollower {
         var ticksPerBeat: Double?
     }
 
+    /// Identifies the observable alignment state retained by beam pruning.
+    private struct HypothesisState: Hashable {
+        let momentIndex: Int
+        let matchedPitches: Set<UInt8>
+        let releasedPitches: Set<UInt8>
+        let lineageID: Int
+    }
+
     private enum Configuration {
         static let simultaneousBeatEpsilon = 1e-6
         static let beamWidth = 24
         static let localLookAhead = 4
         static let regionSize = 8
+        static let remoteRestartSeedLimit = 8
         static let exactMatchReward = 4.0
         static let quietNoteMinimumWeight = 0.5
         static let releasedChordPitchReward = 0.2
@@ -203,8 +212,15 @@ public final class ScoreFollower {
     ) -> Position? {
         guard !moments.isEmpty else { return nil }
 
+        let committedAnchor = bestCommittedHypothesis.map(hypothesisState)
         let expanded = hypotheses.flatMap {
-            expand($0, with: pitch, velocity: velocity, timestamp: timestamp)
+            expand(
+                $0,
+                with: pitch,
+                velocity: velocity,
+                timestamp: timestamp,
+                allowsDistantRestart: committedAnchor == hypothesisState($0)
+            )
         }
         hypotheses = prune(expanded)
         return commitPosition()
@@ -250,7 +266,8 @@ public final class ScoreFollower {
         _ hypothesis: Hypothesis,
         with pitch: UInt8,
         velocity: UInt8,
-        timestamp: MIDITimeStamp
+        timestamp: MIDITimeStamp,
+        allowsDistantRestart: Bool
     ) -> [Hypothesis] {
         var base = hypothesis
         base.score *= Configuration.scoreDecay
@@ -286,16 +303,17 @@ public final class ScoreFollower {
             }
         }
 
-        for target in momentsByPitch[pitch, default: []] {
-            guard isDistant(target, from: base.momentIndex) else { continue }
-            var restart = restart(from: base, to: target, timestamp: timestamp)
-            restart.score -= Configuration.jumpPenalty
-            restart.lineageID = nextLineageID
-            nextLineageID += 1
-            restart.jumpOriginIndex = base.momentIndex
-            restart.jumpExactMatches = 0
-            restart.jumpMatchedMoments = []
-            expansions.append(match(pitch, velocity: velocity, in: target, from: restart, timestamp: timestamp))
+        if allowsDistantRestart {
+            for target in distantRestartTargets(for: pitch, from: base.momentIndex) {
+                var restart = restart(from: base, to: target, timestamp: timestamp)
+                restart.score -= Configuration.jumpPenalty
+                restart.lineageID = nextLineageID
+                nextLineageID += 1
+                restart.jumpOriginIndex = base.momentIndex
+                restart.jumpExactMatches = 0
+                restart.jumpMatchedMoments = []
+                expansions.append(match(pitch, velocity: velocity, in: target, from: restart, timestamp: timestamp))
+            }
         }
 
         return expansions
@@ -305,6 +323,27 @@ public final class ScoreFollower {
     private func isDistant(_ target: Int, from origin: Int) -> Bool {
         guard origin >= 0 else { return target > Configuration.localLookAhead }
         return target < origin || target > origin + Configuration.localLookAhead
+    }
+
+    /// Selects a bounded set of remote restart targets distributed across the score.
+    private func distantRestartTargets(for pitch: UInt8, from origin: Int) -> [Int] {
+        let targets = momentsByPitch[pitch, default: []].filter {
+            isDistant($0, from: origin)
+        }
+        guard targets.count > Configuration.remoteRestartSeedLimit else {
+            return targets
+        }
+
+        let finalOffset = targets.count - 1
+        let offsets = Set((0..<Configuration.remoteRestartSeedLimit).map { seedIndex in
+            Int(
+                (
+                    Double(seedIndex) * Double(finalOffset)
+                    / Double(Configuration.remoteRestartSeedLimit - 1)
+                ).rounded()
+            )
+        })
+        return offsets.sorted().map { targets[$0] }
     }
 
     /// Closes the current moment and applies its missing-note and timing costs before advancing.
@@ -320,7 +359,9 @@ public final class ScoreFollower {
                 let alreadyMatched = index == hypothesis.momentIndex ? hypothesis.matchedPitches : []
                 advanced.score -= Configuration.unmatchedPitchPenalty
                     * Double(moments[index].pitches.subtracting(alreadyMatched).count)
-                advanced.score -= Configuration.completelySkippedMomentPenalty
+                if alreadyMatched.isEmpty {
+                    advanced.score -= Configuration.completelySkippedMomentPenalty
+                }
             }
         }
 
@@ -436,37 +477,57 @@ public final class ScoreFollower {
         return Double(later - earlier)
     }
 
-    /// Retains strong, geographically diverse candidate alignments.
+    /// Returns the state used to merge equivalent beam candidates.
+    private func hypothesisState(_ hypothesis: Hypothesis) -> HypothesisState {
+        HypothesisState(
+            momentIndex: hypothesis.momentIndex,
+            matchedPitches: hypothesis.matchedPitches,
+            releasedPitches: hypothesis.releasedPitches,
+            lineageID: hypothesis.lineageID
+        )
+    }
+
+    /// Retains strong, geographically diverse candidate alignments without evicting continuity.
     private func prune(_ candidates: [Hypothesis]) -> [Hypothesis] {
-        var bestByState: [String: Hypothesis] = [:]
+        var bestByState: [HypothesisState: Hypothesis] = [:]
         for candidate in candidates {
-            let matched = candidate.matchedPitches.sorted().map(String.init).joined(separator: ",")
-            let released = candidate.releasedPitches.sorted().map(String.init).joined(separator: ",")
-            let key = [
-                String(candidate.momentIndex),
-                matched,
-                released,
-                String(candidate.lineageID)
-            ].joined(separator: "|")
-            if bestByState[key]?.score ?? -.infinity < candidate.score {
-                bestByState[key] = candidate
+            let state = hypothesisState(candidate)
+            if bestByState[state]?.score ?? -.infinity < candidate.score {
+                bestByState[state] = candidate
             }
         }
 
         let sorted = bestByState.values.sorted(by: sortHypotheses)
         var selected: [Hypothesis] = []
+        var selectedStates: Set<HypothesisState> = []
         var representedRegions: Set<Int> = []
-        for candidate in sorted {
-            let region = candidate.momentIndex < 0 ? -1 : candidate.momentIndex / Configuration.regionSize
-            guard representedRegions.insert(region).inserted else { continue }
-            selected.append(candidate)
-            if selected.count == Configuration.beamWidth { return selected }
+
+        if let committed = sorted.first(where: { $0.lineageID == committedLineageID }) {
+            selected.append(committed)
+            selectedStates.insert(hypothesisState(committed))
+            let region = committed.momentIndex < 0 ? -1 : committed.momentIndex / Configuration.regionSize
+            representedRegions.insert(region)
+        } else {
+            assertionFailure("Beam pruning must retain the committed lineage.")
         }
 
-        for candidate in sorted where !selected.contains(where: { $0.lineageID == candidate.lineageID && $0.momentIndex == candidate.momentIndex && $0.matchedPitches == candidate.matchedPitches }) {
+        for candidate in sorted where selected.count < Configuration.beamWidth {
+            let state = hypothesisState(candidate)
+            guard !selectedStates.contains(state) else { continue }
+
+            let region = candidate.momentIndex < 0 ? -1 : candidate.momentIndex / Configuration.regionSize
+            guard representedRegions.insert(region).inserted else { continue }
+
             selected.append(candidate)
-            if selected.count == Configuration.beamWidth { break }
+            selectedStates.insert(state)
         }
+
+        for candidate in sorted where selected.count < Configuration.beamWidth {
+            let state = hypothesisState(candidate)
+            guard selectedStates.insert(state).inserted else { continue }
+            selected.append(candidate)
+        }
+
         return selected
     }
 
@@ -531,10 +592,7 @@ public final class ScoreFollower {
               jump.jumpMatchedMoments.count >= Configuration.jumpDistinctMoments else {
             return false
         }
-        guard committed.momentIndex == moments.indices.last else {
-            return jump.score >= committed.score + Configuration.jumpScoreLead
-        }
-        return true
+        return jump.score >= committed.score + Configuration.jumpScoreLead
     }
 
     /// Creates a public position and derives confidence from the strongest competing lineage.

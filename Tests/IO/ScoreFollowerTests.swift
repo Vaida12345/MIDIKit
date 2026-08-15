@@ -176,6 +176,148 @@ struct ScoreFollowerTests {
         #expect(positions.last?.beat == 5)
     }
 
+    /// Ensures a sustained run of ambiguous repeated pitches continues to the end of a long score.
+    @Test("continues through a long repeated-pitch passage")
+    func followsLongRepeatedPitchPassage() async {
+        let pitches = Array(repeating: UInt8(60), count: 128)
+        let follower = ScoreFollower()
+        await follower.update(reference: reference(pitches))
+
+        let positions = consume(pitches, with: follower)
+
+        #expect(positions.last?.beat == 127)
+    }
+
+    /// Ensures ambiguous matches advance continuously instead of leaving the committed position behind.
+    @Test("advances every match through a long repeated-pitch passage")
+    func advancesEveryLongRepeatedPitchMatch() async {
+        let pitches = Array(repeating: UInt8(60), count: 128)
+        let follower = ScoreFollower()
+        await follower.update(reference: reference(pitches))
+
+        let positions = consume(pitches, with: follower)
+
+        #expect(positions.map(\.beat) == (0..<128).map(Double.init))
+    }
+
+    /// Ensures repeated-pitch alignment remains fast enough to keep up with live MIDI input.
+    @Test("processes a dense repeated-pitch passage without stalling")
+    func processesDenseRepeatedPitchPassagePromptly() async {
+        let pitches = Array(repeating: UInt8(60), count: 512)
+        let follower = ScoreFollower()
+        await follower.update(reference: reference(pitches))
+
+        let clock = ContinuousClock()
+        let start = clock.now
+        let positions = consume(pitches, with: follower)
+        let elapsed = start.duration(to: clock.now)
+
+        #expect(positions.last?.beat == 511)
+        #expect(elapsed < .seconds(1))
+    }
+
+    /// Ensures complete, consecutive chords remain aligned when they share pitches and arrive in varied order.
+    @Test("follows a long progression of overlapping chords")
+    func followsLongOverlappingChordProgression() async {
+        let chords: [[UInt8]] = [
+            [60, 64, 67], [62, 65, 69], [59, 62, 67], [60, 64, 67],
+            [57, 60, 64], [55, 59, 62], [60, 64, 67], [62, 65, 69],
+            [59, 62, 67], [60, 64, 67], [57, 60, 64], [55, 59, 62]
+        ]
+        let follower = ScoreFollower()
+        await follower.update(
+            referenceMoments: chords.enumerated().map { index, pitches in
+                .init(beat: Double(index), pitches: Set(pitches))
+            }
+        )
+
+        var positions: [ScoreFollower.Position] = []
+        for (chordIndex, chord) in chords.enumerated() {
+            for (pitchIndex, pitch) in chord.reversed().enumerated() {
+                let timestamp = MIDITimeStamp(chordIndex * chord.count + pitchIndex + 1) * 1_000
+                if let position = consume(pitch, with: follower, at: timestamp) {
+                    positions.append(position)
+                }
+            }
+        }
+
+        #expect(
+            positions.map(\.beat)
+                == (0..<12).flatMap { Array(repeating: Double($0), count: 3) }
+        )
+    }
+
+    /// Ensures score alignment handles widely spaced moments whose chord sizes vary substantially.
+    @Test("follows distinct chords with varying sizes across large beat gaps")
+    func followsDistinctWidelySpacedChords() async {
+        let chords: [[UInt8]] = [
+            [36],
+            [37, 38],
+            [39, 40, 41],
+            [42, 43, 44, 45],
+            [46, 47, 48, 49, 50],
+            [51, 52, 53, 54, 55, 56],
+            [57, 58, 59, 60, 61, 62, 63],
+            [64, 65, 66, 67, 68, 69, 70, 71],
+            [72, 73, 74, 75, 76, 77, 78, 79, 80],
+            [81, 82, 83, 84, 85, 86, 87, 88, 89, 90]
+        ]
+        let follower = ScoreFollower()
+        await follower.update(
+            referenceMoments: chords.enumerated().map { index, pitches in
+                .init(beat: Double(index * 8), pitches: Set(pitches))
+            }
+        )
+
+        var timestamp: MIDITimeStamp = 1_000
+        var positions: [ScoreFollower.Position] = []
+        for chord in chords {
+            for pitch in chord.reversed() {
+                if let position = consume(pitch, with: follower, at: timestamp) {
+                    positions.append(position)
+                }
+                timestamp += 1_000
+            }
+        }
+
+        #expect(positions.last?.beat == 72)
+    }
+
+    /// Ensures overlapping, differently sized chords advance to every widely spaced score moment.
+    @Test("follows widely spaced chords with a shared tone and varying sizes")
+    func followsAmbiguousWidelySpacedChords() async {
+        let chords: [[UInt8]] = [
+            [60],
+            [60, 61],
+            [60, 61, 62],
+            [60, 61, 62, 63],
+            [60, 61, 62, 63, 64],
+            [60, 61, 62, 63, 64, 65],
+            [60, 61, 62, 63, 64, 65, 66],
+            [60, 61, 62, 63, 64, 65, 66, 67],
+            [60, 61, 62, 63, 64, 65, 66, 67, 68],
+            [60, 61, 62, 63, 64, 65, 66, 67, 68, 69]
+        ]
+        let follower = ScoreFollower()
+        await follower.update(
+            referenceMoments: chords.enumerated().map { index, pitches in
+                .init(beat: Double(index * 8), pitches: Set(pitches))
+            }
+        )
+
+        var timestamp: MIDITimeStamp = 1_000
+        var chordBeats: [Double] = []
+        for chord in chords {
+            for pitch in chord.reversed() {
+                _ = consume(pitch, with: follower, at: timestamp)
+                timestamp += 1_000
+            }
+            chordBeats.append(follower.lastPosition?.beat ?? -.infinity)
+        }
+
+        #expect(chordBeats == stride(from: 0, through: 72, by: 8).map(Double.init))
+    }
+
     @Test("starts from a matching middle passage")
     func startsFromMiddle() async {
         let follower = ScoreFollower()
