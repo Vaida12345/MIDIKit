@@ -83,6 +83,23 @@ public final class ScoreFollower {
         var momentStartedAt: MIDITimeStamp?
         var lastMatchedAt: MIDITimeStamp?
         var ticksPerBeat: Double?
+        
+        static let initial = [
+            Hypothesis(
+                momentIndex: -1,
+                matchedPitches: [],
+                releasedPitches: [],
+                score: 0,
+                lineageID: 0,
+                jumpOriginIndex: nil,
+                jumpTargetStartIndex: nil,
+                jumpConsecutiveConfirmedMoments: 0,
+                jumpLastConfirmedMomentIndex: nil,
+                momentStartedAt: nil,
+                lastMatchedAt: nil,
+                ticksPerBeat: nil
+            )
+        ]
     }
 
     /// Identifies the observable alignment state retained by beam pruning.
@@ -254,20 +271,7 @@ public final class ScoreFollower {
 
     /// Restores the follower to the state before the first reference moment.
     public func reset() {
-        hypotheses = [Hypothesis(
-            momentIndex: -1,
-            matchedPitches: [],
-            releasedPitches: [],
-            score: 0,
-            lineageID: 0,
-            jumpOriginIndex: nil,
-            jumpTargetStartIndex: nil,
-            jumpConsecutiveConfirmedMoments: 0,
-            jumpLastConfirmedMomentIndex: nil,
-            momentStartedAt: nil,
-            lastMatchedAt: nil,
-            ticksPerBeat: nil
-        )]
+        hypotheses = Hypothesis.initial // CoW, cheap enough
         committedLineageID = 0
         nextLineageID = 1
         winningJumpLineageID = nil
