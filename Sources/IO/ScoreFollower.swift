@@ -83,6 +83,7 @@ public final class ScoreFollower {
         var momentStartedAt: MIDITimeStamp?
         var lastMatchedAt: MIDITimeStamp?
         var ticksPerBeat: Double?
+        var exactMatchCount: Int
         
         static let initial = [
             Hypothesis(
@@ -97,7 +98,8 @@ public final class ScoreFollower {
                 jumpLastConfirmedMomentIndex: nil,
                 momentStartedAt: nil,
                 lastMatchedAt: nil,
-                ticksPerBeat: nil
+                ticksPerBeat: nil,
+                exactMatchCount: 0
             )
         ]
     }
@@ -108,6 +110,7 @@ public final class ScoreFollower {
         let matchedPitches: Set<UInt8>
         let releasedPitches: Set<UInt8>
         let lineageID: Int
+        let exactMatchCount: Int
     }
 
     private enum Configuration {
@@ -130,6 +133,8 @@ public final class ScoreFollower {
         static let jumpWinningStreak = 2
         static let jumpConfirmedChordMoments = 4
         static let jumpMinimumPitchDifferences = 2
+        static let initialExactMatchCount = 2
+        static let initialScoreLead = 3.0
         static let timingPenaltyWeight = 0.75
         static let timingRatioTolerance = 2.0
         static let practicePauseRatio = 4.0
@@ -153,6 +158,7 @@ public final class ScoreFollower {
     private var nextLineageID = 1
     private var winningJumpLineageID: Int?
     private var jumpWinningStreak = 0
+    private var isAwaitingInitialAlignment = true
 
     /// Creates an empty score follower.
     ///
@@ -269,13 +275,14 @@ public final class ScoreFollower {
         }
     }
 
-    /// Restores the follower to the state before the first reference moment.
+    /// Clears the current alignment and waits for sufficient performance evidence before reporting a position.
     public func reset() {
         hypotheses = Hypothesis.initial // CoW, cheap enough
         committedLineageID = 0
         nextLineageID = 1
         winningJumpLineageID = nil
         jumpWinningStreak = 0
+        isAwaitingInitialAlignment = true
         lastPosition = nil
     }
 
@@ -427,6 +434,7 @@ public final class ScoreFollower {
         matched.matchedPitches.insert(pitch)
         matched.releasedPitches.remove(pitch)
         matched.score += Configuration.exactMatchReward * velocityWeight(for: velocity)
+        matched.exactMatchCount += 1
 
         if matched.jumpOriginIndex != nil,
            matched.matchedPitches == moments[momentIndex].pitches {
@@ -530,7 +538,8 @@ public final class ScoreFollower {
             momentIndex: hypothesis.momentIndex,
             matchedPitches: hypothesis.matchedPitches,
             releasedPitches: hypothesis.releasedPitches,
-            lineageID: hypothesis.lineageID
+            lineageID: hypothesis.lineageID,
+            exactMatchCount: hypothesis.exactMatchCount
         )
     }
 
@@ -585,6 +594,26 @@ public final class ScoreFollower {
 
     /// Selects the committed lineage and applies confirmation before accepting a distant jump.
     private func commitPosition() -> Position? {
+        if isAwaitingInitialAlignment {
+            guard let initial = bestInitialHypothesis,
+                  canCommit(initialAlignment: initial) else {
+                return nil
+            }
+
+            committedLineageID = initial.lineageID
+            isAwaitingInitialAlignment = false
+            hypotheses = hypotheses.map { hypothesis in
+                guard hypothesis.lineageID == initial.lineageID else { return hypothesis }
+                var promoted = hypothesis
+                promoted.jumpOriginIndex = nil
+                promoted.jumpTargetStartIndex = nil
+                promoted.jumpConsecutiveConfirmedMoments = 0
+                promoted.jumpLastConfirmedMomentIndex = nil
+                return promoted
+            }
+            return makePosition(from: initial, didJump: initial.jumpOriginIndex != nil)
+        }
+
         guard let committed = bestCommittedHypothesis else { return nil }
 
         if let jump = bestJumpHypothesis,
@@ -617,6 +646,31 @@ public final class ScoreFollower {
         }
 
         return makePosition(from: committed, didJump: false)
+    }
+
+    /// Returns the strongest complete alignment candidate while no score location has been committed.
+    private var bestInitialHypothesis: Hypothesis? {
+        hypotheses
+            .filter {
+                $0.momentIndex >= 0
+                    && $0.matchedPitches == moments[$0.momentIndex].pitches
+            }
+            .max(by: { $0.score < $1.score })
+    }
+
+    /// Returns whether an initial candidate is supported by sufficient distinct performed-note evidence.
+    private func canCommit(initialAlignment hypothesis: Hypothesis) -> Bool {
+        guard hypothesis.exactMatchCount >= Configuration.initialExactMatchCount else {
+            return false
+        }
+
+        let state = hypothesisState(hypothesis)
+        guard let alternative = hypotheses
+            .filter({ hypothesisState($0) != state })
+            .max(by: { $0.score < $1.score }) else {
+            return false
+        }
+        return hypothesis.score >= alternative.score + Configuration.initialScoreLead
     }
 
     /// Returns the strongest hypothesis in the currently committed lineage.

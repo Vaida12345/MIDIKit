@@ -428,8 +428,9 @@ struct ScoreFollowerTests {
         #expect(positions.map(\.beat) == [0, 1, 2])
     }
 
-    @Test("reset restores the initial state")
-    func resetRestoresInitialState() async {
+    /// Ensures a reset does not assume the performer has restarted from the first reference moment.
+    @Test("reset waits for enough alignment evidence")
+    func resetWaitsForAlignmentEvidence() async {
         let follower = ScoreFollower()
         await follower.update(reference: reference([60, 62]))
 
@@ -437,7 +438,8 @@ struct ScoreFollowerTests {
         follower.reset()
 
         #expect(follower.lastPosition == nil)
-        #expect(consume(62, with: follower, at: 2_000)?.beat == 1)
+        #expect(consume(60, with: follower, at: 2_000) == nil)
+        #expect(consume(62, with: follower, at: 3_000)?.beat == 1)
     }
 
     @Test("updates from pre-grouped reference moments")
