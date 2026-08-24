@@ -16,30 +16,15 @@ extension MIDIContainer {
     @inlinable
     @available(*, deprecated, renamed: "write(to:)")
     public func writeData(to destination: FinderItem) throws {
-        try destination.removeIfExists()
-        
-        let sequence = try self.makeSequence()
-        defer { DisposeMusicSequence(sequence) }
-        
-        try withErrorCaptured {
-            MusicSequenceFileCreate(sequence, destination.url as CFURL, .midiType, .eraseFile, MIDIContainer.writeResolution)
-        }
+        try self.write(to: destination)
     }
     
     /// Writes the MIDI as file to `destination`.
+    ///
+    /// File write is atomic.
     @inlinable
     public func write(to destination: FinderItem) throws {
-#if DEBUG
-        self._checkConsistency()
-#endif
-        
-        let sequence = try self.makeSequence()
-        defer { DisposeMusicSequence(sequence) }
-        
-        try destination.removeIfExists()
-        try withErrorCaptured {
-            MusicSequenceFileCreate(sequence, destination.url as CFURL, .midiType, .eraseFile, MIDIContainer.writeResolution)
-        }
+        try self.data().write(to: destination)
     }
     
     /// Obtain the MIDI data.
