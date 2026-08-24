@@ -58,23 +58,28 @@ public final class ScoreFollower {
 
         /// MIDI note numbers expected at this onset.
         public private(set) var pitches: Set<UInt8>
+        private(set) var pitchMask: UInt128
 
         /// Creates a reference moment.
         public init(beat: Double, pitches: Set<UInt8>) {
             self.beat = beat
             self.pitches = pitches
+            self.pitchMask = pitches.reduce(into: 0) { mask, pitch in
+                mask |= UInt128(1) << UInt128(pitch)
+            }
         }
 
         /// Adds a pitch when normalizing adjacent moments with the same onset.
         mutating func insert(_ pitch: UInt8) {
             pitches.insert(pitch)
+            pitchMask |= UInt128(1) << UInt128(pitch)
         }
     }
 
     private struct Hypothesis {
         var momentIndex: Int
-        var matchedPitches: Set<UInt8>
-        var releasedPitches: Set<UInt8>
+        var matchedPitchMask: UInt128
+        var releasedPitchMask: UInt128
         var score: Double
         var lineageID: Int
         var jumpOriginIndex: Int?
@@ -89,8 +94,8 @@ public final class ScoreFollower {
         static let initial = [
             Hypothesis(
                 momentIndex: -1,
-                matchedPitches: [],
-                releasedPitches: [],
+                matchedPitchMask: 0,
+                releasedPitchMask: 0,
                 score: 0,
                 lineageID: 0,
                 jumpOriginIndex: nil,
@@ -108,8 +113,8 @@ public final class ScoreFollower {
     /// Identifies the observable alignment state retained by beam pruning.
     private struct HypothesisState: Hashable {
         let momentIndex: Int
-        let matchedPitches: Set<UInt8>
-        let releasedPitches: Set<UInt8>
+        let matchedPitchMask: UInt128
+        let releasedPitchMask: UInt128
         let lineageID: Int
         let exactMatchCount: Int
     }
@@ -137,6 +142,7 @@ public final class ScoreFollower {
         static let localLookAhead = 4
         static let regionSize = 8
         static let remoteRestartSeedLimit = 8
+        static let maximumExpansionsPerHypothesis = 2 + localLookAhead + 1 + remoteRestartSeedLimit
         static let exactMatchReward = 4.0
         static let quietNoteMinimumWeight = 0.5
         static let releasedChordPitchReward = 0.2
@@ -159,6 +165,10 @@ public final class ScoreFollower {
         static let tempoSmoothing = 0.25
     }
 
+    private func pitchMask(for pitch: UInt8) -> UInt128 {
+        UInt128(1) << UInt128(pitch)
+    }
+
     /// A flattened note representation of the reference, generated only when requested.
     public var reference: [ReferenceNote] {
         moments.flatMap { moment in
@@ -170,7 +180,7 @@ public final class ScoreFollower {
     public private(set) var lastPosition: Position?
 
     private var moments: [ReferenceMoment] = []
-    private var momentsByPitch: [UInt8: [Int]] = [:]
+    private var momentsByPitch = Array(repeating: [Int](), count: 128)
     private var hypotheses: [Hypothesis] = []
     private var committedLineageID = 0
     private var nextLineageID = 1
@@ -226,10 +236,10 @@ public final class ScoreFollower {
         }
         moments = groupedMoments
 
-        var index: [UInt8: [Int]] = [:]
+        var index = Array(repeating: [Int](), count: 128)
         for (momentIndex, moment) in groupedMoments.enumerated() {
             for pitch in moment.pitches {
-                index[pitch, default: []].append(momentIndex)
+                index[Int(pitch)].append(momentIndex)
             }
         }
         momentsByPitch = index
@@ -267,14 +277,17 @@ public final class ScoreFollower {
         guard !moments.isEmpty else { return nil }
 
         let committedAnchor = bestCommittedHypothesis.map(hypothesisState)
-        let expanded = hypotheses.flatMap {
-            expand(
-                $0,
+        let performedVelocityWeight = velocityWeight(for: velocity)
+        var expanded: [Hypothesis] = []
+        expanded.reserveCapacity(hypotheses.count * Configuration.maximumExpansionsPerHypothesis)
+        for hypothesis in hypotheses {
+            expanded.append(contentsOf: expand(
+                hypothesis,
                 with: pitch,
-                velocity: velocity,
+                velocityWeight: performedVelocityWeight,
                 timestamp: timestamp,
-                allowsDistantRestart: committedAnchor == hypothesisState($0)
-            )
+                allowsDistantRestart: committedAnchor == hypothesisState(hypothesis)
+            ))
         }
         hypotheses = prune(expanded)
         return commitPosition()
@@ -285,10 +298,11 @@ public final class ScoreFollower {
     /// Releases are retained as soft evidence that the performer completed the current chord;
     /// they do not independently cause a score advance.
     func consume(noteOff pitch: UInt8) {
+        let releasedPitchMask = pitchMask(for: pitch)
         hypotheses = hypotheses.map { hypothesis in
-            guard hypothesis.matchedPitches.contains(pitch) else { return hypothesis }
+            guard hypothesis.matchedPitchMask & releasedPitchMask != 0 else { return hypothesis }
             var updated = hypothesis
-            updated.releasedPitches.insert(pitch)
+            updated.releasedPitchMask |= releasedPitchMask
             return updated
         }
     }
@@ -308,18 +322,20 @@ public final class ScoreFollower {
     private func expand(
         _ hypothesis: Hypothesis,
         with pitch: UInt8,
-        velocity: UInt8,
+        velocityWeight: Double,
         timestamp: MIDITimeStamp,
         allowsDistantRestart: Bool
     ) -> [Hypothesis] {
         var base = hypothesis
         base.score *= Configuration.scoreDecay
 
+        let performedPitchMask = pitchMask(for: pitch)
         var expansions: [Hypothesis] = []
+        expansions.reserveCapacity(Configuration.maximumExpansionsPerHypothesis)
         if base.momentIndex >= 0,
-           moments[base.momentIndex].pitches.contains(pitch),
-           !base.matchedPitches.contains(pitch) {
-            expansions.append(match(pitch, velocity: velocity, in: base.momentIndex, from: base, timestamp: timestamp))
+           moments[base.momentIndex].pitchMask & performedPitchMask != 0,
+           base.matchedPitchMask & performedPitchMask == 0 {
+            expansions.append(match(pitch, velocityWeight: velocityWeight, in: base.momentIndex, from: base, timestamp: timestamp))
         }
 
         var extra = base
@@ -329,21 +345,22 @@ public final class ScoreFollower {
         let firstLocalTarget = max(0, base.momentIndex + 1)
         let lastLocalTarget = min(moments.count - 1, base.momentIndex + Configuration.localLookAhead)
         if firstLocalTarget <= lastLocalTarget {
+            var firstAdvance: Hypothesis?
             for target in firstLocalTarget...lastLocalTarget {
-                guard moments[target].pitches.contains(pitch) else { continue }
+                guard moments[target].pitchMask & performedPitchMask != 0 else { continue }
                 var advanced = advance(base, to: target, timestamp: timestamp)
-                if base.releasedPitches.contains(pitch) {
+                if target == firstLocalTarget {
+                    firstAdvance = advanced
+                }
+                if base.releasedPitchMask & performedPitchMask != 0 {
                     advanced.score += Configuration.releasedPitchRearticulationReward
                 }
-                expansions.append(match(pitch, velocity: velocity, in: target, from: advanced, timestamp: timestamp))
+                expansions.append(match(pitch, velocityWeight: velocityWeight, in: target, from: advanced, timestamp: timestamp))
             }
 
-            let substitutionTarget = max(0, base.momentIndex + 1)
-            if substitutionTarget < moments.count {
-                var substitution = advance(base, to: substitutionTarget, timestamp: timestamp)
-                substitution.score -= Configuration.substitutionPenalty
-                expansions.append(substitution)
-            }
+            var substitution = firstAdvance ?? advance(base, to: firstLocalTarget, timestamp: timestamp)
+            substitution.score -= Configuration.substitutionPenalty
+            expansions.append(substitution)
         }
 
         if allowsDistantRestart {
@@ -356,38 +373,60 @@ public final class ScoreFollower {
                 restart.jumpTargetStartIndex = target
                 restart.jumpConsecutiveConfirmedMoments = 0
                 restart.jumpLastConfirmedMomentIndex = nil
-                expansions.append(match(pitch, velocity: velocity, in: target, from: restart, timestamp: timestamp))
+                expansions.append(match(pitch, velocityWeight: velocityWeight, in: target, from: restart, timestamp: timestamp))
             }
         }
 
         return expansions
     }
 
-    /// Returns whether transitioning to a score moment should be treated as a distant restart.
-    private func isDistant(_ target: Int, from origin: Int) -> Bool {
-        guard origin >= 0 else { return target > Configuration.localLookAhead }
-        return target < origin || target > origin + Configuration.localLookAhead
-    }
-
     /// Selects a bounded set of remote restart targets distributed across the score.
     private func distantRestartTargets(for pitch: UInt8, from origin: Int) -> [Int] {
-        let targets = momentsByPitch[pitch, default: []].filter {
-            isDistant($0, from: origin)
-        }
-        guard targets.count > Configuration.remoteRestartSeedLimit else {
-            return targets
+        let targets = momentsByPitch[Int(pitch)]
+        guard !targets.isEmpty else { return [] }
+
+        let prefixEnd: Int
+        let suffixStart: Int
+        if origin >= 0 {
+            prefixEnd = insertionIndex(in: targets, for: origin)
+            suffixStart = insertionIndex(in: targets, for: origin + Configuration.localLookAhead + 1)
+        } else {
+            prefixEnd = 0
+            suffixStart = insertionIndex(in: targets, for: Configuration.localLookAhead + 1)
         }
 
-        let finalOffset = targets.count - 1
-        let offsets = Set((0..<Configuration.remoteRestartSeedLimit).map { seedIndex in
-            Int(
-                (
-                    Double(seedIndex) * Double(finalOffset)
-                    / Double(Configuration.remoteRestartSeedLimit - 1)
-                ).rounded()
-            )
-        })
-        return offsets.sorted().map { targets[$0] }
+        let distantTargetCount = prefixEnd + targets.count - suffixStart
+        guard distantTargetCount > 0 else { return [] }
+
+        var selected: [Int] = []
+        selected.reserveCapacity(min(distantTargetCount, Configuration.remoteRestartSeedLimit))
+        for seedIndex in 0..<min(distantTargetCount, Configuration.remoteRestartSeedLimit) {
+            let offset = distantTargetCount <= Configuration.remoteRestartSeedLimit
+                ? seedIndex
+                : Int(
+                    (
+                        Double(seedIndex) * Double(distantTargetCount - 1)
+                        / Double(Configuration.remoteRestartSeedLimit - 1)
+                    ).rounded()
+                )
+            selected.append(offset < prefixEnd ? targets[offset] : targets[suffixStart + offset - prefixEnd])
+        }
+        return selected
+    }
+
+    /// Returns the insertion index after every value lower than the supplied value in a sorted collection.
+    private func insertionIndex(in targets: [Int], for value: Int) -> Int {
+        var lowerBound = 0
+        var upperBound = targets.count
+        while lowerBound < upperBound {
+            let midpoint = lowerBound + (upperBound - lowerBound) / 2
+            if targets[midpoint] < value {
+                lowerBound = midpoint + 1
+            } else {
+                upperBound = midpoint
+            }
+        }
+        return lowerBound
     }
 
     /// Closes the current moment and applies its missing-note and timing costs before advancing.
@@ -400,24 +439,22 @@ public final class ScoreFollower {
         let firstOmitted = max(0, hypothesis.momentIndex)
         if firstOmitted < target {
             for index in firstOmitted..<target {
-                let alreadyMatched = index == hypothesis.momentIndex ? hypothesis.matchedPitches : []
+                let matchedPitchMask = index == hypothesis.momentIndex ? hypothesis.matchedPitchMask : 0
                 advanced.score -= Configuration.unmatchedPitchPenalty
-                    * Double(moments[index].pitches.subtracting(alreadyMatched).count)
-                if alreadyMatched.isEmpty {
+                    * Double((moments[index].pitchMask & ~matchedPitchMask).nonzeroBitCount)
+                if matchedPitchMask == 0 {
                     advanced.score -= Configuration.completelySkippedMomentPenalty
                 }
             }
         }
 
-        let releasedExpectedPitches = hypothesis.releasedPitches
-            .intersection(hypothesis.matchedPitches)
-            .count
-        advanced.score += Configuration.releasedChordPitchReward * Double(releasedExpectedPitches)
+        let releasedExpectedPitchCount = (hypothesis.releasedPitchMask & hypothesis.matchedPitchMask).nonzeroBitCount
+        advanced.score += Configuration.releasedChordPitchReward * Double(releasedExpectedPitchCount)
 
         applyTimingEvidence(to: &advanced, advancingTo: target, timestamp: timestamp)
         advanced.momentIndex = target
-        advanced.matchedPitches = []
-        advanced.releasedPitches = []
+        advanced.matchedPitchMask = 0
+        advanced.releasedPitchMask = 0
         advanced.momentStartedAt = valid(timestamp) ? timestamp : nil
         advanced.lastMatchedAt = valid(timestamp) ? timestamp : nil
         return advanced
@@ -431,8 +468,8 @@ public final class ScoreFollower {
     ) -> Hypothesis {
         var restarted = hypothesis
         restarted.momentIndex = target
-        restarted.matchedPitches = []
-        restarted.releasedPitches = []
+        restarted.matchedPitchMask = 0
+        restarted.releasedPitchMask = 0
         restarted.momentStartedAt = valid(timestamp) ? timestamp : nil
         restarted.lastMatchedAt = valid(timestamp) ? timestamp : nil
         restarted.ticksPerBeat = nil
@@ -442,20 +479,21 @@ public final class ScoreFollower {
     /// Records a velocity-weighted exact pitch match and updates any pending jump evidence.
     private func match(
         _ pitch: UInt8,
-        velocity: UInt8,
+        velocityWeight: Double,
         in momentIndex: Int,
         from hypothesis: Hypothesis,
         timestamp: MIDITimeStamp
     ) -> Hypothesis {
         var matched = hypothesis
         matched.momentIndex = momentIndex
-        matched.matchedPitches.insert(pitch)
-        matched.releasedPitches.remove(pitch)
-        matched.score += Configuration.exactMatchReward * velocityWeight(for: velocity)
+        let performedPitchMask = pitchMask(for: pitch)
+        matched.matchedPitchMask |= performedPitchMask
+        matched.releasedPitchMask &= ~performedPitchMask
+        matched.score += Configuration.exactMatchReward * velocityWeight
         matched.exactMatchCount += 1
 
         if matched.jumpOriginIndex != nil,
-           matched.matchedPitches == moments[momentIndex].pitches {
+           matched.matchedPitchMask == moments[momentIndex].pitchMask {
             if isStronglyDistinguishingJumpMoment(momentIndex, in: matched) {
                 matched.jumpConsecutiveConfirmedMoments = matched.jumpLastConfirmedMomentIndex == momentIndex - 1
                     ? matched.jumpConsecutiveConfirmedMoments + 1
@@ -486,13 +524,13 @@ public final class ScoreFollower {
         let localIndex = origin + (momentIndex - targetStart) + 1
         guard moments.indices.contains(localIndex) else { return true }
 
-        let remotePitches = moments[momentIndex].pitches
-        let localPitches = moments[localIndex].pitches
+        let remotePitchMask = moments[momentIndex].pitchMask
+        let localPitchMask = moments[localIndex].pitchMask
         let minimumDistinctPitches = min(
             Configuration.jumpMinimumPitchDifferences,
-            min(remotePitches.count, localPitches.count)
+            min(remotePitchMask.nonzeroBitCount, localPitchMask.nonzeroBitCount)
         )
-        let differingPitchCount = remotePitches.symmetricDifference(localPitches).count
+        let differingPitchCount = (remotePitchMask ^ localPitchMask).nonzeroBitCount
         return differingPitchCount >= minimumDistinctPitches * 2
     }
 
@@ -531,10 +569,10 @@ public final class ScoreFollower {
             )
             hypothesis.score -= deviation * Configuration.timingPenaltyWeight
 
-            guard hypothesis.matchedPitches == moments[hypothesis.momentIndex].pitches else { return }
+            guard hypothesis.matchedPitchMask == moments[hypothesis.momentIndex].pitchMask else { return }
             hypothesis.ticksPerBeat = ticksPerBeat * (1 - Configuration.tempoSmoothing)
                 + observedTicksPerBeat * Configuration.tempoSmoothing
-        } else if hypothesis.matchedPitches == moments[hypothesis.momentIndex].pitches {
+        } else if hypothesis.matchedPitchMask == moments[hypothesis.momentIndex].pitchMask {
             hypothesis.ticksPerBeat = observedTicksPerBeat
         }
     }
@@ -554,8 +592,8 @@ public final class ScoreFollower {
     private func hypothesisState(_ hypothesis: Hypothesis) -> HypothesisState {
         HypothesisState(
             momentIndex: hypothesis.momentIndex,
-            matchedPitches: hypothesis.matchedPitches,
-            releasedPitches: hypothesis.releasedPitches,
+            matchedPitchMask: hypothesis.matchedPitchMask,
+            releasedPitchMask: hypothesis.releasedPitchMask,
             lineageID: hypothesis.lineageID,
             exactMatchCount: hypothesis.exactMatchCount
         )
@@ -691,7 +729,7 @@ public final class ScoreFollower {
         hypotheses
             .filter {
                 $0.momentIndex >= 0
-                    && $0.matchedPitches == moments[$0.momentIndex].pitches
+                    && $0.matchedPitchMask == moments[$0.momentIndex].pitchMask
             }
             .max(by: { $0.score < $1.score })
     }
