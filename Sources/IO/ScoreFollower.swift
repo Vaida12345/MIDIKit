@@ -545,7 +545,7 @@ public final class ScoreFollower {
 
     /// Retains strong, geographically diverse candidate alignments without evicting continuity.
     private func prune(_ candidates: [Hypothesis]) -> [Hypothesis] {
-        var bestByState: [HypothesisState: Hypothesis] = [:]
+        var bestByState = Dictionary<HypothesisState, Hypothesis>(minimumCapacity: candidates.count)
         for candidate in candidates {
             let state = hypothesisState(candidate)
             if bestByState[state]?.score ?? -.infinity < candidate.score {
@@ -553,35 +553,40 @@ public final class ScoreFollower {
             }
         }
 
-        let sorted = bestByState.values.sorted(by: sortHypotheses)
+        let sorted = bestByState.values.map {
+            (hypothesis: $0, state: hypothesisState($0))
+        }.sorted {
+            sortHypotheses($0.hypothesis, $1.hypothesis)
+        }
         var selected: [Hypothesis] = []
-        var selectedStates: Set<HypothesisState> = []
+        selected.reserveCapacity(Configuration.beamWidth)
         var representedRegions: Set<Int> = []
 
-        if let committed = sorted.first(where: { $0.lineageID == committedLineageID }) {
-            selected.append(committed)
-            selectedStates.insert(hypothesisState(committed))
-            let region = committed.momentIndex < 0 ? -1 : committed.momentIndex / Configuration.regionSize
+        let committed = sorted.first(where: { $0.hypothesis.lineageID == committedLineageID })
+        if let committed {
+            selected.append(committed.hypothesis)
+            let region = committed.hypothesis.momentIndex < 0
+                ? -1
+                : committed.hypothesis.momentIndex / Configuration.regionSize
             representedRegions.insert(region)
         } else {
             assertionFailure("Beam pruning must retain the committed lineage.")
         }
 
         for candidate in sorted where selected.count < Configuration.beamWidth {
-            let state = hypothesisState(candidate)
-            guard !selectedStates.contains(state) else { continue }
+            guard candidate.state != committed?.state else { continue }
 
-            let region = candidate.momentIndex < 0 ? -1 : candidate.momentIndex / Configuration.regionSize
+            let region = candidate.hypothesis.momentIndex < 0
+                ? -1
+                : candidate.hypothesis.momentIndex / Configuration.regionSize
             guard representedRegions.insert(region).inserted else { continue }
 
-            selected.append(candidate)
-            selectedStates.insert(state)
+            selected.append(candidate.hypothesis)
         }
 
         for candidate in sorted where selected.count < Configuration.beamWidth {
-            let state = hypothesisState(candidate)
-            guard selectedStates.insert(state).inserted else { continue }
-            selected.append(candidate)
+            guard candidate.state != committed?.state else { continue }
+            selected.append(candidate.hypothesis)
         }
 
         return selected
