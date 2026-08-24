@@ -7,6 +7,7 @@
 
 import CoreMIDI
 import Foundation
+import Optimization
 
 
 /// Follows a reference score from incoming MIDI note-on messages.
@@ -111,6 +112,23 @@ public final class ScoreFollower {
         let releasedPitches: Set<UInt8>
         let lineageID: Int
         let exactMatchCount: Int
+    }
+
+    /// Couples a deduplicated hypothesis with its state for beam ranking.
+    private struct RankedHypothesis: Comparable {
+        let hypothesis: Hypothesis
+        let state: HypothesisState
+
+        static func == (lhs: RankedHypothesis, rhs: RankedHypothesis) -> Bool {
+            lhs.hypothesis.score == rhs.hypothesis.score
+                && lhs.hypothesis.lineageID == rhs.hypothesis.lineageID
+        }
+
+        static func < (lhs: RankedHypothesis, rhs: RankedHypothesis) -> Bool {
+            lhs.hypothesis.score == rhs.hypothesis.score
+                ? lhs.hypothesis.lineageID > rhs.hypothesis.lineageID
+                : lhs.hypothesis.score < rhs.hypothesis.score
+        }
     }
 
     private enum Configuration {
@@ -553,48 +571,63 @@ public final class ScoreFollower {
             }
         }
 
-        let sorted = bestByState.values.map {
-            (hypothesis: $0, state: hypothesisState($0))
-        }.sorted {
-            sortHypotheses($0.hypothesis, $1.hypothesis)
+        let ranked = bestByState.values.map {
+            RankedHypothesis(
+                hypothesis: $0,
+                state: hypothesisState($0)
+            )
         }
-        var selected: [Hypothesis] = []
-        selected.reserveCapacity(Configuration.beamWidth)
-        var representedRegions: Set<Int> = []
+        let committed = ranked
+            .filter { $0.hypothesis.lineageID == committedLineageID }
+            .max()
 
-        let committed = sorted.first(where: { $0.hypothesis.lineageID == committedLineageID })
+        var selected: [RankedHypothesis] = []
+        selected.reserveCapacity(Configuration.beamWidth)
         if let committed {
-            selected.append(committed.hypothesis)
-            let region = committed.hypothesis.momentIndex < 0
-                ? -1
-                : committed.hypothesis.momentIndex / Configuration.regionSize
-            representedRegions.insert(region)
+            selected.append(committed)
         } else {
             assertionFailure("Beam pruning must retain the committed lineage.")
         }
 
-        for candidate in sorted where selected.count < Configuration.beamWidth {
-            guard candidate.state != committed?.state else { continue }
-
+        let remainingCapacity = Configuration.beamWidth - selected.count
+        let committedRegion = committed.map {
+            $0.hypothesis.momentIndex < 0
+                ? -1
+                : $0.hypothesis.momentIndex / Configuration.regionSize
+        }
+        var bestByRegion: [Int: RankedHypothesis] = [:]
+        for candidate in ranked where candidate.state != committed?.state {
             let region = candidate.hypothesis.momentIndex < 0
                 ? -1
                 : candidate.hypothesis.momentIndex / Configuration.regionSize
-            guard representedRegions.insert(region).inserted else { continue }
-
-            selected.append(candidate.hypothesis)
+            guard region != committedRegion else { continue }
+            if let existing = bestByRegion[region], existing >= candidate {
+                continue
+            }
+            bestByRegion[region] = candidate
         }
 
-        for candidate in sorted where selected.count < Configuration.beamWidth {
-            guard candidate.state != committed?.state else { continue }
-            selected.append(candidate.hypothesis)
+        var regionCandidates = Heap<RankedHypothesis>(.minHeap)
+        for candidate in bestByRegion.values {
+            regionCandidates.append(candidate)
+            if regionCandidates.count > remainingCapacity {
+                regionCandidates.removeFirst()
+            }
         }
+        selected.append(contentsOf: regionCandidates.sorted(by: >))
 
-        return selected
-    }
+        let selectedStates = Set(selected.map { $0.state })
+        let fillCapacity = Configuration.beamWidth - selected.count
+        var fillCandidates = Heap<RankedHypothesis>(.minHeap)
+        for candidate in ranked where !selectedStates.contains(candidate.state) {
+            fillCandidates.append(candidate)
+            if fillCandidates.count > fillCapacity {
+                fillCandidates.removeFirst()
+            }
+        }
+        selected.append(contentsOf: fillCandidates.sorted(by: >))
 
-    /// Orders hypotheses by score while preserving a deterministic lineage tiebreaker.
-    private func sortHypotheses(_ lhs: Hypothesis, _ rhs: Hypothesis) -> Bool {
-        lhs.score == rhs.score ? lhs.lineageID < rhs.lineageID : lhs.score > rhs.score
+        return selected.map { $0.hypothesis }
     }
 
     /// Selects the committed lineage and applies confirmation before accepting a distant jump.
