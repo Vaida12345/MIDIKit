@@ -652,7 +652,7 @@ public final class ScoreFollower {
                 regionCandidates.removeFirst()
             }
         }
-        selected.append(contentsOf: regionCandidates.sorted(by: >))
+        selected.append(contentsOf: regionCandidates.reversed())
 
         let selectedStates = Set(selected.map { $0.state })
         let fillCapacity = Configuration.beamWidth - selected.count
@@ -663,7 +663,7 @@ public final class ScoreFollower {
                 fillCandidates.removeFirst()
             }
         }
-        selected.append(contentsOf: fillCandidates.sorted(by: >))
+        selected.append(contentsOf: fillCandidates.reversed())
 
         return selected.map { $0.hypothesis }
     }

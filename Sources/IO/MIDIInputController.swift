@@ -144,7 +144,7 @@ public final class MIDIInputController {
             MIDIEventListForEachEvent(eventList, { contextPointer, timestamp, message in
                 guard let contextPointer else { return }
                 let controller = Unmanaged<MIDIInputController>.fromOpaque(contextPointer).takeUnretainedValue()
-                let event = MIDIInputEvent(timestamp: timestamp, message: message)
+                guard let event = MIDIInputEvent(timestamp: timestamp, message: message) else { return } // filter out unwanted custom events.
                 
                 Task { @MainActor [weak controller] in
                     controller?.publish(event)
@@ -351,29 +351,30 @@ public struct MIDIInputEvent: @unchecked Sendable {
     /// The Core MIDI host-time timestamp for the message.
     public let timestamp: MIDITimeStamp
     
-    /// The Universal MIDI Packet delivered by Core MIDI.
-    public let message: MIDIUniversalMessage
+    /// Parsed input event
+    public let event: ParsedInputEvent
     
-    
-    /// Parse the input event
-    public func parse() -> ParsedInputEvent? {
+    /// Creates an event from one Core MIDI message.
+    public init?(timestamp: MIDITimeStamp, message: MIDIUniversalMessage) {
+        self.timestamp = timestamp
+        
         switch message.type {
         case .channelVoice1: // This corresponds to MIDI 1.0 messages, which is what this MIDI Client requests.
             switch message.channelVoice1.status {
             case .noteOn:
                 let velocity = message.channelVoice1.note.velocity
                 if velocity != 0 {
-                    return .noteOn(pitch: message.channelVoice1.note.number, velocity: velocity)
+                    self.event = .noteOn(pitch: message.channelVoice1.note.number, velocity: velocity)
                 } else {
-                    return .noteOff(pitch: message.channelVoice1.note.number)
+                    self.event = .noteOff(pitch: message.channelVoice1.note.number)
                 }
                 
             case .noteOff:
-                return .noteOff(pitch: message.channelVoice1.note.number)
+                self.event = .noteOff(pitch: message.channelVoice1.note.number)
                 
             case .controlChange:
                 let controlChange = message.channelVoice1.controlChange
-                return .controlChange(control: controlChange.index, value: controlChange.data)
+                self.event = .controlChange(control: controlChange.index, value: controlChange.data)
                 
             default:
                 return nil
@@ -382,13 +383,6 @@ public struct MIDIInputEvent: @unchecked Sendable {
         default:
             return nil
         }
-    }
-    
-    
-    /// Creates an event from one Core MIDI message.
-    public init(timestamp: MIDITimeStamp, message: MIDIUniversalMessage) {
-        self.timestamp = timestamp
-        self.message = message
     }
 }
 
