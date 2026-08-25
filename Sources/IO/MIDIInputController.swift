@@ -143,8 +143,8 @@ public final class MIDIInputController {
             
             MIDIEventListForEachEvent(eventList, { contextPointer, timestamp, message in
                 guard let contextPointer else { return }
-                let controller = Unmanaged<MIDIInputController>.fromOpaque(contextPointer).takeUnretainedValue()
                 guard let event = MIDIInputEvent(timestamp: timestamp, message: message) else { return } // filter out unwanted custom events.
+                let controller = Unmanaged<MIDIInputController>.fromOpaque(contextPointer).takeUnretainedValue()
                 
                 Task { @MainActor [weak controller] in
                     controller?.publish(event)
