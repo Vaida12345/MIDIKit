@@ -203,7 +203,7 @@ public final class MIDIInputController {
     public func events() -> AsyncStream<MIDIInputEvent> {
         let identifier = UUID()
         
-        return AsyncStream(bufferingPolicy: .bufferingNewest(256)) { continuation in
+        return AsyncStream(bufferingPolicy: .bufferingNewest(64)) { continuation in
             eventContinuations[identifier] = continuation
             continuation.onTermination = { [weak self] _ in
                 Task { @MainActor [weak self] in
