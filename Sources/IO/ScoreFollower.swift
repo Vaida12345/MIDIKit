@@ -252,9 +252,7 @@ public final class ScoreFollower {
     /// but do not advance the inferred position. Provide the Core MIDI receive timestamp unchanged;
     /// a zero or non-monotonic timestamp disables timing evidence for the affected transition.
     public func consume(_ input: MIDIInputEvent) -> Position? {
-        guard let event = input.parse() else { return nil }
-
-        switch event {
+        switch input.event {
         case let .noteOn(pitch, velocity):
             return consume(noteOn: pitch, velocity: velocity, timestamp: input.timestamp)
         case let .noteOff(pitch):
