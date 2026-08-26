@@ -53,7 +53,7 @@ extension IndexedContainer {
     /// - Returns: If `self` has no sustain, returns `self` as region.
     ///
     /// - Note: returned region count could be different to sustain count, as a region cannot be empty.
-    public func regions() -> [Region] {
+    public func regions() -> Regions {
         guard !self.isEmpty else { return [] }
         var notes = (0..<self.contents.count).map({ ReferenceNote(self.contents.baseAddress! + $0) })
         if self.sustains.isEmpty {
@@ -107,16 +107,42 @@ extension IndexedContainer {
             i &+= 1
         }
         
-        return Dictionary(grouping: notes, by: { store[$0]! }).map({ Region(id: $0, notes: $1) }).sorted()
+        return Regions(
+            contents: Dictionary(grouping: notes, by: { store[$0]! }).map({ Region(id: $0, notes: $1) }).sorted()
+        )
+    }
+    
+    
+    public struct Regions: OverlappingIntervals {
+        public var contents: [Region]
+        public typealias Element = Region
+        
+        public init(contents: [Region]) {
+            self.contents = contents
+        }
     }
     
 }
 
-
-extension Array<IndexedContainer.Region>: SortedIntervals {
+extension IndexedContainer.Regions: ExpressibleByArrayLiteral, RandomAccessCollection, MutableCollection, BidirectionalCollection {
     
-}
-
-extension Array<IndexedContainer.Region>: OverlappingIntervals {
+    @inlinable public var startIndex: Int { 0 }
+    @inlinable public var endIndex: Int { self.contents.count }
+    @inlinable public var count: Int { self.contents.count }
+    
+    @inlinable
+    public subscript(position: Index) -> Element {
+        get {
+            self.contents[position]
+        }
+        set {
+            self.contents[position] = newValue
+        }
+    }
+    
+    @inlinable
+    public init(arrayLiteral elements: Element...) {
+        self.init(contents: elements)
+    }
     
 }

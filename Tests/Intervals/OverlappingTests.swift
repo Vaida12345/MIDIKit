@@ -9,7 +9,7 @@ import Testing
 
 
 /// A concrete type implementing OverlappingIntervals for testing.
-private struct Overlapping: ArrayRepresentable, OverlappingIntervals {
+private struct Overlapping: OverlappingIntervals {
 
     var contents: [MIDISustainEvent]
 
@@ -19,6 +19,29 @@ private struct Overlapping: ArrayRepresentable, OverlappingIntervals {
 
     typealias Element = MIDISustainEvent
 
+}
+
+extension Overlapping: ExpressibleByArrayLiteral, RandomAccessCollection, MutableCollection, BidirectionalCollection {
+    
+    @inlinable public var startIndex: Int { 0 }
+    @inlinable public var endIndex: Int { self.contents.count }
+    @inlinable public var count: Int { self.contents.count }
+    
+    @inlinable
+    public subscript(position: Index) -> Element {
+        get {
+            self.contents[position]
+        }
+        set {
+            self.contents[position] = newValue
+        }
+    }
+    
+    @inlinable
+    public init(arrayLiteral elements: Element...) {
+        self.init(elements)
+    }
+    
 }
 
 

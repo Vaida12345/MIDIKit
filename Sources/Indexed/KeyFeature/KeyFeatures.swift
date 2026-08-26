@@ -9,7 +9,7 @@ import AudioToolbox
 import Essentials
 
 
-public struct KeyFeatures: ArrayRepresentable {
+public struct KeyFeatures {
     
     public var contents: [Element]
     
@@ -114,6 +114,30 @@ public struct KeyFeatures: ArrayRepresentable {
     }
     
     public typealias Element = KeyFeature
+    
+}
+
+
+extension KeyFeatures: ExpressibleByArrayLiteral, RandomAccessCollection, MutableCollection, BidirectionalCollection {
+    
+    @inlinable public var startIndex: Int { 0 }
+    @inlinable public var endIndex: Int { self.contents.count }
+    @inlinable public var count: Int { self.contents.count }
+    
+    @inlinable
+    public subscript(position: Index) -> Element {
+        get {
+            self.contents[position]
+        }
+        set {
+            self.contents[position] = newValue
+        }
+    }
+    
+    @inlinable
+    public init(arrayLiteral elements: Element...) {
+        self.init(elements)
+    }
     
 }
 

@@ -9,7 +9,7 @@ import Testing
 import MIDIKit
 
 
-private struct DisjointInterval: ArrayRepresentable, DisjointIntervals {
+private struct DisjointInterval:  DisjointIntervals {
     
     var contents: [MIDISustainEvent]
     
@@ -18,6 +18,29 @@ private struct DisjointInterval: ArrayRepresentable, DisjointIntervals {
     }
     
     public typealias Element = MIDISustainEvent
+    
+}
+
+extension DisjointInterval: ExpressibleByArrayLiteral, RandomAccessCollection, MutableCollection, BidirectionalCollection {
+    
+    @inlinable public var startIndex: Int { 0 }
+    @inlinable public var endIndex: Int { self.contents.count }
+    @inlinable public var count: Int { self.contents.count }
+    
+    @inlinable
+    public subscript(position: Index) -> Element {
+        get {
+            self.contents[position]
+        }
+        set {
+            self.contents[position] = newValue
+        }
+    }
+    
+    @inlinable
+    public init(arrayLiteral elements: Element...) {
+        self.init(elements)
+    }
     
 }
 
