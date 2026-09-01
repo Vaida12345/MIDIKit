@@ -458,6 +458,43 @@ struct ScoreFollowerTests {
         #expect(consume(72, with: follower, at: 3_000)?.beat == 4)
     }
 
+    /// Verifies that an empty follower acquires an ambiguous phrase inside the visible score region.
+    @Test("visible range directs initial alignment")
+    func visibleRangeDirectsInitialAlignment() async {
+        let follower = ScoreFollower()
+        follower.visibleRange = 10...11
+        await follower.update(reference: [
+            .init(beat: 0, pitch: 60),
+            .init(beat: 1, pitch: 62),
+            .init(beat: 5, pitch: 70),
+            .init(beat: 10, pitch: 60),
+            .init(beat: 11, pitch: 62)
+        ])
+
+        let positions = consume([60, 62], with: follower)
+
+        #expect(positions.last?.beat == 11)
+    }
+
+    /// Verifies that the visible prior cannot bypass continuity for an established alignment.
+    @Test("visible range retains local continuity")
+    func visibleRangeRetainsLocalContinuity() async {
+        let follower = ScoreFollower()
+        await follower.update(reference: [
+            .init(beat: 0, pitch: 60),
+            .init(beat: 1, pitch: 62),
+            .init(beat: 2, pitch: 64),
+            .init(beat: 10, pitch: 64)
+        ])
+        _ = consume([60, 62], with: follower)
+        follower.visibleRange = 10...10
+
+        let position = consume(64, with: follower, at: 3_000)
+
+        #expect(position?.beat == 2)
+        #expect(position?.didJump == false)
+    }
+
     @Test("merges near-simultaneous pre-grouped reference moments")
     func mergesNearSimultaneousReferenceMoments() async {
         let follower = ScoreFollower()
