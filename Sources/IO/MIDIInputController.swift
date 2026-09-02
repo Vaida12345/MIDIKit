@@ -353,6 +353,25 @@ public struct MIDIInputEvent: @unchecked Sendable {
     
     /// Parsed input event
     public let event: ParsedInputEvent
+
+    /// MIDI channel in `0...15`.
+    public let channel: UInt8
+
+    /// Creates an already-decoded input event.
+    ///
+    /// Use this initializer for deterministic playback, alternate MIDI transports, and tests
+    /// that already have a ``ParsedInputEvent``. Hardware input continues to use
+    /// ``init(timestamp:message:)``.
+    public init(
+        timestamp: MIDITimeStamp,
+        event: ParsedInputEvent,
+        channel: UInt8 = 0
+    ) {
+        precondition(channel < 16, "MIDI channel must be in 0...15")
+        self.timestamp = timestamp
+        self.event = event
+        self.channel = channel
+    }
     
     /// Creates an event from one Core MIDI message.
     public init?(timestamp: MIDITimeStamp, message: MIDIUniversalMessage) {
@@ -360,6 +379,7 @@ public struct MIDIInputEvent: @unchecked Sendable {
         
         switch message.type {
         case .channelVoice1: // This corresponds to MIDI 1.0 messages, which is what this MIDI Client requests.
+            self.channel = message.channelVoice1.channel
             switch message.channelVoice1.status {
             case .noteOn:
                 let velocity = message.channelVoice1.note.velocity
