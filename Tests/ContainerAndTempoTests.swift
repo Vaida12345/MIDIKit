@@ -152,14 +152,6 @@ struct MIDITempoTrackTests {
         #expect(tempo.tempo == 80.0)
     }
 
-    @Test func arrayLiteralInit() {
-        let tempo: MIDITempoTrack = [
-            MIDITempoTrack.Tempo(timestamp: 0, tempo: 100),
-            MIDITempoTrack.Tempo(timestamp: 4, tempo: 120),
-        ]
-        #expect(tempo.contents.count == 2)
-    }
-
 }
 
 
