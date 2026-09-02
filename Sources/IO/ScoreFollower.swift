@@ -159,7 +159,6 @@ public final class ScoreFollower {
         static let jumpMinimumPitchDifferences = 2
         static let initialExactMatchCount = 2
         static let initialScoreLead = 3.0
-        static let visibleRangePreference = 12.0
         static let timingPenaltyWeight = 0.75
         static let timingRatioTolerance = 2.0
         static let practicePauseRatio = 4.0
@@ -176,12 +175,6 @@ public final class ScoreFollower {
             moment.pitches.map { ReferenceNote(beat: moment.beat, pitch: $0) }
         }
     }
-
-    /// The beat range currently visible to the performer.
-    ///
-    /// Candidates in this range receive a strong, finite ranking preference. Musical evidence can
-    /// still override the preference, and setting `nil` restores score-wide ranking.
-    public var visibleRange: ClosedRange<Double>?
 
     /// The most recently returned position, if a reference moment has been established.
     public private(set) var lastPosition: Position?
@@ -403,51 +396,20 @@ public final class ScoreFollower {
         let distantTargetCount = prefixEnd + targets.count - suffixStart
         guard distantTargetCount > 0 else { return [] }
 
-        let distantTargets = Array(targets[..<prefixEnd]) + Array(targets[suffixStart...])
-        var selected = evenlyDistributedTargets(
-            from: distantTargets.filter(isInVisibleRange),
-            limit: Configuration.remoteRestartSeedLimit
-        )
-        let remainingLimit = Configuration.remoteRestartSeedLimit - selected.count
-        if remainingLimit > 0 {
-            let selectedSet = Set(selected)
-            selected.append(contentsOf: evenlyDistributedTargets(
-                from: distantTargets.filter { !selectedSet.contains($0) },
-                limit: remainingLimit
-            ))
-        }
-        return selected
-    }
-
-    /// Selects up to `limit` evenly distributed values from an ordered collection.
-    private func evenlyDistributedTargets(from targets: [Int], limit: Int) -> [Int] {
-        guard !targets.isEmpty, limit > 0 else { return [] }
-
         var selected: [Int] = []
-        selected.reserveCapacity(min(targets.count, limit))
-        for seedIndex in 0..<min(targets.count, limit) {
-            let offset = targets.count <= limit || limit == 1
+        selected.reserveCapacity(min(distantTargetCount, Configuration.remoteRestartSeedLimit))
+        for seedIndex in 0..<min(distantTargetCount, Configuration.remoteRestartSeedLimit) {
+            let offset = distantTargetCount <= Configuration.remoteRestartSeedLimit
                 ? seedIndex
                 : Int(
                     (
-                        Double(seedIndex) * Double(targets.count - 1)
-                        / Double(limit - 1)
+                        Double(seedIndex) * Double(distantTargetCount - 1)
+                        / Double(Configuration.remoteRestartSeedLimit - 1)
                     ).rounded()
                 )
-            selected.append(targets[offset])
+            selected.append(offset < prefixEnd ? targets[offset] : targets[suffixStart + offset - prefixEnd])
         }
         return selected
-    }
-
-    /// Returns whether a reference moment is inside the currently visible beat range.
-    private func isInVisibleRange(_ momentIndex: Int) -> Bool {
-        guard let visibleRange, moments.indices.contains(momentIndex) else { return false }
-        return visibleRange.contains(moments[momentIndex].beat)
-    }
-
-    /// Returns the evidence score including the finite visible-range preference.
-    private func prioritizedScore(for hypothesis: Hypothesis) -> Double {
-        hypothesis.score + (isInVisibleRange(hypothesis.momentIndex) ? Configuration.visibleRangePreference : 0)
     }
 
     /// Returns the insertion index after every value lower than the supplied value in a sorted collection.
@@ -767,7 +729,7 @@ public final class ScoreFollower {
                 $0.momentIndex >= 0
                     && $0.matchedPitchMask == moments[$0.momentIndex].pitchMask
             }
-            .max(by: { prioritizedScore(for: $0) < prioritizedScore(for: $1) })
+            .max(by: { $0.score < $1.score })
     }
 
     /// Returns whether an initial candidate is supported by sufficient distinct performed-note evidence.
@@ -779,25 +741,24 @@ public final class ScoreFollower {
         let state = hypothesisState(hypothesis)
         guard let alternative = hypotheses
             .filter({ hypothesisState($0) != state })
-            .max(by: { prioritizedScore(for: $0) < prioritizedScore(for: $1) }) else {
+            .max(by: { $0.score < $1.score }) else {
             return false
         }
-        return prioritizedScore(for: hypothesis)
-            >= prioritizedScore(for: alternative) + Configuration.initialScoreLead
+        return hypothesis.score >= alternative.score + Configuration.initialScoreLead
     }
 
     /// Returns the strongest hypothesis in the currently committed lineage.
     private var bestCommittedHypothesis: Hypothesis? {
         hypotheses
             .filter { $0.lineageID == committedLineageID }
-            .max(by: { prioritizedScore(for: $0) < prioritizedScore(for: $1) })
+            .max(by: { $0.score < $1.score })
     }
 
     /// Returns the strongest uncommitted hypothesis created by a distant restart.
     private var bestJumpHypothesis: Hypothesis? {
         hypotheses
             .filter { $0.lineageID != committedLineageID && $0.jumpOriginIndex != nil }
-            .max(by: { prioritizedScore(for: $0) < prioritizedScore(for: $1) })
+            .max(by: { $0.score < $1.score })
     }
 
     /// Returns whether a distant hypothesis has enough sustained evidence to replace continuity.
@@ -806,8 +767,7 @@ public final class ScoreFollower {
               jump.jumpConsecutiveConfirmedMoments >= Configuration.jumpConfirmedChordMoments else {
             return false
         }
-        return prioritizedScore(for: jump)
-            >= prioritizedScore(for: committed) + Configuration.jumpScoreLead
+        return jump.score >= committed.score + Configuration.jumpScoreLead
     }
 
     /// Creates a public position and derives confidence from the strongest competing lineage.
@@ -816,10 +776,10 @@ public final class ScoreFollower {
 
         let alternative = hypotheses
             .filter { $0.lineageID != hypothesis.lineageID }
-            .max(by: { prioritizedScore(for: $0) < prioritizedScore(for: $1) })
+            .max(by: { $0.score < $1.score })
         let confidence: Double
         if let alternative {
-            let gap = prioritizedScore(for: hypothesis) - prioritizedScore(for: alternative)
+            let gap = hypothesis.score - alternative.score
             confidence = 1 / (1 + Foundation.exp(-gap / 3))
         } else {
             confidence = 0.9
