@@ -7,46 +7,57 @@ import CoreMIDI
 import Foundation
 
 
-/// A robust tempo clock belonging to one alignment path.
+/// A robust latent tempo clock copied with each alignment hypothesis.
 ///
-/// The estimate lives in Core MIDI host-time ticks per score beat, so no wall-clock conversion
-/// occurs on the input path. Log-space updates make proportional tempo changes symmetric.
+/// Tempo is represented in log host-time ticks per score beat. The heavy-tailed likelihood gives
+/// timing substantial influence when it is consistent, while pauses, rubato, bad clocks, and
+/// transport discontinuities remain survivable.
 struct PerformanceTempoTracker {
     private(set) var logTicksPerBeat: Double?
-    private(set) var logDeviation = 0.24
-    private(set) var sampleCount = 0
+    private(set) var logDeviation: Double = 0.30
+    private(set) var sampleCount: Int = 0
     private(set) var lastTimestamp: MIDITimeStamp?
     private(set) var lastBeat: Double?
 
-    mutating func reset(at timestamp: MIDITimeStamp?, beat: Double) {
-        logTicksPerBeat = nil
-        logDeviation = 0.24
-        sampleCount = 0
-        lastTimestamp = Self.valid(timestamp)
-        lastBeat = beat
+    init(calibration: PerformanceTempoCalibration? = nil) {
+        if let calibration {
+            logTicksPerBeat = calibration.logTicksPerBeat
+            logDeviation = calibration.logDeviation
+            sampleCount = calibration.sampleCount
+        }
     }
 
-    mutating func anchor(at timestamp: MIDITimeStamp?, beat: Double) {
-        guard let timestamp = Self.valid(timestamp) else { return }
-        if let lastTimestamp, timestamp <= lastTimestamp { return }
-        if let lastBeat, beat <= lastBeat { return }
+    mutating func beginEpisode(at timestamp: MIDITimeStamp?, beat: Double) {
         lastTimestamp = timestamp
         lastBeat = beat
     }
 
-    /// Returns broad corroborating evidence. Timing can add or remove less than one point and
-    /// therefore cannot override a strong pitch disagreement.
-    func compatibility(at timestamp: MIDITimeStamp?, beat: Double) -> Double {
-        guard let sample = sample(at: timestamp, beat: beat),
+    /// Student-t-like log likelihood, normalized so a well-timed transition contributes zero.
+    /// Invalid timestamp pairs are neutral rather than contradictory.
+    func transitionLogLikelihood(at timestamp: MIDITimeStamp?, beat: Double) -> Double {
+        guard let sample = tempoSample(at: timestamp, beat: beat),
               let center = logTicksPerBeat else { return 0 }
-        let residual = abs(sample - center)
-        let scale = max(0.20, logDeviation * 2.8)
-        return max(-0.55, 0.32 - residual / scale * 0.32)
+        let scale = max(0.18, logDeviation)
+        let standardized = (sample - center) / scale
+        return max(-2.4, -1.5 * Foundation.log1p(standardized * standardized / 3))
     }
 
-    mutating func observe(at timestamp: MIDITimeStamp?, beat: Double) {
-        defer { anchor(at: timestamp, beat: beat) }
-        guard let sample = sample(at: timestamp, beat: beat) else { return }
+    /// Weak change-point evidence from a gap. It changes the prior odds of a restart but never
+    /// selects a destination and is unavailable until a tempo has actually been learned.
+    func pauseEvidence(at timestamp: MIDITimeStamp?) -> Double {
+        guard let timestamp, let previous = lastTimestamp, timestamp > previous,
+              let ticksPerBeat = estimatedTicksPerBeat else { return 0 }
+        let beats = Double(timestamp - previous) / ticksPerBeat
+        guard beats > 1.75 else { return 0 }
+        return min(1.6, (beats - 1.75) * 0.42)
+    }
+
+    mutating func observeTransition(at timestamp: MIDITimeStamp?, beat: Double) {
+        defer {
+            if let timestamp { lastTimestamp = timestamp }
+            lastBeat = beat
+        }
+        guard let sample = tempoSample(at: timestamp, beat: beat) else { return }
         guard let center = logTicksPerBeat else {
             logTicksPerBeat = sample
             sampleCount = 1
@@ -54,201 +65,128 @@ struct PerformanceTempoTracker {
         }
 
         let residual = sample - center
-        // Extreme pauses and transport discontinuities reduce timing usefulness but do not drag
-        // the tempo estimate away from the performer's established pulse.
-        guard abs(residual) <= Foundation.log(5.0) else {
-            logDeviation = min(1.2, logDeviation * 1.2)
+        // A long hesitation is a change-point cue, not a tempo measurement.
+        guard abs(residual) <= Foundation.log(4.0) else {
+            logDeviation = min(0.9, logDeviation * 1.08)
             return
         }
-        let clipped = min(max(residual, -0.55), 0.55)
-        let rate = sampleCount < 4 ? 0.28 : 0.16
-        logTicksPerBeat = center + clipped * rate
-        logDeviation = max(0.08, logDeviation * 0.82 + abs(residual) * 0.18)
+        let clipped = min(0.50, max(-0.50, residual))
+        let learningRate = sampleCount < 5 ? 0.24 : 0.10
+        logTicksPerBeat = center + clipped * learningRate
+        logDeviation = max(0.10, logDeviation * 0.88 + abs(residual) * 0.12)
         sampleCount += 1
     }
 
-    var estimatedTicksPerBeat: Double? {
-        logTicksPerBeat.map(Foundation.exp)
+    /// Starts a new timing episode while retaining the performer's learned scale.
+    func detached(at timestamp: MIDITimeStamp?, beat: Double) -> Self {
+        var copy = self
+        copy.lastTimestamp = timestamp
+        copy.lastBeat = beat
+        return copy
     }
 
-    private func sample(at timestamp: MIDITimeStamp?, beat: Double) -> Double? {
-        guard let previousTimestamp = lastTimestamp,
-              let timestamp = Self.valid(timestamp), timestamp > previousTimestamp,
+    var estimatedTicksPerBeat: Double? { logTicksPerBeat.map(Foundation.exp) }
+
+    var calibration: PerformanceTempoCalibration? {
+        guard let logTicksPerBeat else { return nil }
+        return PerformanceTempoCalibration(
+            logTicksPerBeat: logTicksPerBeat,
+            logDeviation: logDeviation,
+            sampleCount: sampleCount
+        )
+    }
+
+    private func tempoSample(at timestamp: MIDITimeStamp?, beat: Double) -> Double? {
+        guard let timestamp, let previousTimestamp = lastTimestamp,
+              timestamp > previousTimestamp,
               let previousBeat = lastBeat, beat > previousBeat else { return nil }
-        let beatDistance = beat - previousBeat
-        let ticks = Double(timestamp - previousTimestamp) / beatDistance
-        guard ticks.isFinite, ticks > 0 else { return nil }
-        return Foundation.log(ticks)
-    }
-
-    private static func valid(_ timestamp: MIDITimeStamp?) -> MIDITimeStamp? {
-        guard let timestamp, timestamp != 0 else { return nil }
-        return timestamp
+        let ticksPerBeat = Double(timestamp - previousTimestamp) / (beat - previousBeat)
+        guard ticksPerBeat.isFinite, ticksPerBeat > 0 else { return nil }
+        return Foundation.log(ticksPerBeat)
     }
 }
 
-private struct RobustTimingScale {
-    private(set) var logCenter: Double?
-    private(set) var logDeviation = 0.35
-    private(set) var sampleCount = 0
-
-    mutating func reset() {
-        logCenter = nil
-        logDeviation = 0.35
-        sampleCount = 0
-    }
-
-    mutating func observe(_ ticks: Double) {
-        guard ticks.isFinite, ticks > 0 else { return }
-        let sample = Foundation.log(ticks)
-        guard let center = logCenter else {
-            logCenter = sample
-            sampleCount = 1
-            return
-        }
-        let residual = sample - center
-        let clipped = min(max(residual, -0.7), 0.7)
-        let rate = sampleCount < 5 ? 0.24 : 0.12
-        logCenter = center + clipped * rate
-        logDeviation = max(0.10, logDeviation * 0.84 + abs(residual) * 0.16)
-        sampleCount += 1
-    }
-
-    func support(for ticks: Double) -> Double {
-        guard ticks > 0, let center = logCenter, sampleCount >= 2 else { return 0 }
-        let residual = abs(Foundation.log(ticks) - center)
-        let scale = max(0.22, logDeviation * 3)
-        return max(-1, min(1, 0.6 - residual / scale))
-    }
-
-    var estimate: Double? { logCenter.map(Foundation.exp) }
+struct PerformanceTempoCalibration {
+    let logTicksPerBeat: Double
+    let logDeviation: Double
+    let sampleCount: Int
 }
 
-/// Timing evidence shared by gesture assembly and the committed local alignment path.
-///
-/// No method returns a Boolean boundary decision. The caller must combine these bounded values
-/// with pitch membership, release state, score structure, and sequential evidence.
+/// Shared performer calibration that survives `userReset()` but not reference replacement.
 struct PerformanceTimingModel {
-    struct GestureHint {
-        let estimatedInterOnsetTicks: Double?
-        let estimatedChordSpanTicks: Double?
-        let reliability: Double
+    private(set) var calibration: PerformanceTempoCalibration?
+    private var blockSpan = RobustPositiveEstimate(initial: 1_200)
+    private var rolledSpan = RobustPositiveEstimate(initial: 8_000)
+    private var dwellRatio = RobustPositiveEstimate(initial: 0.65)
 
-        /// Positive values favor a new gesture; negative values favor another chord member.
-        func boundaryEvidence(
-            gestureStartedAt: MIDITimeStamp?,
-            lastAttackAt: MIDITimeStamp?,
-            newAttackAt: MIDITimeStamp
-        ) -> Double {
-            guard newAttackAt != 0 else { return 0 }
-            var evidence = 0.0
-            var count = 0
-            if let lastAttackAt, lastAttackAt != 0, newAttackAt > lastAttackAt,
-               let interOnset = estimatedInterOnsetTicks, interOnset > 0 {
-                let ratio = Double(newAttackAt - lastAttackAt) / interOnset
-                evidence += min(1, max(-1, Foundation.log(max(ratio, 0.001)) / 1.5))
-                count += 1
-            }
-            if let gestureStartedAt, gestureStartedAt != 0, newAttackAt > gestureStartedAt,
-               let chordSpan = estimatedChordSpanTicks, chordSpan > 0 {
-                let ratio = Double(newAttackAt - gestureStartedAt) / chordSpan
-                evidence += min(1, max(-1, Foundation.log(max(ratio, 0.001)) / 1.8))
-                count += 1
-            }
-            guard count > 0 else { return 0 }
-            return evidence / Double(count) * reliability
+    mutating func hardReset() {
+        calibration = nil
+        blockSpan = RobustPositiveEstimate(initial: 1_200)
+        rolledSpan = RobustPositiveEstimate(initial: 8_000)
+        dwellRatio = RobustPositiveEstimate(initial: 0.65)
+    }
+
+    func newClock() -> PerformanceTempoTracker {
+        PerformanceTempoTracker(calibration: calibration)
+    }
+
+    mutating func adopt(_ clock: PerformanceTempoTracker) {
+        if let candidate = clock.calibration,
+           calibration == nil || candidate.sampleCount >= (calibration?.sampleCount ?? 0) {
+            calibration = candidate
         }
     }
 
-    private(set) var localClock = PerformanceTempoTracker()
-    private var blockChordSpan = RobustTimingScale()
-    private var rolledChordSpan = RobustTimingScale()
-    private var shortNoteDwell = RobustTimingScale()
-    private var articulationRatio = RobustTimingScale()
-
-    mutating func reset() {
-        localClock = PerformanceTempoTracker()
-        blockChordSpan.reset()
-        rolledChordSpan.reset()
-        shortNoteDwell.reset()
-        articulationRatio.reset()
-    }
-
-    mutating func anchorLocal(at timestamp: MIDITimeStamp?, beat: Double) {
-        localClock.anchor(at: timestamp, beat: beat)
-    }
-
-    func localTransitionScore(at timestamp: MIDITimeStamp?, beat: Double) -> Double {
-        localClock.compatibility(at: timestamp, beat: beat)
-    }
-
-    mutating func observeLocalTransition(at timestamp: MIDITimeStamp?, beat: Double) {
-        localClock.observe(at: timestamp, beat: beat)
-    }
-
-    mutating func adopt(_ tracker: PerformanceTempoTracker) {
-        localClock = tracker
-    }
-
-    mutating func observeCompletedGesture(
-        _ gesture: PerformanceGesture,
-        attack: EngravingReference.Attack,
-        expectedDurationBeats: Double,
-        matchQuality: Double
+    mutating func observeOnsetSpan(
+        ticks: Double,
+        attack: EngravingReference.Attack
     ) {
-        guard matchQuality >= 0.72,
-              let start = gesture.startedAt,
-              start != 0 else { return }
-        if let end = gesture.lastAttackAt, end > start {
-            let span = Double(end - start)
-            switch attack {
-            case .block: blockChordSpan.observe(span)
-            case .rolled: rolledChordSpan.observe(span)
-            }
-        }
-
-        if gesture.pitchMask.nonzeroBitCount == 1,
-           let release = gesture.lastReleaseAt, release > start {
-            let dwell = Double(release - start)
-            shortNoteDwell.observe(dwell)
-            if let beatTicks = localClock.estimatedTicksPerBeat,
-               expectedDurationBeats > 0 {
-                articulationRatio.observe(dwell / (beatTicks * expectedDurationBeats))
-            }
-        }
+        guard ticks.isFinite, ticks > 0 else { return }
+        if attack == .rolled { rolledSpan.observe(ticks) }
+        else { blockSpan.observe(ticks) }
     }
 
-    func gestureHint(for attack: EngravingReference.Attack) -> GestureHint {
-        let span = attack == .rolled ? rolledChordSpan.estimate : blockChordSpan.estimate
-        let samples = max(
-            localClock.sampleCount,
-            attack == .rolled ? rolledChordSpan.sampleCount : blockChordSpan.sampleCount
-        )
-        return GestureHint(
-            estimatedInterOnsetTicks: localClock.estimatedTicksPerBeat,
-            estimatedChordSpanTicks: span,
-            reliability: min(1, Double(samples) / 5)
-        )
+    mutating func observeDwell(ticks: Double, writtenBeats: Double) {
+        guard ticks.isFinite, ticks > 0, writtenBeats > 0,
+              let tempo = calibration.map({ Foundation.exp($0.logTicksPerBeat) }) else { return }
+        dwellRatio.observe(ticks / (tempo * writtenBeats))
     }
 
-    /// Weak evidence that a completed single-note gesture was an accidental insertion.
-    func mistakeEvidence(
-        for gesture: PerformanceGesture,
-        expectedDurationBeats: Double
+    func dwellLogLikelihood(ticks: Double, writtenBeats: Double) -> Double {
+        guard ticks.isFinite, ticks > 0, writtenBeats > 0,
+              let tempo = calibration.map({ Foundation.exp($0.logTicksPerBeat) }) else { return 0 }
+        let ratio = ticks / (tempo * writtenBeats)
+        guard ratio.isFinite, ratio > 0 else { return 0 }
+        let residual = Foundation.log(ratio / dwellRatio.value)
+        return max(-0.55, -0.5 * Foundation.log1p(residual * residual / 0.36))
+    }
+
+    /// Likelihood that another serialized attack belongs to the same performed onset. This is
+    /// deliberately soft and broad; pitch evidence remains free to override it for slow rolls.
+    func sameOnsetLogLikelihood(
+        elapsedTicks: Double?,
+        attack: EngravingReference.Attack
     ) -> Double {
-        guard gesture.pitchMask.nonzeroBitCount == 1,
-              let start = gesture.startedAt,
-              let release = gesture.lastReleaseAt,
-              release > start else { return 0 }
-        let dwell = Double(release - start)
-        let learned = shortNoteDwell.support(for: dwell)
-        guard let beatTicks = localClock.estimatedTicksPerBeat else { return learned * -0.1 }
-        let relative = dwell / beatTicks
-        let shortSupport = max(0, min(1, (0.22 - relative) / 0.18))
-        let durationRatio = expectedDurationBeats > 0
-            ? dwell / (beatTicks * expectedDurationBeats)
-            : relative
-        let articulationSupport = max(0, -articulationRatio.support(for: durationRatio))
-        return shortSupport * 0.35 + articulationSupport * 0.15 - learned * 0.06
+        guard let elapsedTicks, elapsedTicks > 0 else { return 0 }
+        let center = attack == .rolled ? rolledSpan.value : blockSpan.value
+        let ratio = elapsedTicks / max(1, center)
+        return ratio <= 1 ? 0 : max(-0.85, -Foundation.log1p(ratio - 1) * 0.42)
+    }
+}
+
+private struct RobustPositiveEstimate {
+    private(set) var value: Double
+    private var sampleCount = 0
+
+    init(initial: Double) { value = initial }
+
+    mutating func observe(_ sample: Double) {
+        guard sample.isFinite, sample > 0 else { return }
+        let center = Foundation.log(value)
+        let residual = Foundation.log(sample) - center
+        let clipped = min(1.1, max(-1.1, residual))
+        let rate = sampleCount < 6 ? 0.20 : 0.08
+        value = Foundation.exp(center + clipped * rate)
+        sampleCount += 1
     }
 }

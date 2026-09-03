@@ -6,15 +6,14 @@
 import Foundation
 
 
-/// Internal hand interpretations. The raw value is also the storage lane in compiled arrays.
+/// The performed-hand interpretation carried by an alignment hypothesis.
 enum EngravingHandMode: Int, CaseIterable, Hashable {
     case both
     case left
     case right
 }
 
-/// Inline storage for the three hand interpretations. Unlike `[UInt128]`, this does not allocate
-/// per score gesture or per MIDI event.
+/// Allocation-free storage for the three performed-hand interpretations.
 struct EngravingPitchMasks {
     var both: UInt128 = 0
     var left: UInt128 = 0
@@ -39,47 +38,47 @@ struct EngravingPitchMasks {
     }
 }
 
+struct EngravingCompiledNote: Hashable {
+    let pitch: UInt8
+    let duration: Double
+    let hand: EngravingReference.Hand
+}
+
 struct EngravingScoreGesture {
     let beat: Double
     let measureOffset: Int
     let lineOffset: Int
     let attack: EngravingReference.Attack
+    let notes: [EngravingCompiledNote]
     let masks: EngravingPitchMasks
-    let averageDurations: SIMD3<Double>
-    let lowestPitch: Int
-    let highestPitch: Int
-    let pitchCentroid: Double
-    let bassInterval: Int
-    let sopranoInterval: Int
-    let beatGap: Double
     let beginsMeasure: Bool
     let beginsLine: Bool
 
     @inline(__always)
     func mask(for mode: EngravingHandMode) -> UInt128 { masks[mode] }
 
-    @inline(__always)
-    func duration(for mode: EngravingHandMode) -> Double { averageDurations[mode.rawValue] }
+    func duration(of pitch: UInt8, mode: EngravingHandMode) -> Double? {
+        var result: Double?
+        for note in notes where note.pitch == pitch {
+            let included = mode == .both
+                || (mode == .left && note.hand == .left)
+                || (mode == .right && note.hand == .right)
+            if included { result = max(result ?? 0, note.duration) }
+        }
+        return result
+    }
 }
 
-struct EngravingGestureFingerprint: Hashable {
-    let first: UInt128
-    let second: UInt128
-}
-
-/// A bounded score lookup together with the information needed to use it safely.
-///
-/// `isExhaustive` means every score occurrence capable of tying the returned candidates was
-/// inspected. Alignment may use an incomplete lookup for speculation, but relocation must fail
-/// closed until a later, more selective observation produces an exhaustive lookup.
+/// A bounded, error-tolerant score lookup. `isExhaustive` is deliberately propagated into
+/// relocation decisions: pruning repeated occurrences must never manufacture certainty.
 struct EngravingCandidateLookup {
     let indices: [Int]
     let isExhaustive: Bool
 }
 
-/// Read-only, precomputed score representation used on the real-time input path.
+/// Immutable score features used by the real-time alignment path.
 struct EngravingScoreFeatureIndex {
-    private static let maximumPostingProbeMultiplier = 8
+    private static let maximumPostingProbeMultiplier = 6
 
     let measures: [EngravingReference.Measure]
     let lines: [EngravingReference.Line]
@@ -88,8 +87,8 @@ struct EngravingScoreFeatureIndex {
 
     private let pitchPostings: [[[Int]]]
     private let exactMaskPostings: [[UInt128: [Int]]]
-    private let pairPostings: [[EngravingGestureFingerprint: [Int]]]
     private let nextRelevant: [[Int?]]
+    private let previousRelevant: [[Int?]]
 
     init(_ reference: EngravingReference) {
         measures = reference.measures
@@ -103,115 +102,81 @@ struct EngravingScoreFeatureIndex {
         }
         lineOffsetByMeasureOffset = lineByMeasure
 
-        var built: [EngravingScoreGesture] = []
-        built.reserveCapacity(reference.moments.count)
-        for (momentOffset, moment) in reference.moments.enumerated() {
+        gestures = reference.moments.compactMap { moment in
             guard let measureOffset = EngravingReference.measureOffset(
                 containing: moment.beat,
                 in: reference.measures
-            ) else { continue }
+            ) else { return nil }
 
             var masks = EngravingPitchMasks()
-            var durationTotals = Array(repeating: 0.0, count: EngravingHandMode.allCases.count)
-            var durationCounts = Array(repeating: 0, count: EngravingHandMode.allCases.count)
-            var pitchTotal = 0
-            var lowest = 127
-            var highest = 0
-
-            for note in moment.notes {
+            let notes = moment.notes.map { note in
                 let bit = Self.pitchBit(note.pitch)
                 masks[.both] |= bit
-                durationTotals[EngravingHandMode.both.rawValue] += note.duration
-                durationCounts[EngravingHandMode.both.rawValue] += 1
-                let mode: EngravingHandMode = note.hand == .left ? .left : .right
-                masks[mode] |= bit
-                durationTotals[mode.rawValue] += note.duration
-                durationCounts[mode.rawValue] += 1
-                pitchTotal += Int(note.pitch)
-                lowest = min(lowest, Int(note.pitch))
-                highest = max(highest, Int(note.pitch))
+                masks[note.hand == .left ? .left : .right] |= bit
+                return EngravingCompiledNote(
+                    pitch: note.pitch,
+                    duration: note.duration,
+                    hand: note.hand
+                )
             }
-
-            let durations = SIMD3<Double>(
-                durationTotals[0] / Double(max(1, durationCounts[0])),
-                durationTotals[1] / Double(max(1, durationCounts[1])),
-                durationTotals[2] / Double(max(1, durationCounts[2]))
-            )
-            let previous = built.last
-            let beginsMeasure = abs(reference.measures[measureOffset].onset - moment.beat)
-                <= EngravingReference.beatEpsilon
             let lineOffset = lineByMeasure[measureOffset]
-            let beginsLine = abs(reference.lines[lineOffset].beatRange.lowerBound - moment.beat)
-                <= EngravingReference.beatEpsilon
-            built.append(EngravingScoreGesture(
+            return EngravingScoreGesture(
                 beat: moment.beat,
                 measureOffset: measureOffset,
                 lineOffset: lineOffset,
                 attack: moment.attack,
+                notes: notes,
                 masks: masks,
-                averageDurations: durations,
-                lowestPitch: lowest,
-                highestPitch: highest,
-                pitchCentroid: Double(pitchTotal) / Double(moment.notes.count),
-                bassInterval: previous.map { lowest - $0.lowestPitch } ?? 0,
-                sopranoInterval: previous.map { highest - $0.highestPitch } ?? 0,
-                beatGap: previous.map { moment.beat - $0.beat } ?? 0,
-                beginsMeasure: beginsMeasure,
-                beginsLine: beginsLine
-            ))
-            assert(momentOffset == built.count - 1)
+                beginsMeasure: abs(reference.measures[measureOffset].onset - moment.beat)
+                    <= EngravingReference.beatEpsilon,
+                beginsLine: abs(reference.lines[lineOffset].beatRange.lowerBound - moment.beat)
+                    <= EngravingReference.beatEpsilon
+            )
         }
-        gestures = built
 
         var postings = Array(
             repeating: Array(repeating: [Int](), count: 128),
             count: EngravingHandMode.allCases.count
         )
-        var masks = Array(
+        var exact = Array(
             repeating: [UInt128: [Int]](),
             count: EngravingHandMode.allCases.count
         )
-        var pairs = Array(
-            repeating: [EngravingGestureFingerprint: [Int]](),
-            count: EngravingHandMode.allCases.count
-        )
         for mode in EngravingHandMode.allCases {
-            var previousMask: UInt128?
-            for (index, gesture) in built.enumerated() {
+            for (index, gesture) in gestures.enumerated() {
                 let mask = gesture.mask(for: mode)
                 guard mask != 0 else { continue }
-                masks[mode.rawValue][mask, default: []].append(index)
+                exact[mode.rawValue][mask, default: []].append(index)
                 var remaining = mask
                 while remaining != 0 {
                     let pitch = remaining.trailingZeroBitCount
                     postings[mode.rawValue][pitch].append(index)
                     remaining &= remaining - 1
                 }
-                if let previousMask {
-                    pairs[mode.rawValue][
-                        EngravingGestureFingerprint(first: previousMask, second: mask),
-                        default: []
-                    ].append(index)
-                }
-                previousMask = mask
             }
         }
         pitchPostings = postings
-        exactMaskPostings = masks
-        pairPostings = pairs
+        exactMaskPostings = exact
 
         var successors = Array(
-            repeating: Array<Int?>(repeating: nil, count: built.count),
+            repeating: Array<Int?>(repeating: nil, count: gestures.count),
             count: EngravingHandMode.allCases.count
         )
+        var predecessors = successors
         for mode in EngravingHandMode.allCases {
             var next: Int?
-            for index in built.indices.reversed() {
+            for index in gestures.indices.reversed() {
                 successors[mode.rawValue][index] = next
-                if built[index].mask(for: mode) != 0 { next = index }
+                if gestures[index].mask(for: mode) != 0 { next = index }
+            }
+            var previous: Int?
+            for index in gestures.indices {
+                predecessors[mode.rawValue][index] = previous
+                if gestures[index].mask(for: mode) != 0 { previous = index }
             }
         }
         nextRelevant = successors
+        previousRelevant = predecessors
     }
 
     @inline(__always)
@@ -220,49 +185,35 @@ struct EngravingScoreFeatureIndex {
         return nextRelevant[mode.rawValue][index]
     }
 
-    func secondSuccessor(of index: Int, mode: EngravingHandMode) -> Int? {
-        guard let first = successor(of: index, mode: mode) else { return nil }
-        return successor(of: first, mode: mode)
+    @inline(__always)
+    func predecessor(of index: Int, mode: EngravingHandMode) -> Int? {
+        guard gestures.indices.contains(index) else { return nil }
+        return previousRelevant[mode.rawValue][index]
     }
 
-    /// Returns score-wide candidates without scanning the score. Exact chords and exact
-    /// two-gesture fingerprints are preferred; otherwise the rarest observed pitch posting is
-    /// used as the bounded entry point.
-    func candidateIndices(
-        for observedMask: UInt128,
-        previousMask: UInt128?,
-        mode: EngravingHandMode,
-        limit: Int
-    ) -> [Int] {
-        candidateLookup(
-            for: observedMask,
-            previousMask: previousMask,
-            mode: mode,
-            limit: limit
-        ).indices
+    func successors(of index: Int, mode: EngravingHandMode, limit: Int) -> [Int] {
+        var result: [Int] = []
+        result.reserveCapacity(limit)
+        var cursor = index
+        while result.count < limit, let next = successor(of: cursor, mode: mode) {
+            result.append(next)
+            cursor = next
+        }
+        return result
     }
 
-    /// Returns a bounded candidate set and whether truncation could have hidden an equally
-    /// plausible occurrence. This distinction is essential for relocation: a beam survivor is
-    /// not evidence that its destination is musically unique.
+    /// Combines bounded postings from every observed pitch. This is intentionally a union, not
+    /// an intersection or rarest-pitch lookup: an accidental rare tone cannot exclude the true
+    /// score location before the probabilistic emission model gets to judge it.
     func candidateLookup(
         for observedMask: UInt128,
-        previousMask: UInt128?,
         mode: EngravingHandMode,
         limit: Int
     ) -> EngravingCandidateLookup {
-        guard observedMask != 0 else {
+        guard observedMask != 0, limit > 0 else {
             return EngravingCandidateLookup(indices: [], isExhaustive: true)
         }
-        if let previousMask,
-           let exact = pairPostings[mode.rawValue][
-               EngravingGestureFingerprint(first: previousMask, second: observedMask)
-           ], !exact.isEmpty {
-            return EngravingCandidateLookup(
-                indices: Self.distributedSample(exact, limit: limit),
-                isExhaustive: exact.count <= limit
-            )
-        }
+
         if let exact = exactMaskPostings[mode.rawValue][observedMask], !exact.isEmpty {
             return EngravingCandidateLookup(
                 indices: Self.distributedSample(exact, limit: limit),
@@ -270,53 +221,33 @@ struct EngravingScoreFeatureIndex {
             )
         }
 
-        var rarest: [Int]?
+        let probeLimit = max(limit, limit * Self.maximumPostingProbeMultiplier)
+        var union = Set<Int>()
+        var exhaustive = true
         var remaining = observedMask
         while remaining != 0 {
             let pitch = remaining.trailingZeroBitCount
             let posting = pitchPostings[mode.rawValue][pitch]
-            if !posting.isEmpty, posting.count < (rarest?.count ?? .max) { rarest = posting }
+            if posting.count > probeLimit { exhaustive = false }
+            union.formUnion(Self.distributedSample(posting, limit: probeLimit))
             remaining &= remaining - 1
         }
-        guard let rarest else {
-            return EngravingCandidateLookup(indices: [], isExhaustive: true)
-        }
-        if rarest.count <= limit {
-            return EngravingCandidateLookup(indices: rarest, isExhaustive: true)
-        }
 
-        // A wrong extra tone can defeat exact-mask lookup, and a ubiquitous pitch can have a
-        // posting proportional to the whole score. Probe a score-wide, evenly distributed
-        // subset so malformed or ambiguous input never turns one MIDI event into a full-score
-        // scan. Exact chords and exact two-gesture fingerprints remain lossless above.
-        let maximumProbes = max(limit, limit * Self.maximumPostingProbeMultiplier)
-        let probes = rarest.count > maximumProbes
-            ? Self.distributedSample(rarest, limit: maximumProbes)
-            : rarest
-
-        var ranked: [(index: Int, quality: Double)] = []
-        ranked.reserveCapacity(limit)
-        for index in probes {
-            let candidate = (
-                index,
-                Self.pitchSimilarity(observedMask, gestures[index].mask(for: mode))
-            )
-            let insertion = ranked.firstIndex {
-                candidate.1 > $0.quality || (candidate.1 == $0.quality && index < $0.index)
-            } ?? ranked.endIndex
-            if insertion < limit {
-                ranked.insert(candidate, at: insertion)
-                if ranked.count > limit { ranked.removeLast() }
-            } else if ranked.count < limit {
-                ranked.append(candidate)
-            }
+        var ranked = union.map { index in
+            (index: index, quality: Self.pitchSimilarity(
+                observedMask,
+                gestures[index].mask(for: mode)
+            ))
         }
-        return EngravingCandidateLookup(
-            indices: ranked.map(\.index),
-            // Even when every posting was inspected, candidates omitted by the result limit can
-            // still be tied after transition and hand-mode evidence is applied.
-            isExhaustive: rarest.count <= limit
-        )
+        ranked.sort {
+            if $0.quality != $1.quality { return $0.quality > $1.quality }
+            return $0.index < $1.index
+        }
+        if ranked.count > limit {
+            exhaustive = false
+            ranked.removeLast(ranked.count - limit)
+        }
+        return EngravingCandidateLookup(indices: ranked.map(\.index), isExhaustive: exhaustive)
     }
 
     @inline(__always)
@@ -328,25 +259,6 @@ struct EngravingScoreFeatureIndex {
         }
         return beat >= range.lowerBound - EngravingReference.beatEpsilon
             && beat < range.upperBound - EngravingReference.beatEpsilon
-    }
-
-    func measureOffsets(intersecting range: ClosedRange<Double>) -> ClosedRange<Int>? {
-        var lower: Int?
-        var upper: Int?
-        let point = range.upperBound - range.lowerBound <= EngravingReference.beatEpsilon
-        for (offset, measure) in measures.enumerated() {
-            let overlaps = point
-                ? measure.beatRange.contains(range.lowerBound)
-                : max(measure.onset, range.lowerBound)
-                    < min(measure.onset + measure.duration, range.upperBound)
-                        - EngravingReference.beatEpsilon
-            if overlaps {
-                lower = lower ?? offset
-                upper = offset
-            }
-        }
-        guard let lower, let upper else { return nil }
-        return lower...upper
     }
 
     static func pitchSimilarity(_ observed: UInt128, _ expected: UInt128) -> Double {
@@ -362,7 +274,7 @@ struct EngravingScoreFeatureIndex {
     static func pitchBit(_ pitch: UInt8) -> UInt128 { UInt128(1) << UInt128(pitch) }
 
     private static func distributedSample(_ values: [Int], limit: Int) -> [Int] {
-        guard values.count > limit, limit > 1 else { return Array(values.prefix(limit)) }
+        guard values.count > limit, limit > 1 else { return Array(values.prefix(max(0, limit))) }
         var result: [Int] = []
         result.reserveCapacity(limit)
         let scale = Double(values.count - 1) / Double(limit - 1)
