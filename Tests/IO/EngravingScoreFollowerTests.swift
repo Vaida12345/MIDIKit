@@ -370,14 +370,10 @@ struct EngravingScoreFollowerTests {
         #expect(update?.beat == 0)
     }
 
-    @Test("two coherent distinguishing gestures can activate a similar remote passage")
+    @Test("a jump needs a coherent post-change episode, not two passage-like errors")
     func distinguishingSequenceActivatesRemotePassage() async throws {
-        let local: [[UInt8]] = [
-            [48, 55, 60, 64], [47, 55, 59, 62], [45, 52, 57, 60], [43, 50, 55, 59]
-        ]
-        let remote: [[UInt8]] = [
-            [48, 55, 60, 65], [47, 55, 59, 64], [45, 52, 57, 62], [43, 50, 55, 60]
-        ]
+        let local: [UInt8] = [60, 62, 64, 65]
+        let remote: [UInt8] = [72, 74, 76, 77]
         let reference = try EngravingReference(
             measures: [
                 .init(index: 0, onset: 0, duration: 4),
@@ -390,9 +386,9 @@ struct EngravingScoreFollowerTests {
                 .init(index: 2, beatRange: 8...12, measureRange: 2...2)
             ],
             moments: local.enumerated().map {
-                Self.bothHandMoment(beat: Double($0.offset), pitches: $0.element)
+                Self.rightMoment(beat: Double($0.offset), pitches: [$0.element])
             } + remote.enumerated().map {
-                Self.bothHandMoment(beat: Double($0.offset + 8), pitches: $0.element)
+                Self.rightMoment(beat: Double($0.offset + 8), pitches: [$0.element])
             }
         )
         let follower = EngravingScoreFollower()
@@ -400,18 +396,24 @@ struct EngravingScoreFollowerTests {
         follower.visibleRange = 0...4
 
         var timestamp: MIDITimeStamp = 1_000
-        var updates: [EngravingScoreFollower.Update] = []
-        for chord in Array(local.prefix(2)) + Array(remote.suffix(2)) {
-            for pitch in chord {
-                if let update = follower.consume(noteOn: pitch, timestamp: timestamp) {
-                    updates.append(update)
-                }
-                timestamp += 1_000
-                follower.consume(noteOff: pitch)
-            }
-        }
+        _ = Self.perform(pitch: local[0], timestamp: timestamp, with: follower)
+        timestamp += 1_000
+        _ = Self.perform(pitch: local[1], timestamp: timestamp, with: follower)
+        timestamp += 1_000
 
-        let relocation = try #require(updates.first(where: { $0.didRelocate }))
+        let firstProbe = Self.perform(pitch: remote[0], timestamp: timestamp, with: follower)
+        timestamp += 1_000
+        let secondProbe = Self.perform(pitch: remote[1], timestamp: timestamp, with: follower)
+        timestamp += 1_000
+        #expect(firstProbe?.didRelocate == false)
+        #expect(secondProbe?.didRelocate == false)
+
+        let relocation = try #require(Self.perform(
+            pitch: remote[2],
+            timestamp: timestamp,
+            with: follower
+        ))
+        #expect(relocation.didRelocate)
         #expect(relocation.measureIndex == 2)
     }
 
@@ -622,7 +624,7 @@ struct EngravingScoreFollowerTests {
         _ = Self.performChord(local[1], timestamp: &timestamp, with: follower)
 
         var remoteUpdates: [EngravingScoreFollower.Update] = []
-        for chord in remote.prefix(3) {
+        for chord in remote {
             for pitch in chord {
                 if let update = follower.consume(noteOn: pitch, timestamp: timestamp) {
                     remoteUpdates.append(update)
@@ -635,6 +637,101 @@ struct EngravingScoreFollowerTests {
         let jump = try #require(remoteUpdates.first(where: { $0.didRelocate }))
         #expect(jump.beat >= 8)
         #expect(jump.viewport == .jump(toLine: 2))
+    }
+
+    @Test("equally plausible repeated destinations veto relocation")
+    func ambiguousRemoteDestinationsPreserveContinuity() async throws {
+        let local: [UInt8] = [40, 41, 42, 43]
+        let repeated: [UInt8] = [60, 62, 64, 65]
+        let reference = try EngravingReference(
+            measures: (0..<5).map {
+                .init(index: $0, onset: Double($0 * 4), duration: 4)
+            },
+            lines: (0..<5).map {
+                .init(
+                    index: $0,
+                    beatRange: Double($0 * 4)...Double(($0 + 1) * 4),
+                    measureRange: $0...$0
+                )
+            },
+            moments: local.enumerated().map {
+                Self.rightMoment(beat: Double($0.offset), pitches: [$0.element])
+            } + repeated.enumerated().map {
+                Self.rightMoment(beat: Double($0.offset + 8), pitches: [$0.element])
+            } + repeated.enumerated().map {
+                Self.rightMoment(beat: Double($0.offset + 16), pitches: [$0.element])
+            }
+        )
+        let follower = EngravingScoreFollower()
+        await follower.update(reference: reference)
+        follower.visibleRange = 0...4
+
+        var timestamp: MIDITimeStamp = 1_000
+        _ = Self.perform(pitch: local[0], timestamp: timestamp, with: follower)
+        timestamp += 1_000
+        _ = Self.perform(pitch: local[1], timestamp: timestamp, with: follower)
+        timestamp += 1_000
+
+        var updates: [EngravingScoreFollower.Update] = []
+        for pitch in repeated {
+            if let update = Self.perform(pitch: pitch, timestamp: timestamp, with: follower) {
+                updates.append(update)
+            }
+            timestamp += 1_000
+        }
+
+        #expect(updates.allSatisfy { !$0.didRelocate })
+        #expect(updates.allSatisfy { $0.viewport == .unchanged })
+    }
+
+    @Test("passage-like errors separated by local recovery do not accumulate")
+    func interruptedRemoteEvidenceStartsAnewEpisode() async throws {
+        let local: [UInt8] = [60, 62, 64, 65, 67, 69]
+        let remote: [UInt8] = [80, 81, 82, 83, 84, 85]
+        let reference = try EngravingReference(
+            measures: [
+                .init(index: 0, onset: 0, duration: 6),
+                .init(index: 1, onset: 8, duration: 6)
+            ],
+            lines: [
+                .init(index: 0, beatRange: 0...6, measureRange: 0...0),
+                .init(index: 1, beatRange: 8...14, measureRange: 1...1)
+            ],
+            moments: local.enumerated().map {
+                Self.rightMoment(beat: Double($0.offset), pitches: [$0.element])
+            } + remote.enumerated().map {
+                Self.rightMoment(beat: Double($0.offset + 8), pitches: [$0.element])
+            }
+        )
+        let follower = EngravingScoreFollower()
+        await follower.update(reference: reference)
+        follower.visibleRange = 0...6
+
+        var timestamp: MIDITimeStamp = 1_000
+        for pitch in local.prefix(2) {
+            _ = Self.perform(pitch: pitch, timestamp: timestamp, with: follower)
+            timestamp += 1_000
+        }
+
+        var updates: [EngravingScoreFollower.Update] = []
+        // The first local pitch can still be absorbed as an extra tone of the preceding
+        // gesture. Its released re-articulation is an unambiguous physical boundary and local
+        // recovery. The same pattern is repeated after the second remote-like pair.
+        for pitch in [
+            remote[0], remote[1],
+            local[2], local[2],
+            remote[2], remote[3],
+            local[3], local[3]
+        ] {
+            if let update = Self.perform(pitch: pitch, timestamp: timestamp, with: follower) {
+                updates.append(update)
+            }
+            timestamp += 1_000
+        }
+
+        #expect(updates.allSatisfy { !$0.didRelocate })
+        #expect(updates.last?.beat ?? 0 < 8)
+        #expect(updates.last?.displayBeat ?? 0 < 8)
     }
 
     @Test("one passage-like wrong gesture remains an insertion")

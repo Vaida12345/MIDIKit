@@ -69,19 +69,24 @@ struct EngravingAlignmentModel {
         let seedIndex: Int
         var completedEvidence: Double
         var currentEvidence: Double
+        var currentDistinguishingEvidence: Double
         var qualityTotal: Double
         var currentQuality: Double
+        var completedCoherentRun: Int
         var completedDistinguishingCount: Int
-        var age: Int
         var clock: PerformanceTempoTracker
 
         var evidence: Double { completedEvidence + currentEvidence }
         var averageQuality: Double {
-            (qualityTotal + currentQuality) / Double(max(1, age))
+            qualityTotal / Double(max(1, completedCoherentRun))
         }
-        var distinguishingCount: Int {
-            completedDistinguishingCount + (currentEvidence >= 0.75 ? 1 : 0)
-        }
+    }
+
+    private struct RelativeEvidence {
+        let total: Double
+        /// Candidate-relative musical evidence only. Timing is deliberately excluded so it
+        /// cannot turn an otherwise ambiguous observation into a relocation anchor.
+        let distinguishing: Double
     }
 
     private struct PendingSkip {
@@ -484,32 +489,58 @@ struct EngravingAlignmentModel {
 
         for var challenger in challengers {
             var transitionTimingEvidence = 0.0
+            // A seed's current gesture is the possible change point. It has no legitimate
+            // predecessor at the destination, even when later MIDI notes extend that gesture.
+            var includesTransitionEvidence = challenger.completedCoherentRun > 0
             if beginsNewGesture {
                 guard let next = score.successor(of: challenger.index, mode: challenger.mode) else {
                     continue
                 }
-                challenger.completedEvidence += challenger.currentEvidence
-                challenger.qualityTotal += challenger.currentQuality
-                if challenger.currentEvidence >= 0.75 {
+                let coherent = challenger.currentQuality >= 0.50
+                    && challenger.currentDistinguishingEvidence > -0.75
+                if coherent {
+                    challenger.completedEvidence += challenger.currentEvidence
+                    challenger.qualityTotal += challenger.currentQuality
+                    challenger.completedCoherentRun += 1
+                    includesTransitionEvidence = true
+                } else {
+                    // A jump is a new continuous performance episode, not a collection of
+                    // passage-like mistakes sampled across time. Contradiction ends the run and
+                    // discards its stale support while allowing a fresh run to begin later.
+                    challenger.completedEvidence = -Configuration.restartPenalty
+                    challenger.qualityTotal = 0
+                    challenger.completedCoherentRun = 0
+                    challenger.completedDistinguishingCount = 0
+                    challenger.clock.reset(
+                        at: observation.startedAt,
+                        beat: score.gestures[next].beat
+                    )
+                    includesTransitionEvidence = false
+                }
+                if coherent, challenger.currentDistinguishingEvidence >= 0.75 {
                     challenger.completedDistinguishingCount += 1
                 }
                 challenger.currentEvidence = 0
+                challenger.currentDistinguishingEvidence = 0
                 challenger.currentQuality = 0
                 challenger.index = next
-                challenger.age += 1
-                transitionTimingEvidence = challenger.clock.compatibility(
-                    at: observation.startedAt,
-                    beat: score.gestures[next].beat
-                )
+                if coherent {
+                    transitionTimingEvidence = challenger.clock.compatibility(
+                        at: observation.startedAt,
+                        beat: score.gestures[next].beat
+                    )
+                }
             }
-            let evidence = relativeEvidence(
+            let relative = relativeEvidence(
                 observation,
                 challengerIndex: challenger.index,
                 challengerMode: challenger.mode,
                 localIndex: localExpected,
-                localMode: currentMode
+                localMode: currentMode,
+                includesTransition: includesTransitionEvidence
             )
-            challenger.currentEvidence = evidence + transitionTimingEvidence * 0.45
+            challenger.currentEvidence = relative.total + transitionTimingEvidence * 0.45
+            challenger.currentDistinguishingEvidence = relative.distinguishing
             challenger.currentQuality = matchQuality(
                 observation,
                 at: challenger.index,
@@ -539,22 +570,25 @@ struct EngravingAlignmentModel {
                 guard quality >= 0.42 else { continue }
                 var clock = PerformanceTempoTracker()
                 clock.reset(at: observation.startedAt, beat: score.gestures[index].beat)
+                let relative = relativeEvidence(
+                    observation,
+                    challengerIndex: index,
+                    challengerMode: mode,
+                    localIndex: localExpected,
+                    localMode: currentMode,
+                    includesTransition: false
+                )
                 updated.append(Challenger(
                     index: index,
                     mode: mode,
                     seedIndex: index,
                     completedEvidence: -Configuration.restartPenalty,
-                    currentEvidence: relativeEvidence(
-                        observation,
-                        challengerIndex: index,
-                        challengerMode: mode,
-                        localIndex: localExpected,
-                        localMode: currentMode
-                    ),
+                    currentEvidence: relative.total,
+                    currentDistinguishingEvidence: relative.distinguishing,
                     qualityTotal: 0,
                     currentQuality: quality,
+                    completedCoherentRun: 0,
                     completedDistinguishingCount: 0,
-                    age: 1,
                     clock: clock
                 ))
             }
@@ -585,17 +619,53 @@ struct EngravingAlignmentModel {
     private mutating func commitWinningChallengerIfReady(
         observation: PerformanceGesture
     ) -> EngravingAlignmentResult? {
-        guard let incumbent = currentIndex, let best = challengers.first else { return nil }
+        guard let incumbent = currentIndex else { return nil }
+
+        // Modes and seed histories that currently name the same score destination are one
+        // presentation hypothesis. Distinct score destinations remain competitors: if more
+        // than one is ready, the music is observationally ambiguous and continuity wins.
+        var bestByDestination: [Int: Challenger] = [:]
+        for challenger in challengers {
+            if bestByDestination[challenger.index]?.evidence ?? -.infinity
+                < challenger.evidence {
+                bestByDestination[challenger.index] = challenger
+            }
+        }
+
+        let ready = bestByDestination.values.filter { challenger in
+            let destinationVisible = score.isVisible(challenger.index, in: visibleRange)
+            let isEarlier = challenger.index < (forwardFrontier ?? incumbent)
+            let requiredEvidence = isEarlier && destinationVisible
+                ? Configuration.replayEvidence
+                : Configuration.jumpEvidence
+
+            let expected = score.gestures[challenger.index].mask(for: challenger.mode)
+            let currentIsResolved = observation.pitchMask == expected
+            let currentIsCoherent = currentIsResolved
+                && challenger.currentQuality >= 0.50
+                && challenger.currentDistinguishingEvidence > -0.75
+            let coherentRun = challenger.completedCoherentRun + (currentIsCoherent ? 1 : 0)
+            let distinguishingCount = challenger.completedDistinguishingCount
+                + (currentIsCoherent && challenger.currentDistinguishingEvidence >= 0.75 ? 1 : 0)
+            let evidence = challenger.completedEvidence
+                + (currentIsCoherent ? challenger.currentEvidence : 0)
+            let qualityTotal = challenger.qualityTotal
+                + (currentIsCoherent ? challenger.currentQuality : 0)
+            let averageQuality = qualityTotal / Double(max(1, coherentRun))
+
+            // The three observations have different jobs: establish a possible change point,
+            // continue coherently from it, and confirm the new episode. At least two must
+            // actually distinguish this destination from local continuity. Only completed
+            // gestures, or an exactly resolved current gesture, participate in the decision.
+            return coherentRun >= 3
+                && distinguishingCount >= 2
+                && evidence >= requiredEvidence
+                && averageQuality >= 0.62
+        }
+        guard ready.count == 1, let best = ready.first else { return nil }
+
         let destinationVisible = score.isVisible(best.index, in: visibleRange)
         let isEarlier = best.index < (forwardFrontier ?? incumbent)
-        let requiredAge = isEarlier && destinationVisible ? 3 : 2
-        let requiredEvidence = isEarlier && destinationVisible
-            ? Configuration.replayEvidence
-            : Configuration.jumpEvidence
-        guard best.age >= requiredAge,
-              best.distinguishingCount >= 2,
-              best.evidence >= requiredEvidence,
-              best.averageQuality >= 0.62 else { return nil }
 
         let movement: EngravingAlignmentMovement
         if provisionalLocalIndices.contains(best.index) {
@@ -638,8 +708,9 @@ struct EngravingAlignmentModel {
         challengerIndex: Int,
         challengerMode: EngravingHandMode,
         localIndex: Int,
-        localMode: EngravingHandMode
-    ) -> Double {
+        localMode: EngravingHandMode,
+        includesTransition: Bool
+    ) -> RelativeEvidence {
         let observed = observation.pitchMask
         let challenger = score.gestures[challengerIndex].mask(for: challengerMode)
         let local = score.gestures[localIndex].mask(for: localMode)
@@ -660,14 +731,20 @@ struct EngravingAlignmentModel {
             evidence += Double((localOnly & ~observed).nonzeroBitCount) * 0.22
             evidence -= Double((challengerOnly & ~observed).nonzeroBitCount) * 0.22
         }
-        if let previous = history.last {
-            evidence += transitionAgreement(
+        if includesTransition, let previous = history.last {
+            let challengerTransition = transitionAgreement(
                 previous: previous,
                 current: observation,
                 destination: challengerIndex
-            ) * 0.35
+            )
+            let localTransition = transitionAgreement(
+                previous: previous,
+                current: observation,
+                destination: localIndex
+            )
+            evidence += (challengerTransition - localTransition) * 0.35
         }
-        return evidence
+        return RelativeEvidence(total: evidence, distinguishing: evidence)
     }
 
     // MARK: Evidence and state

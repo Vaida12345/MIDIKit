@@ -312,14 +312,21 @@ challengers:
 4. Candidate comparison uses relative evidence. Notes common to the incumbent and challenger
    are neutral; exclusive chord tones, bass and soprano motion, register, and ordered gestures
    distinguish locations.
-5. Only a challenger that wins across multiple completed gestures may replace the incumbent.
-   Its destination is then classified as a correction, visible replay, or jump.
+5. A challenger must describe one uninterrupted post-change episode: an anchor, coherent
+   continuation, and confirmation. Passage-like errors separated by local recovery cannot be
+   added together. At least two gestures in the episode must distinguish the challenger from
+   local continuity.
+6. A relocation decision uses only completed physical gestures or a current gesture whose
+   expected pitch set has been exactly resolved. It is vetoed when more than one score
+   destination is ready, rather than choosing an arbitrary repeated occurrence.
+7. Only after those checks may a challenger replace the incumbent. Its destination is then
+   classified as a correction, visible replay, or jump.
 
 This architecture matters for similar passages. A shared chord tone cannot keep a wrong local
 interpretation alive, but neither can it promote a remote passage. If two locations are
-observationally identical, the follower preserves continuity until a distinguishing anchor
-arrives. Missing that anchor leaves the location ambiguous; it does not justify an arbitrary
-switch.
+observationally identical, the follower preserves continuity until later evidence selects
+exactly one of them. Missing that evidence leaves the location ambiguous; it does not justify an
+arbitrary switch.
 
 Alignment and presentation are separate components. Candidate changes can make the public state
 `uncertain` or `lost`, but they cannot move `displayBeat` or the viewport. The presentation layer
