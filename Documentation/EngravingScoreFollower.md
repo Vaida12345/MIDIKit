@@ -162,6 +162,18 @@ The follower consumes note-offs and control changes as evidence but returns an `
 an informative note-on. MIDI note-on with velocity zero is normalized to note-off. Sustain and
 sostenuto affect release evidence; they do not create score attacks.
 
+If an integration already decodes its transport, preserve the input timestamp with the public
+decoded-event overload:
+
+```swift
+let update = follower.consume(parsedEvent, timestamp: originalMIDITimestamp)
+```
+
+Pass the original `MIDITimeStamp`, not the time at which a UI task eventually handles the event.
+A timestamp of zero means “timing unavailable” and deliberately selects pitch-only behavior.
+Equal timestamps preserve stream order. Nonmonotonic differences and extreme discontinuities are
+ignored by the timing estimator rather than repaired or used to reject notes.
+
 Use one serialized event stream for a follower. MIDI channels are retained by
 `MIDIInputEvent`, but the follower currently treats all channels as one piano performance.
 
@@ -268,22 +280,56 @@ or a completed preceding gesture.
 A rolled chord also remains one gesture. The follower uses membership and accumulated evidence
 rather than a fixed chord timeout, so deliberately slow rolls are supported.
 
+### Timing
+
+Timing is bounded corroborating evidence, never a gate:
+
+- confirmed adjacent gestures maintain a robust estimate of host-time ticks per score beat;
+- block and rolled chords learn separate onset-span distributions;
+- each global challenger starts an independent clock after its possible change point;
+- a pause before a replay or jump is not compared with music preceding the destination;
+- written duration, note-off time, and local tempo provide weak mistaken-hit evidence; and
+- large rubato, fermatas, zero timestamps, and transport jitter reduce timing confidence without
+  disabling pitch-based alignment.
+
+There is intentionally no rule equivalent to “notes within N milliseconds form a chord.” A note
+matching an unplayed member of the current block or rolled chord remains in that gesture even
+when it arrives unusually late. Conversely, elapsed time alone cannot close an incomplete chord.
+
 ## Stability architecture
 
-The implementation keeps three bounded hypothesis beams. They are roles in one inference model,
-not public modes the application needs to select:
+The implementation deliberately does not model forward motion, replay, and relocation as three
+peer state machines. It has one monotone local incumbent and a bounded collection of global
+challengers:
 
-- The **primary lane** can stay at its current moment or move forward. It has no backward edge.
-- The **replay lane** may start at an earlier visible moment, then also runs only forward. It is
-  hidden until several ordered gestures make it stronger than the primary lane.
-- The **relocation lane** is activated only after sustained local mismatch. It considers
-  nonlocal, offscreen positions and has a stronger commitment gate than replay.
+1. The gesture assembler combines serialized note-ons into one physical block or rolled chord.
+   A physical gesture can expose at most one score boundary.
+2. The local incumbent may hold for an inserted mistake, advance to its immediate successor, or
+   provisionally consider one missed score gesture. It has no backward transition.
+3. Global challengers are seeded continuously from indexed chord and transition fingerprints.
+   They use only evidence observed after their possible change point; music played before a jump
+   is never matched against music preceding the destination.
+4. Candidate comparison uses relative evidence. Notes common to the incumbent and challenger
+   are neutral; exclusive chord tones, bass and soprano motion, register, and ordered gestures
+   distinguish locations.
+5. Only a challenger that wins across multiple completed gestures may replace the incumbent.
+   Its destination is then classified as a correction, visible replay, or jump.
 
-A separate commitment layer publishes position. A merely highest-scoring candidate cannot move
-`beat`, `displayBeat`, or the viewport by itself. Competing replay or relocation evidence first
-changes the state to `uncertain` or `lost`, which freezes presentation; only a committed lane
-change can publish the discontinuity. This separation is why changing a score weight cannot
-accidentally re-enable backward cursor oscillation.
+This architecture matters for similar passages. A shared chord tone cannot keep a wrong local
+interpretation alive, but neither can it promote a remote passage. If two locations are
+observationally identical, the follower preserves continuity until a distinguishing anchor
+arrives. Missing that anchor leaves the location ambiguous; it does not justify an arbitrary
+switch.
+
+Alignment and presentation are separate components. Candidate changes can make the public state
+`uncertain` or `lost`, but they cannot move `displayBeat` or the viewport. The presentation layer
+responds only to a confirmed movement classification.
+
+The implementation is divided under `Sources/IO`: `EngravingScoreFeatures` compiles the immutable
+score, `PerformanceGestureAssembler` owns chord construction, `PerformanceTimingModel` owns all
+temporal estimation, `EngravingAlignmentModel` owns the incumbent and challengers, and
+`EngravingPresentationPolicy` owns marker and viewport stability. `EngravingScoreFollower` is the
+public façade joining those components.
 
 ## Behavioral invariants
 
@@ -301,8 +347,9 @@ These invariants are intentional and should remain true when the implementation 
 10. `visibleRange` influences acquisition and replay locality, never musical likelihood during
     established tracking.
 
-The key architectural rule is that backward practice starts a new forward-running interpretation
-at an earlier visible moment. Active hypotheses never walk backward through the score.
+The key architectural rules are that active paths never walk backward through the score and one
+physical performance gesture never confirms multiple score gestures. Backward practice starts a
+new forward-running interpretation at an earlier location.
 
 ## Common integration mistakes
 
@@ -345,8 +392,8 @@ follower determines replay from musical evidence.
   intentionally held at `displayBeat`.
 - **Backward practice caused a jump:** The destination was outside the current visible range or
   required nonlocal confirmation.
-- **A jump takes several gestures:** Relocation is deliberately slower to confirm than local
-  continuation because a wrong jump has a high perceptual cost.
+- **A jump takes several gestures:** One matching gesture is intentionally insufficient. A
+  coherent distinguishing sequence can win without waiting for complete local failure.
 - **The viewport does not pre-scroll near a line ending:** This is required. It moves only after
   the performer has entered the new line.
 - **One hand does not advance immediately:** `activeHands` begins as `unknown` and accumulates
@@ -360,10 +407,14 @@ contract even if they improve a short synthetic sequence.
 
 When changing the follower:
 
-- keep primary, replay, and relocation evidence separate;
-- require commitment before publishing a hypothesis;
+- keep gesture assembly, alignment, and presentation as separate components;
+- preserve one monotone incumbent and candidate-relative challenger evidence;
+- retain ambiguous alternatives until a distinguishing anchor arrives;
+- never use pre-jump performance history to identify a destination;
+- require multi-gesture commitment before publishing a nonlocal hypothesis;
 - preserve the display and viewport invariants above;
 - test ambiguous repeated passages as well as unique melodies;
 - test note ordering within large block and rolled chords;
+- test zero, equal, nonmonotonic, highly variable, and extremely separated timestamps;
 - measure release-build event-processing cost; and
 - update this document whenever public semantics change.
