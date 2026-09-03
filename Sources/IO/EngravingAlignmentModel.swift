@@ -46,6 +46,9 @@ struct EngravingAlignmentModel {
         let index: Int
         let mode: EngravingHandMode
         let score: Double
+        let lookupIsExhaustive: Bool
+        let sequenceIsExact: Bool
+        let observationCount: Int
 
         func hash(into hasher: inout Hasher) {
             hasher.combine(index)
@@ -67,6 +70,8 @@ struct EngravingAlignmentModel {
         var index: Int
         let mode: EngravingHandMode
         let seedIndex: Int
+        var localBaseIndex: Int
+        var localIndex: Int
         var completedEvidence: Double
         var currentEvidence: Double
         var currentDistinguishingEvidence: Double
@@ -74,6 +79,9 @@ struct EngravingAlignmentModel {
         var currentQuality: Double
         var completedCoherentRun: Int
         var completedDistinguishingCount: Int
+        var currentObservedMask: UInt128
+        var lastCompletedObservedMask: UInt128?
+        var destinationIsCertifiedUnique: Bool
         var clock: PerformanceTempoTracker
 
         var evidence: Double { completedEvidence + currentEvidence }
@@ -119,6 +127,13 @@ struct EngravingAlignmentModel {
     private var currentRightEvidence = 0.0
     private var participation: EngravingScoreFollower.HandParticipation = .unknown
     private var timing = PerformanceTimingModel()
+    private var acquisitionGestureContext: PerformanceGestureContext?
+    private var relocationRearmProgress = 2
+
+    /// Acquisition evidence is intentionally private until a score location is committed.
+    /// The façade uses this bit only to distinguish a useful but still ambiguous first gesture
+    /// from an out-of-reference note that should not latch the performance epoch.
+    private(set) var hasAcquisitionEvidence = false
 
     init(score: EngravingScoreFeatureIndex) {
         self.score = score
@@ -147,6 +162,9 @@ struct EngravingAlignmentModel {
         currentRightEvidence = 0
         participation = .unknown
         timing.reset()
+        hasAcquisitionEvidence = false
+        acquisitionGestureContext = nil
+        relocationRearmProgress = 2
     }
 
     mutating func setVisibleRange(_ range: ClosedRange<Double>?) {
@@ -154,22 +172,22 @@ struct EngravingAlignmentModel {
     }
 
     var gestureContext: PerformanceGestureContext {
-        guard let currentIndex else { return .unknown }
+        guard let currentIndex else { return acquisitionGestureContext ?? .unknown }
         let expectedIndex = assemblyExpectationIndex ?? currentIndex
         var currentMasks = score.gestures[expectedIndex].masks
         var attack = score.gestures[expectedIndex].attack
 
-        // A newly seeded challenger contributes only chord-membership information. It cannot
-        // move the incumbent, but prevents a serialized remote chord from being split into one
-        // gesture per MIDI note while its destination is still under evaluation.
-        for challenger in challengers.prefix(6)
-        where challenger.currentEvidence > 0.9
-            && challenger.currentQuality > 0.5
+        // Only an episode that already completed one coherent, independently localized gesture
+        // may inform segmentation of its *next* gesture. The seed gesture cannot shape itself,
+        // which removes the former candidate/evidence feedback loop while retaining slow and
+        // serialized remote-chord support.
+        for challenger in challengers.prefix(8)
+        where challenger.completedCoherentRun >= 1
+            && challenger.destinationIsCertifiedUnique
             && score.gestures.indices.contains(challenger.index) {
             let gesture = score.gestures[challenger.index]
-            for mode in EngravingHandMode.allCases {
-                currentMasks[mode] |= gesture.mask(for: mode)
-            }
+            currentMasks[challenger.mode] |= gesture.mask(for: challenger.mode)
+            currentMasks[.both] |= gesture.mask(for: challenger.mode)
             if gesture.attack == .rolled { attack = .rolled }
         }
 
@@ -178,6 +196,16 @@ struct EngravingAlignmentModel {
             if let next = score.successor(of: expectedIndex, mode: mode) {
                 nextMasks[mode] = score.gestures[next].mask(for: mode)
             }
+        }
+        for challenger in challengers.prefix(8)
+        where challenger.completedCoherentRun >= 1
+            && challenger.destinationIsCertifiedUnique {
+            guard let next = score.successor(of: challenger.index, mode: challenger.mode) else {
+                continue
+            }
+            let mask = score.gestures[next].mask(for: challenger.mode)
+            nextMasks[challenger.mode] |= mask
+            nextMasks[.both] |= mask
         }
         return PerformanceGestureContext(
             currentMasks: currentMasks,
@@ -237,41 +265,81 @@ struct EngravingAlignmentModel {
         previous: PerformanceGesture?
     ) -> EngravingAlignmentResult? {
         let candidates = acquisitionCandidates(observation: observation, previous: previous)
-        guard let best = candidates.first else { return nil }
-        let oldIndex = currentIndex
-        currentIndex = best.index
-        currentMode = best.mode
-        assemblyExpectationIndex = best.index
-        forwardFrontier = max(forwardFrontier ?? best.index, best.index)
-        updateParticipation(mode: best.mode, quality: matchQuality(observation, at: best.index, mode: best.mode))
+        hasAcquisitionEvidence = !candidates.isEmpty
+        acquisitionGestureContext = makeAcquisitionGestureContext(from: candidates)
+        guard !candidates.isEmpty else { return nil }
 
-        let scoreGesture = score.gestures[best.index]
-        let completeChord = observation.pitchMask.nonzeroBitCount > 1
-            && matchQuality(observation, at: best.index, mode: best.mode) >= 0.96
-            && (best.mode == .both
-                || scoreGesture.mask(for: best.mode) == scoreGesture.mask(for: .both))
-        if previous != nil || completeChord {
-            isTracking = true
-            transitionOriginIndex = best.index
-            provisionalLocalIndices = [best.index]
-            hasAlignedCurrentGesture = true
-            timing.anchorLocal(at: observation.startedAt, beat: score.gestures[best.index].beat)
+        // Acquisition hypotheses are not committed musical positions. In particular they must
+        // not move the forward frontier or initialize presentation while repeated material is
+        // unresolved. `Update` is optional specifically so the façade can remain silent here.
+        var bestByDestination: [Int: AcquisitionCandidate] = [:]
+        for candidate in candidates {
+            if bestByDestination[candidate.index]?.score ?? -.infinity < candidate.score {
+                bestByDestination[candidate.index] = candidate
+            }
+        }
+        let destinations = bestByDestination.values.sorted {
+            $0.score == $1.score ? $0.index < $1.index : $0.score > $1.score
+        }
+        guard let destination = destinations.first else { return nil }
+        let exactCandidates = candidates.filter(\.sequenceIsExact)
+        let exactDestinations = Set(exactCandidates.map(\.index))
+        let destinationIsGloballyUnique = exactDestinations == Set([destination.index])
+            && exactCandidates.allSatisfy(\.lookupIsExhaustive)
+
+        let scoreGesture = score.gestures[destination.index]
+        let quality = matchQuality(
+            observation,
+            at: destination.index,
+            mode: destination.mode
+        )
+        let currentIsResolved = observation.pitchMask == scoreGesture.mask(for: destination.mode)
+        let informativeCompleteChord = observation.pitchMask.nonzeroBitCount > 1
+            && currentIsResolved
+            && quality >= 0.96
+            && (destination.mode == .both
+                || scoreGesture.mask(for: destination.mode) == scoreGesture.mask(for: .both))
+        let destinationIsVisible = score.isVisible(destination.index, in: acquisitionRange)
+        let scoreLead = destinations.count > 1
+            ? destination.score - destinations[1].score
+            : .infinity
+        let visiblePriorResolvesAlias = destinationIsVisible
+            && destination.sequenceIsExact
+            && destination.observationCount >= 2
+            && scoreLead >= 1.8
+        let corroboratedOffscreenContext = !destinationIsVisible
+            && destinationIsGloballyUnique
+            && destination.sequenceIsExact
+            && destination.observationCount >= 3
+            && scoreLead >= 4.5
+        let uniqueCompleteChord = destinationIsGloballyUnique && informativeCompleteChord
+        guard uniqueCompleteChord || visiblePriorResolvesAlias || corroboratedOffscreenContext else {
+            return nil
         }
 
-        let margin = candidates.count > 1 ? best.score - candidates[1].score : 4
+        currentIndex = destination.index
+        currentMode = destination.mode
+        assemblyExpectationIndex = destination.index
+        forwardFrontier = destination.index
+        updateParticipation(mode: destination.mode, quality: quality)
+        isTracking = true
+        acquisitionGestureContext = nil
+        transitionOriginIndex = destination.index
+        provisionalLocalIndices = [destination.index]
+        hasAlignedCurrentGesture = true
+        timing.anchorLocal(at: observation.startedAt, beat: score.gestures[destination.index].beat)
+
+        let margin = destinations.count > 1 ? destination.score - destinations[1].score : 4
         let confidence = Self.logistic(margin / 1.6)
-        let movement: EngravingAlignmentMovement
-        if let oldIndex, oldIndex != best.index, previous != nil {
-            movement = abs(best.index - oldIndex) > 2 ? .jump : .continuous
-        } else {
-            movement = .held
-        }
+        let acquiredOffscreen = acquisitionRange != nil
+            && !score.isVisible(destination.index, in: acquisitionRange)
+        let movement: EngravingAlignmentMovement = acquiredOffscreen ? .jump : .held
         return result(
-            index: best.index,
+            index: destination.index,
             confidence: confidence,
-            state: isTracking ? .tracking : .acquiring,
+            state: .tracking,
             movement: movement,
-            alternatives: candidates.prefix(5).map(\.index)
+            alternatives: destinations.prefix(5).map(\.index)
         )
     }
 
@@ -281,20 +349,55 @@ struct EngravingAlignmentModel {
     ) -> [AcquisitionCandidate] {
         var best: [AcquisitionCandidate: AcquisitionCandidate] = [:]
         best.reserveCapacity(Configuration.acquisitionCandidatesPerMode * 3)
+        let observations = Array(history.suffix(Configuration.maximumHistory - 1)) + [observation]
 
         for mode in EngravingHandMode.allCases {
-            let indices = score.candidateIndices(
+            let currentLookup = score.candidateLookup(
                 for: observation.pitchMask,
                 previousMask: previous?.pitchMask,
                 mode: mode,
                 limit: Configuration.acquisitionCandidatesPerMode
             )
-            for index in indices {
-                let currentQuality = matchQuality(observation, at: index, mode: mode)
-                var value = currentQuality * 6
-                if let previous,
-                   let predecessor = predecessor(of: index, mode: mode) {
-                    value += matchQuality(previous, at: predecessor, mode: mode) * 5
+            var candidateIndices = currentLookup.indices
+            var lookupIsExhaustive = currentLookup.isExhaustive
+
+            // A wrong note may have no posting at the correct location. Preserve the continuity
+            // alternative by advancing candidates found from the preceding observation.
+            if let previous {
+                let previousLookup = score.candidateLookup(
+                    for: previous.pitchMask,
+                    previousMask: history.dropLast().last?.pitchMask,
+                    mode: mode,
+                    limit: Configuration.acquisitionCandidatesPerMode
+                )
+                lookupIsExhaustive = lookupIsExhaustive && previousLookup.isExhaustive
+                for previousIndex in previousLookup.indices {
+                    if let next = score.successor(of: previousIndex, mode: mode),
+                       !candidateIndices.contains(next) {
+                        candidateIndices.append(next)
+                    }
+                }
+            }
+
+            for index in candidateIndices {
+                var value = 0.0
+                var compared = 0
+                var sequenceIsExact = true
+                var scoreIndex: Int? = index
+                for performed in observations.reversed() {
+                    guard let comparedIndex = scoreIndex else {
+                        sequenceIsExact = false
+                        break
+                    }
+                    let quality = matchQuality(performed, at: comparedIndex, mode: mode)
+                    let weight = compared == 0 ? 6.0 : 5.0
+                    value += quality * weight
+                    sequenceIsExact = sequenceIsExact
+                        && performed.pitchMask == score.gestures[comparedIndex].mask(for: mode)
+                    compared += 1
+                    scoreIndex = predecessor(of: comparedIndex, mode: mode)
+                }
+                if let previous {
                     value += transitionAgreement(
                         previous: previous,
                         current: observation,
@@ -306,13 +409,48 @@ struct EngravingAlignmentModel {
                     value += 2.6
                 }
                 if mode == .both { value += 0.1 }
-                let candidate = AcquisitionCandidate(index: index, mode: mode, score: value)
+                let candidate = AcquisitionCandidate(
+                    index: index,
+                    mode: mode,
+                    score: value,
+                    lookupIsExhaustive: lookupIsExhaustive,
+                    sequenceIsExact: sequenceIsExact,
+                    observationCount: compared
+                )
                 if best[candidate]?.score ?? -.infinity < value { best[candidate] = candidate }
             }
         }
         return best.values.sorted {
             $0.score == $1.score ? $0.index < $1.index : $0.score > $1.score
         }
+    }
+
+    /// Supplies bounded chord-membership alternatives while acquisition is unresolved. These
+    /// masks affect only physical gesture segmentation; they never become a committed score
+    /// location or relocation vote.
+    private func makeAcquisitionGestureContext(
+        from candidates: [AcquisitionCandidate]
+    ) -> PerformanceGestureContext? {
+        guard !candidates.isEmpty else { return nil }
+        var currentMasks = EngravingPitchMasks()
+        var nextMasks = EngravingPitchMasks()
+        var attack: EngravingReference.Attack = .block
+        for candidate in candidates.prefix(8) {
+            let gesture = score.gestures[candidate.index]
+            currentMasks[candidate.mode] |= gesture.mask(for: candidate.mode)
+            currentMasks[.both] |= gesture.mask(for: candidate.mode)
+            if gesture.attack == .rolled { attack = .rolled }
+            if let next = score.successor(of: candidate.index, mode: candidate.mode) {
+                nextMasks[candidate.mode] |= score.gestures[next].mask(for: candidate.mode)
+                nextMasks[.both] |= score.gestures[next].mask(for: candidate.mode)
+            }
+        }
+        return PerformanceGestureContext(
+            currentMasks: currentMasks,
+            nextMasks: nextMasks,
+            attack: attack,
+            timing: timing.gestureHint(for: attack)
+        )
     }
 
     // MARK: Local incumbent
@@ -387,6 +525,11 @@ struct EngravingAlignmentModel {
             // unable to consume another, regardless of how well a later chord tone matches it.
             if hasAlignedCurrentGesture { continue }
             guard let next = score.successor(of: origin, mode: mode) else { continue }
+            // Crossing multiple engraving lines is an intervention, not a local transition.
+            // Presentation is forbidden from manufacturing relocation authority after the fact,
+            // so such a destination must be established by the guarded global mechanism.
+            guard score.gestures[next].lineOffset
+                    <= score.gestures[origin].lineOffset + 1 else { continue }
             let quality = matchQuality(observation, at: next, mode: mode)
             let candidateScore = quality * 5 + 0.55 - modeChangePenalty
                 + insertionRecoveryEvidence
@@ -402,7 +545,9 @@ struct EngravingAlignmentModel {
                 bestScore = candidateScore
             }
 
-            if let second = score.successor(of: next, mode: mode) {
+            if let second = score.successor(of: next, mode: mode),
+               score.gestures[second].lineOffset
+                    <= score.gestures[origin].lineOffset + 1 {
                 let skipQuality = matchQuality(observation, at: second, mode: mode)
                 let skipScore = skipQuality * 5 - Configuration.deletionPenalty
                     + timing.localTransitionScore(
@@ -463,6 +608,9 @@ struct EngravingAlignmentModel {
         transitionOriginIndex = index
         pendingSkip = nil
         localMismatchStreak = 0
+        if quality >= 0.75 {
+            relocationRearmProgress = min(2, relocationRearmProgress + 1)
+        }
         currentGestureIsNew = false
         hasAlignedCurrentGesture = true
         recordProvisional(index)
@@ -483,6 +631,10 @@ struct EngravingAlignmentModel {
         localOrigin: Int,
         beginsNewGesture: Bool
     ) {
+        guard relocationRearmProgress >= 2 else {
+            challengers.removeAll(keepingCapacity: true)
+            return
+        }
         let localExpected = expectedLocalIndex(for: observation, from: localOrigin)
         var updated: [Challenger] = []
         updated.reserveCapacity(Configuration.challengerBeamWidth * 2)
@@ -497,45 +649,43 @@ struct EngravingAlignmentModel {
                     continue
                 }
                 let coherent = challenger.currentQuality >= 0.50
-                    && challenger.currentDistinguishingEvidence > -0.75
-                if coherent {
-                    challenger.completedEvidence += challenger.currentEvidence
-                    challenger.qualityTotal += challenger.currentQuality
-                    challenger.completedCoherentRun += 1
-                    includesTransitionEvidence = true
-                } else {
-                    // A jump is a new continuous performance episode, not a collection of
-                    // passage-like mistakes sampled across time. Contradiction ends the run and
-                    // discards its stale support while allowing a fresh run to begin later.
-                    challenger.completedEvidence = -Configuration.restartPenalty
-                    challenger.qualityTotal = 0
-                    challenger.completedCoherentRun = 0
-                    challenger.completedDistinguishingCount = 0
-                    challenger.clock.reset(
-                        at: observation.startedAt,
-                        beat: score.gestures[next].beat
-                    )
-                    includesTransitionEvidence = false
-                }
-                if coherent, challenger.currentDistinguishingEvidence >= 0.75 {
+                // Contradiction terminates this possible change point. A later observation may
+                // seed a new episode, but evidence from the two episodes is never combined.
+                guard coherent else { continue }
+                challenger.completedEvidence += challenger.currentEvidence
+                challenger.qualityTotal += challenger.currentQuality
+                challenger.completedCoherentRun += 1
+                includesTransitionEvidence = true
+                if challenger.currentDistinguishingEvidence >= 0.75 {
                     challenger.completedDistinguishingCount += 1
                 }
+                challenger.lastCompletedObservedMask = challenger.currentObservedMask
                 challenger.currentEvidence = 0
                 challenger.currentDistinguishingEvidence = 0
                 challenger.currentQuality = 0
                 challenger.index = next
-                if coherent {
-                    transitionTimingEvidence = challenger.clock.compatibility(
-                        at: observation.startedAt,
-                        beat: score.gestures[next].beat
-                    )
-                }
+                challenger.localBaseIndex = challenger.localIndex
+                challenger.localIndex = counterfactualLocalIndex(
+                    for: observation,
+                    from: challenger.localBaseIndex,
+                    mode: currentMode
+                )
+                transitionTimingEvidence = challenger.clock.compatibility(
+                    at: observation.startedAt,
+                    beat: score.gestures[next].beat
+                )
+            } else {
+                challenger.localIndex = counterfactualLocalIndex(
+                    for: observation,
+                    from: challenger.localBaseIndex,
+                    mode: currentMode
+                )
             }
             let relative = relativeEvidence(
                 observation,
                 challengerIndex: challenger.index,
                 challengerMode: challenger.mode,
-                localIndex: localExpected,
+                localIndex: challenger.localIndex,
                 localMode: currentMode,
                 includesTransition: includesTransitionEvidence
             )
@@ -546,6 +696,14 @@ struct EngravingAlignmentModel {
                 at: challenger.index,
                 mode: challenger.mode
             )
+            challenger.currentObservedMask = observation.pitchMask
+            if observation.pitchMask == score.gestures[challenger.index].mask(for: challenger.mode),
+               relocationCertificate(
+                    for: observation.pitchMask,
+                    previousMask: challenger.lastCompletedObservedMask
+               ) == challenger.index {
+                challenger.destinationIsCertifiedUnique = true
+            }
             if beginsNewGesture, challenger.currentQuality >= 0.5 {
                 challenger.clock.observe(
                     at: observation.startedAt,
@@ -558,13 +716,17 @@ struct EngravingAlignmentModel {
         }
 
         for mode in EngravingHandMode.allCases {
-            let indices = score.candidateIndices(
+            let lookup = score.candidateLookup(
                 for: observation.pitchMask,
                 previousMask: nil,
                 mode: mode,
                 limit: Configuration.challengerSeedsPerMode
             )
-            for index in indices {
+            let certifiedDestination = relocationCertificate(
+                for: observation.pitchMask,
+                previousMask: nil
+            )
+            for index in lookup.indices {
                 if abs(index - localOrigin) <= 2 { continue }
                 let quality = matchQuality(observation, at: index, mode: mode)
                 guard quality >= 0.42 else { continue }
@@ -582,6 +744,8 @@ struct EngravingAlignmentModel {
                     index: index,
                     mode: mode,
                     seedIndex: index,
+                    localBaseIndex: localOrigin,
+                    localIndex: localExpected,
                     completedEvidence: -Configuration.restartPenalty,
                     currentEvidence: relative.total,
                     currentDistinguishingEvidence: relative.distinguishing,
@@ -589,6 +753,9 @@ struct EngravingAlignmentModel {
                     currentQuality: quality,
                     completedCoherentRun: 0,
                     completedDistinguishingCount: 0,
+                    currentObservedMask: observation.pitchMask,
+                    lastCompletedObservedMask: nil,
+                    destinationIsCertifiedUnique: certifiedDestination == index,
                     clock: clock
                 ))
             }
@@ -652,7 +819,6 @@ struct EngravingAlignmentModel {
             let qualityTotal = challenger.qualityTotal
                 + (currentIsCoherent ? challenger.currentQuality : 0)
             let averageQuality = qualityTotal / Double(max(1, coherentRun))
-
             // The three observations have different jobs: establish a possible change point,
             // continue coherently from it, and confirm the new episode. At least two must
             // actually distinguish this destination from local continuity. Only completed
@@ -661,6 +827,7 @@ struct EngravingAlignmentModel {
                 && distinguishingCount >= 2
                 && evidence >= requiredEvidence
                 && averageQuality >= 0.62
+                && challenger.destinationIsCertifiedUnique
         }
         guard ready.count == 1, let best = ready.first else { return nil }
 
@@ -681,6 +848,7 @@ struct EngravingAlignmentModel {
         if movement != .replay && movement != .correction {
             forwardFrontier = best.index
             provisionalLocalIndices.removeAll(keepingCapacity: true)
+            relocationRearmProgress = 0
         }
         assemblyExpectationIndex = best.index
         transitionOriginIndex = best.index
@@ -744,10 +912,67 @@ struct EngravingAlignmentModel {
             )
             evidence += (challengerTransition - localTransition) * 0.35
         }
-        return RelativeEvidence(total: evidence, distinguishing: evidence)
+        // A dense chord is one physical observation, not a dozen independent votes. Capping its
+        // contribution prevents two spectacular chords plus neutral material from overwhelming
+        // the episode-level confirmation rule.
+        let bounded = min(5, max(-5, evidence))
+        return RelativeEvidence(total: bounded, distinguishing: bounded)
     }
 
     // MARK: Evidence and state
+
+    /// Advances the no-jump explanation as its own monotone path. It may absorb an insertion or
+    /// one omitted score gesture, but it cannot choose a fresh unrelated local position after
+    /// seeing each observation.
+    private func counterfactualLocalIndex(
+        for observation: PerformanceGesture,
+        from origin: Int,
+        mode: EngravingHandMode
+    ) -> Int {
+        var bestIndex = origin
+        var bestScore = matchQuality(observation, at: origin, mode: mode) * 5
+            - Configuration.insertionPenalty
+        if let next = score.successor(of: origin, mode: mode) {
+            let nextScore = matchQuality(observation, at: next, mode: mode) * 5 + 0.55
+            if nextScore > bestScore {
+                bestIndex = next
+                bestScore = nextScore
+            }
+            if let second = score.successor(of: next, mode: mode) {
+                let skipScore = matchQuality(observation, at: second, mode: mode) * 5
+                    - Configuration.deletionPenalty
+                if skipScore > bestScore { bestIndex = second }
+            }
+        }
+        return bestIndex
+    }
+
+    /// Proves uniqueness independently of the challenger beam. `nil` means either that several
+    /// score destinations remain compatible or that bounded lookup could not exhaust them.
+    private func relocationCertificate(
+        for observedMask: UInt128,
+        previousMask: UInt128?
+    ) -> Int? {
+        var destinations = Set<Int>()
+        for mode in EngravingHandMode.allCases {
+            let lookup = score.candidateLookup(
+                for: observedMask,
+                previousMask: previousMask,
+                mode: mode,
+                limit: Configuration.challengerSeedsPerMode
+            )
+            guard lookup.isExhaustive else { return nil }
+            for index in lookup.indices {
+                let quality = EngravingScoreFeatureIndex.pitchSimilarity(
+                    observedMask,
+                    score.gestures[index].mask(for: mode)
+                )
+                if quality >= 0.62 { destinations.insert(index) }
+                if destinations.count > 1 { return nil }
+            }
+        }
+        return destinations.count == 1 ? destinations.first : nil
+    }
 
     private func expectedLocalIndex(for observation: PerformanceGesture, from origin: Int) -> Int {
         guard let next = score.successor(of: origin, mode: currentMode) else { return origin }

@@ -241,8 +241,15 @@ match but cannot consume another moment.
 The user does not select a start. Acquisition evaluates bounded score-wide candidates in all
 three hand modes. Evidence includes current chord similarity, a preceding gesture when
 available, bass and soprano motion, and a strong but defeasible visible-range prior. A complete,
-high-quality multi-note chord can establish tracking immediately; monophonic input generally
-uses ordered context.
+high-quality multi-note chord can establish tracking immediately only when its complete
+performed-hand interpretation identifies one destination. Monophonic input uses ordered
+context. Offscreen monophonic acquisition requires corroboration after the first distinguishing
+observation.
+
+Acquisition candidates are private. Until commitment, they do not set the incumbent, advance the
+forward frontier, initialize presentation, or produce an `Update`. This is required by the public
+meaning of `Update.beat` as a committed musical location. The optional return from `consume` also
+represents unresolved but informative acquisition, not only unsupported input.
 
 The visible range must remain a prior. Stronger musical evidence can acquire elsewhere and cause
 a jump presentation.
@@ -258,6 +265,11 @@ neighborhood. Each challenger:
 - owns an independent tempo clock;
 - accumulates completed and current relative evidence; and
 - is retained in a bounded beam.
+
+Each challenger also owns a monotone local counterfactual that begins at the same change point
+and permits the same small insertion/deletion repair vocabulary. Relocation is therefore an
+episode-against-episode comparison, not a remote path compared with a newly selected local index
+on every event.
 
 This prevents two opposite errors: requiring the local path to become completely lost before a
 real jump, and jumping immediately when one remote chord happens to resemble a mistake.
@@ -281,6 +293,9 @@ Commitment also has an ambiguity veto. Hand modes and seed histories that name t
 score position are one destination hypothesis, but two different destinations that are both
 ready block each other. The follower preserves continuity until post-change evidence selects
 exactly one occurrence. It never resolves repeated material by array order or beam tie-breaking.
+Candidate lookup supplies an exhaustiveness certificate independent of the beam. If bounded
+lookup may have omitted an equally plausible occurrence, relocation fails closed even when only
+one beam path survives.
 
 On commitment:
 
@@ -288,6 +303,10 @@ On commitment:
 - an earlier destination inside `visibleRange` is replay;
 - every other nonlocal destination is a jump; and
 - the committed path adopts the challenger's post-change timing clock.
+
+After a jump, global relocation is disarmed until two strong local continuations re-establish the
+new incumbent. This is evidence-based hysteresis, not a wall-clock delay. Replay and correction
+do not create the same viewport-risk lockout.
 
 Backward playing is therefore represented as a newly confirmed forward-running path at an
 earlier location, not as the incumbent walking backward.
@@ -419,9 +438,10 @@ marker appear to wait for the performer instead of bouncing around the score.
 - `.jump(toLine:)`: directly reframe a confirmed arbitrary destination. This may move forward or
   backward and sets `didRelocate`.
 
-If an apparently continuous alignment crosses more than one line, presentation classifies it as
-a jump because animating through several similar systems falsely implies continuous traversal.
-For jumps, prefer a snap or brief crossfade over a long scroll through intervening systems.
+Presentation never promotes an apparently continuous alignment into a jump. If a continuous
+result would cross more than one line, presentation holds the marker and viewport; only the
+alignment layer may authorize discontinuous reframing. For an authorized jump, prefer a snap or
+brief crossfade over a long scroll through intervening systems.
 
 An earlier destination inside the visible margin may commit as replay and never scrolls. An
 earlier destination outside the viewport is necessarily a jump. The viewport itself moves only
@@ -465,8 +485,8 @@ release build and retain a long repetitive-score stress case.
 Files under `Sources/IO` have intentionally narrow responsibilities:
 
 - `EngravingReference.swift`: public immutable score/layout input and validation.
-- `EngravingScoreFeatures.swift`: compiled gestures, masks, fingerprints, postings, and
-  successors.
+- `EngravingScoreFeatures.swift`: compiled gestures, masks, fingerprints, postings, successors,
+  and bounded candidate-lookup completeness.
 - `PerformanceGestureAssembler.swift`: conversion of serialized MIDI into physical gestures.
 - `PerformanceTimingModel.swift`: robust tempo, chord-span, dwell, and articulation evidence.
 - `EngravingAlignmentModel.swift`: acquisition, monotone incumbent, challengers, hand inference,
@@ -508,6 +528,9 @@ contract:
 22. Score and engraving lines remain owned by the same reference.
 23. Per-event candidate work remains bounded with score length.
 24. The separate general `ScoreFollower` remains untouched.
+25. Provisional acquisition hypotheses never publish a beat or advance the frontier.
+26. Candidate truncation can delay relocation but cannot establish uniqueness.
+27. Presentation cannot manufacture relocation authority from score geometry.
 
 ## 19. Current numerical policy
 
@@ -533,6 +556,8 @@ with focused traces or tests demonstrating the tradeoff.
 | Minimum distinguishing observations within that episode | 2 |
 | Minimum challenger average quality | `0.62` |
 | Destination ambiguity | Every independently ready destination vetoes the others |
+| Candidate truncation | Fail closed until lookup certifies uniqueness |
+| Post-jump rearm | 2 strong local continuations |
 | Block-chord completion baseline | `0.72` |
 | Rolled-chord completion baseline | `0.82` |
 | Next-chord membership baseline | `0.45` |
@@ -550,6 +575,7 @@ coverage for:
 
 - latest post-reset viewport acquisition;
 - stronger music overriding the viewport prior;
+- ambiguous complete chords remaining private during acquisition;
 - right-only and left-only following;
 - inactive-hand notes not advancing one-hand mode;
 - hand inference independent of chord note order;
@@ -559,11 +585,14 @@ coverage for:
 - two remote-like gestures remaining a probe until a coherent confirmation;
 - contradictory local recovery ending a relocation episode;
 - equally plausible repeated destinations vetoing relocation;
+- candidate sets larger than the beam failing closed;
 - remote passages that share local chord tones;
 - relocation before complete local failure;
 - replay inside the viewport versus jump outside it;
 - stable `displayBeat` during replay;
 - viewport advancement only after next-line entry;
+- presentation never manufacturing a multi-line jump;
+- immediate post-jump evidence not causing a relocation cascade;
 - block and rolled chords consuming one moment;
 - deliberately slow rolled chords after tempo learning;
 - decoded-event timestamp preservation;

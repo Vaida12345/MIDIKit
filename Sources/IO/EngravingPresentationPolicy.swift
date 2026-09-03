@@ -21,7 +21,7 @@ struct EngravingPresentationPolicy {
         score: EngravingScoreFeatureIndex
     ) -> EngravingScoreFollower.Update {
         let musicalIndex = alignment.gestureIndex
-        var didRelocate = alignment.movement == .jump
+        let didRelocate = alignment.movement == .jump
 
         if displayGestureIndex == nil {
             displayGestureIndex = musicalIndex
@@ -30,7 +30,10 @@ struct EngravingPresentationPolicy {
             case .jump:
                 displayGestureIndex = musicalIndex
             case .continuous:
-                if alignment.state == .tracking {
+                let proposedLine = score.gestures[musicalIndex].lineOffset
+                let isPresentableContinuation = viewportLineOffset == nil
+                    || proposedLine <= (viewportLineOffset ?? proposedLine) + 1
+                if alignment.state == .tracking, isPresentableContinuation {
                     displayGestureIndex = max(displayGestureIndex ?? musicalIndex, musicalIndex)
                 }
             case .held, .correction, .replay:
@@ -38,7 +41,7 @@ struct EngravingPresentationPolicy {
             }
         }
 
-        var displayIndex = displayGestureIndex ?? musicalIndex
+        let displayIndex = displayGestureIndex ?? musicalIndex
         let displayLine = score.gestures[displayIndex].lineOffset
         let viewport: EngravingScoreFollower.ViewportRecommendation
 
@@ -51,18 +54,6 @@ struct EngravingPresentationPolicy {
                   displayLine == oldLine + 1 {
             viewportLineOffset = displayLine
             viewport = .advance(toLine: score.lines[displayLine].index)
-        } else if alignment.state == .tracking,
-                  alignment.movement == .continuous,
-                  let oldLine = viewportLineOffset,
-                  displayLine > oldLine + 1 {
-            // Crossing more than one line is visually discontinuous even when the alignment
-            // path describes it as a forward score deletion.
-            didRelocate = true
-            displayGestureIndex = musicalIndex
-            displayIndex = musicalIndex
-            let destinationLine = score.gestures[musicalIndex].lineOffset
-            viewportLineOffset = destinationLine
-            viewport = .jump(toLine: score.lines[destinationLine].index)
         } else {
             if viewportLineOffset == nil { viewportLineOffset = displayLine }
             viewport = .unchanged

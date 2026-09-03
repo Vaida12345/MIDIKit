@@ -67,6 +67,16 @@ struct EngravingGestureFingerprint: Hashable {
     let second: UInt128
 }
 
+/// A bounded score lookup together with the information needed to use it safely.
+///
+/// `isExhaustive` means every score occurrence capable of tying the returned candidates was
+/// inspected. Alignment may use an incomplete lookup for speculation, but relocation must fail
+/// closed until a later, more selective observation produces an exhaustive lookup.
+struct EngravingCandidateLookup {
+    let indices: [Int]
+    let isExhaustive: Bool
+}
+
 /// Read-only, precomputed score representation used on the real-time input path.
 struct EngravingScoreFeatureIndex {
     private static let maximumPostingProbeMultiplier = 8
@@ -224,15 +234,40 @@ struct EngravingScoreFeatureIndex {
         mode: EngravingHandMode,
         limit: Int
     ) -> [Int] {
-        guard observedMask != 0 else { return [] }
+        candidateLookup(
+            for: observedMask,
+            previousMask: previousMask,
+            mode: mode,
+            limit: limit
+        ).indices
+    }
+
+    /// Returns a bounded candidate set and whether truncation could have hidden an equally
+    /// plausible occurrence. This distinction is essential for relocation: a beam survivor is
+    /// not evidence that its destination is musically unique.
+    func candidateLookup(
+        for observedMask: UInt128,
+        previousMask: UInt128?,
+        mode: EngravingHandMode,
+        limit: Int
+    ) -> EngravingCandidateLookup {
+        guard observedMask != 0 else {
+            return EngravingCandidateLookup(indices: [], isExhaustive: true)
+        }
         if let previousMask,
            let exact = pairPostings[mode.rawValue][
                EngravingGestureFingerprint(first: previousMask, second: observedMask)
            ], !exact.isEmpty {
-            return Self.distributedSample(exact, limit: limit)
+            return EngravingCandidateLookup(
+                indices: Self.distributedSample(exact, limit: limit),
+                isExhaustive: exact.count <= limit
+            )
         }
         if let exact = exactMaskPostings[mode.rawValue][observedMask], !exact.isEmpty {
-            return Self.distributedSample(exact, limit: limit)
+            return EngravingCandidateLookup(
+                indices: Self.distributedSample(exact, limit: limit),
+                isExhaustive: exact.count <= limit
+            )
         }
 
         var rarest: [Int]?
@@ -243,8 +278,12 @@ struct EngravingScoreFeatureIndex {
             if !posting.isEmpty, posting.count < (rarest?.count ?? .max) { rarest = posting }
             remaining &= remaining - 1
         }
-        guard let rarest else { return [] }
-        if rarest.count <= limit { return rarest }
+        guard let rarest else {
+            return EngravingCandidateLookup(indices: [], isExhaustive: true)
+        }
+        if rarest.count <= limit {
+            return EngravingCandidateLookup(indices: rarest, isExhaustive: true)
+        }
 
         // A wrong extra tone can defeat exact-mask lookup, and a ubiquitous pitch can have a
         // posting proportional to the whole score. Probe a score-wide, evenly distributed
@@ -272,7 +311,12 @@ struct EngravingScoreFeatureIndex {
                 ranked.append(candidate)
             }
         }
-        return ranked.map(\.index)
+        return EngravingCandidateLookup(
+            indices: ranked.map(\.index),
+            // Even when every posting was inspected, candidates omitted by the result limit can
+            // still be tied after transition and hand-mode evidence is applied.
+            isExhaustive: rarest.count <= limit
+        )
     }
 
     @inline(__always)

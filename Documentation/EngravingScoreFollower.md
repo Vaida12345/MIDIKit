@@ -130,6 +130,13 @@ hint. The performer can begin anywhere; the visible range is a prior, not a rest
 musical evidence can acquire a different location, in which case the result is presented as a
 jump.
 
+Acquisition hypotheses remain private until a location is committed. Consequently `consume`
+may return `nil` for several valid note-ons at the start of repeated or otherwise ambiguous
+material. A complete chord acquires immediately only when its full performed-hand interpretation
+identifies one score destination. Monophonic offscreen acquisition requires corroborated ordered
+context; one differing note cannot move the viewport. No provisional acquisition guess updates
+`beat`, `displayBeat`, or the forward frontier.
+
 After acquisition, `visibleRange` has two jobs:
 
 1. It defines which earlier score positions can be treated as a local replay.
@@ -312,15 +319,23 @@ challengers:
 4. Candidate comparison uses relative evidence. Notes common to the incumbent and challenger
    are neutral; exclusive chord tones, bass and soprano motion, register, and ordered gestures
    distinguish locations.
-5. A challenger must describe one uninterrupted post-change episode: an anchor, coherent
+5. Each challenger carries a monotone local counterfactual over the same post-change episode.
+   Relocation evidence therefore compares a remote continuation with a coherent local repair,
+   not with a newly selected local position on every note.
+6. A challenger must describe one uninterrupted post-change episode: an anchor, coherent
    continuation, and confirmation. Passage-like errors separated by local recovery cannot be
    added together. At least two gestures in the episode must distinguish the challenger from
    local continuity.
-6. A relocation decision uses only completed physical gestures or a current gesture whose
+7. A relocation decision uses only completed physical gestures or a current gesture whose
    expected pitch set has been exactly resolved. It is vetoed when more than one score
    destination is ready, rather than choosing an arbitrary repeated occurrence.
-7. Only after those checks may a challenger replace the incumbent. Its destination is then
+8. Candidate lookup certifies whether its bounded search was exhaustive. Truncation can delay a
+   relocation but can never manufacture a unique destination.
+9. Only after those checks may a challenger replace the incumbent. Its destination is then
    classified as a correction, visible replay, or jump.
+
+After a jump, the relocation gate rearms only after two strong local continuations. This
+evidence-based hysteresis prevents one bad relocation from cascading into another.
 
 This architecture matters for similar passages. A shared chord tone cannot keep a wrong local
 interpretation alive, but neither can it promote a remote passage. If two locations are
@@ -353,6 +368,8 @@ These invariants are intentional and should remain true when the implementation 
 9. One physical chord cannot provide multiple gesture confirmations.
 10. `visibleRange` influences acquisition and replay locality, never musical likelihood during
     established tracking.
+11. Presentation never promotes a continuous alignment into a jump. A multi-line continuation
+    without relocation authorization holds the marker and viewport.
 
 The key architectural rules are that active paths never walk backward through the score and one
 physical performance gesture never confirms multiple score gestures. Backward practice starts a

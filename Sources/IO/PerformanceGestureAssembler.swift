@@ -145,6 +145,14 @@ struct PerformanceGestureAssembler {
         if belongsToCurrent { return false }
 
         let hasPhysicalRelease = gesture.releasedPitchMask != 0
+        let allAttackedKeysReleased = gesture.releasedPitchMask & gesture.pitchMask
+            == gesture.pitchMask
+        if allAttackedKeysReleased {
+            // Once every attacked key has been physically released, an unrelated attack cannot
+            // extend the same physical gesture. This candidate-independent boundary prevents a
+            // wrong local score hypothesis from swallowing the first note of a restarted chord.
+            return true
+        }
         let completeEnough: Double = context.attack == .rolled ? 0.82 : 0.72
         let timingEvidence = context.timing.boundaryEvidence(
             gestureStartedAt: gesture.startedAt,

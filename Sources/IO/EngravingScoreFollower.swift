@@ -157,7 +157,7 @@ public final class EngravingScoreFollower {
             context: alignment.gestureContext
         )
         let aligned = alignment.consume(change)
-        if isStarting, aligned == nil {
+        if isStarting, aligned == nil, !alignment.hasAcquisitionEvidence {
             // An out-of-reference note is not an informative start and must not latch either
             // the viewport sample or a spurious one-note gesture.
             assembler.reset()
