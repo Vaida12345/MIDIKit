@@ -81,8 +81,10 @@ struct EngravingScoreFollowerTests {
         let update = Self.perform(pitch: 90, timestamp: 2_000, with: follower)
 
         #expect(update?.beat == 9)
+        #expect(update?.displayBeat == 9)
         #expect(update?.measureIndex == 2)
-        #expect(update?.didRelocate == false)
+        #expect(update?.didRelocate == true)
+        #expect(update?.viewport == .jump(toLine: 2))
     }
 
     @Test("follows right-hand-only practice automatically")
@@ -167,31 +169,83 @@ struct EngravingScoreFollowerTests {
         #expect(update?.activeHands == .both)
     }
 
-    @Test("replays backward inside one measure without relocating")
-    func replaysBackwardInsideMeasure() async throws {
-        let pitches: [UInt8] = [60, 62, 64, 65]
+    @Test("a confirmed visible replay moves beat while presentation waits")
+    func visibleReplayKeepsPresentationStable() async throws {
+        let pitches: [UInt8] = [60, 61, 62, 63, 64, 65, 66, 67, 68]
         let reference = try EngravingReference(
-            measures: [.init(index: 0, onset: 0, duration: 4)],
-            lines: [.init(index: 0, beatRange: 0...4, measureRange: 0...0)],
+            measures: [
+                .init(index: 0, onset: 0, duration: 4),
+                .init(index: 1, onset: 4, duration: 4),
+                .init(index: 2, onset: 8, duration: 4)
+            ],
+            lines: [
+                .init(index: 10, beatRange: 0...4, measureRange: 0...0),
+                .init(index: 20, beatRange: 4...8, measureRange: 1...1),
+                .init(index: 30, beatRange: 8...12, measureRange: 2...2)
+            ],
             moments: pitches.enumerated().map {
                 Self.rightMoment(beat: Double($0.offset), pitches: [$0.element])
             }
         )
         let follower = EngravingScoreFollower()
         await follower.update(reference: reference)
-        follower.visibleRange = 0...4
+        follower.visibleRange = 0...8
 
         var timestamp: MIDITimeStamp = 1_000
-        var relocations = 0
-        var update: EngravingScoreFollower.Update?
-        for index in [0, 1, 2, 3, 1, 2, 3] {
-            update = Self.perform(pitch: pitches[index], timestamp: timestamp, with: follower)
-            if update?.didRelocate == true { relocations += 1 }
+        for index in 0...7 {
+            _ = Self.perform(pitch: pitches[index], timestamp: timestamp, with: follower)
             timestamp += 1_000
         }
 
-        #expect(update?.beat == 3)
-        #expect(relocations == 0)
+        let firstReplayGesture = Self.perform(
+            pitch: pitches[1],
+            timestamp: timestamp,
+            with: follower
+        )
+        timestamp += 1_000
+        let secondReplayGesture = Self.perform(
+            pitch: pitches[2],
+            timestamp: timestamp,
+            with: follower
+        )
+        timestamp += 1_000
+        let confirmedReplay = Self.perform(
+            pitch: pitches[3],
+            timestamp: timestamp,
+            with: follower
+        )
+        timestamp += 1_000
+
+        #expect(firstReplayGesture?.beat == 7)
+        #expect(firstReplayGesture?.displayBeat == 7)
+        #expect(secondReplayGesture?.beat == 7)
+        #expect(secondReplayGesture?.displayBeat == 7)
+        #expect(confirmedReplay?.beat == 3)
+        #expect(confirmedReplay?.displayBeat == 7)
+        #expect(confirmedReplay?.viewport == .unchanged)
+        #expect(confirmedReplay?.didRelocate == false)
+
+        var caughtUp: EngravingScoreFollower.Update?
+        for index in 4...7 {
+            caughtUp = Self.perform(
+                pitch: pitches[index],
+                timestamp: timestamp,
+                with: follower
+            )
+            timestamp += 1_000
+            #expect(caughtUp?.displayBeat == 7)
+            #expect(caughtUp?.viewport == .unchanged)
+        }
+        let movedPastFrontier = Self.perform(
+            pitch: pitches[8],
+            timestamp: timestamp,
+            with: follower
+        )
+
+        #expect(caughtUp?.beat == 7)
+        #expect(movedPastFrontier?.beat == 8)
+        #expect(movedPastFrontier?.displayBeat == 8)
+        #expect(movedPastFrontier?.viewport == .advance(toLine: 30))
     }
 
     @Test("one block chord cannot consume its successor")
@@ -226,6 +280,71 @@ struct EngravingScoreFollowerTests {
             timestamp += 1_000
         }
         #expect(update?.beat == 1)
+    }
+
+    @Test("similar forward passages never make ordinary tracking move backward")
+    func similarForwardPassagesRemainMonotone() async throws {
+        let pitches: [UInt8] = [60, 62, 64, 65, 60, 62, 64, 67]
+        let reference = try EngravingReference(
+            measures: [
+                .init(index: 0, onset: 0, duration: 4),
+                .init(index: 1, onset: 4, duration: 4)
+            ],
+            lines: [
+                .init(index: 0, beatRange: 0...4, measureRange: 0...0),
+                .init(index: 1, beatRange: 4...8, measureRange: 1...1)
+            ],
+            moments: pitches.enumerated().map {
+                Self.rightMoment(beat: Double($0.offset), pitches: [$0.element])
+            }
+        )
+        let follower = EngravingScoreFollower()
+        await follower.update(reference: reference)
+        follower.visibleRange = 0...8
+
+        var updates: [EngravingScoreFollower.Update] = []
+        for (index, pitch) in pitches.enumerated() {
+            if let update = Self.perform(
+                pitch: pitch,
+                timestamp: MIDITimeStamp(index + 1) * 1_000,
+                with: follower
+            ) {
+                updates.append(update)
+            }
+        }
+
+        for (previous, current) in zip(updates, updates.dropFirst()) {
+            #expect(current.beat >= previous.beat)
+            #expect(current.displayBeat >= previous.displayBeat)
+            #expect(!current.didRelocate)
+        }
+        #expect(updates.last?.beat == 7)
+    }
+
+    @Test("unsupported input freezes the public position and viewport")
+    func uncertaintyFreezesPresentation() async throws {
+        let reference = try EngravingReference(
+            measures: [.init(index: 0, onset: 0, duration: 4)],
+            lines: [.init(index: 7, beatRange: 0...4, measureRange: 0...0)],
+            moments: [
+                Self.rightMoment(beat: 0, pitches: [60]),
+                Self.rightMoment(beat: 1, pitches: [62]),
+                Self.rightMoment(beat: 2, pitches: [64])
+            ]
+        )
+        let follower = EngravingScoreFollower()
+        await follower.update(reference: reference)
+        follower.visibleRange = 0...4
+
+        _ = Self.perform(pitch: 60, timestamp: 1_000, with: follower)
+        let beforeMistake = Self.perform(pitch: 62, timestamp: 2_000, with: follower)
+        let mistake = Self.perform(pitch: 99, timestamp: 3_000, with: follower)
+
+        #expect(mistake?.beat == beforeMistake?.beat)
+        #expect(mistake?.displayBeat == beforeMistake?.displayBeat)
+        #expect(mistake?.state == .uncertain)
+        #expect(mistake?.viewport == .unchanged)
+        #expect(mistake?.didRelocate == false)
     }
 
     @Test("a rolled chord remains one gesture at an unusually slow speed")
@@ -343,17 +462,67 @@ struct EngravingScoreFollowerTests {
         #expect(updates.last?.state == .tracking)
     }
 
-    @Test("viewport recommendations occur once per required line change")
-    func viewportRecommendationsAreSparse() async throws {
-        let pitches = (60..<68).map(UInt8.init)
+    @Test("replaying outside the viewport is committed only as a jump")
+    func offscreenReplayIsAJump() async throws {
+        let pitches = (0..<40).map { UInt8(40 + $0) }
+        let reference = try EngravingReference(
+            measures: (0..<10).map {
+                .init(index: $0, onset: Double($0 * 4), duration: 4)
+            },
+            lines: (0..<10).map {
+                .init(
+                    index: 100 + $0,
+                    beatRange: Double($0 * 4)...Double(($0 + 1) * 4),
+                    measureRange: $0...$0
+                )
+            },
+            moments: pitches.enumerated().map {
+                Self.rightMoment(beat: Double($0.offset), pitches: [$0.element])
+            }
+        )
+        let follower = EngravingScoreFollower()
+        await follower.update(reference: reference)
+        follower.visibleRange = 32...40
+
+        _ = Self.perform(pitch: pitches[32], timestamp: 1_000, with: follower)
+        let acquired = Self.perform(pitch: pitches[33], timestamp: 2_000, with: follower)
+        #expect(acquired?.beat == 33)
+
+        var updates: [EngravingScoreFollower.Update] = []
+        for index in 0..<14 {
+            if let update = Self.perform(
+                pitch: pitches[index],
+                timestamp: MIDITimeStamp(index + 3) * 1_000,
+                with: follower
+            ) {
+                updates.append(update)
+            }
+        }
+
+        let jumpOffset = try #require(updates.firstIndex(where: { $0.didRelocate }))
+        let jump = updates[jumpOffset]
+        #expect(updates[..<jumpOffset].allSatisfy { $0.beat >= 33 })
+        #expect(jump.beat < 32)
+        #expect(jump.displayBeat == jump.beat)
+        if case let .jump(toLine: lineIndex) = jump.viewport {
+            #expect(lineIndex < 108)
+        } else {
+            Issue.record("Offscreen replay did not produce a viewport jump")
+        }
+    }
+
+    @Test("the viewport advances only after committed entry into the next line")
+    func viewportAdvancesAtLineEntry() async throws {
+        let pitches = (60..<72).map(UInt8.init)
         let reference = try EngravingReference(
             measures: [
                 .init(index: 0, onset: 0, duration: 4),
-                .init(index: 1, onset: 4, duration: 4)
+                .init(index: 1, onset: 4, duration: 4),
+                .init(index: 2, onset: 8, duration: 4)
             ],
             lines: [
-                .init(index: 0, beatRange: 0...4, measureRange: 0...0),
-                .init(index: 1, beatRange: 4...8, measureRange: 1...1)
+                .init(index: 100, beatRange: 0...8, measureRange: 0...1),
+                .init(index: 200, beatRange: 8...12, measureRange: 2...2)
             ],
             moments: pitches.enumerated().map {
                 Self.rightMoment(beat: Double($0.offset), pitches: [$0.element])
@@ -361,21 +530,28 @@ struct EngravingScoreFollowerTests {
         )
         let follower = EngravingScoreFollower()
         await follower.update(reference: reference)
-        follower.visibleRange = 0...4
+        follower.visibleRange = 0...12
 
-        var recommendations: [EngravingScoreFollower.ViewportRecommendation] = []
+        var updates: [EngravingScoreFollower.Update] = []
         for (index, pitch) in pitches.enumerated() {
             if let update = Self.perform(
                 pitch: pitch,
                 timestamp: MIDITimeStamp(index + 1) * 1_000,
                 with: follower
-            ), case .ensureVisible = update.viewport {
-                recommendations.append(update.viewport)
+            ) {
+                updates.append(update)
             }
         }
 
+        #expect(updates.prefix(8).allSatisfy { $0.viewport == .unchanged })
+        #expect(updates[8].viewport == .advance(toLine: 200))
+        #expect(updates.dropFirst(9).allSatisfy { $0.viewport == .unchanged })
+        let recommendations = updates.compactMap { update -> Int? in
+            guard case let .advance(toLine: line) = update.viewport else { return nil }
+            return line
+        }
         #expect(recommendations.count == 1)
-        #expect(recommendations.first == .ensureVisible(measures: 1...1, preferredCenter: 1))
+        #expect(recommendations.first == 200)
     }
 
     private static func rightMoment(

@@ -350,14 +350,18 @@ public struct EngravingReference: Sendable, Hashable {
 
 /// A score follower specialized for an engraving-driven piano-practice interface.
 ///
-/// This follower treats local backward practice as ordinary movement, automatically infers
-/// left-, right-, or both-hand participation, separates musical position from viewport motion,
-/// and only activates score-wide relocation after local tracking has become implausible.
+/// This follower treats backward practice as a separately confirmed replay, automatically
+/// infers left-, right-, or both-hand participation, and keeps uncertain musical inference from
+/// moving the performer's visual frame. The viewport advances by one engraving line during
+/// continuous playing and can otherwise move only as part of a confirmed jump.
 ///
 /// Start a performance epoch by calling ``reset()``, assign ``visibleRange`` as often as the
 /// scroll view changes, then pass MIDI events to ``consume(_:)``. The first informative note-on
 /// latches the latest post-reset visible range as an acquisition hint. Subsequent visible-range
-/// changes are display feedback only and cannot reinforce the inferred musical position.
+/// changes bound local replay but cannot reinforce the inferred musical position.
+///
+/// See `Documentation/EngravingScoreFollower.md` for the complete integration contract and
+/// performer-facing invariants.
 public final class EngravingScoreFollower {
 
     /// Whether the performance is using one or both notated hands.
@@ -381,14 +385,30 @@ public final class EngravingScoreFollower {
         /// Preserve the current scroll position.
         case unchanged
 
-        /// Keep a measure range visible and prefer one measure as its visual center.
-        case ensureVisible(measures: ClosedRange<Int>, preferredCenter: Int)
+        /// Center the immediately following engraving line.
+        ///
+        /// Applications should render this as one short, non-springing line movement. It is
+        /// emitted only after the performance has been committed to that line, never in
+        /// anticipation of an approaching line ending.
+        case advance(toLine: Int)
+
+        /// Reframe the score at a nonlocal destination.
+        ///
+        /// A jump may move in either direction. Applications should snap or crossfade to the
+        /// destination rather than animate through intervening music.
+        case jump(toLine: Int)
     }
 
     /// One score-following result.
     public struct Update: Sendable, Hashable {
-        /// Best current musical position, in score beats.
+        /// Committed current musical position, in score beats.
         public let beat: Double
+
+        /// Stable beat intended for the application's visible position marker.
+        ///
+        /// During a performance epoch this value never decreases during ordinary tracking or a
+        /// visible replay. It can move backward only when ``didRelocate`` is `true`.
+        public let displayBeat: Double
 
         /// Nearby beats that remain musically plausible in the committed local region.
         public let plausibleBeatRange: ClosedRange<Double>
@@ -405,10 +425,13 @@ public final class EngravingScoreFollower {
         /// Inferred performed hand participation.
         public let activeHands: HandParticipation
 
-        /// An occasional request to change the engraving viewport.
+        /// An occasional, performer-safe request to change the engraving viewport.
         public let viewport: ViewportRecommendation
 
-        /// Whether this result committed a score-wide relocation.
+        /// Whether this result committed a discontinuous presentation jump.
+        ///
+        /// When this is `true`, ``displayBeat`` may move in either direction and ``viewport``
+        /// is ``ViewportRecommendation/jump(toLine:)``.
         public let didRelocate: Bool
     }
 
@@ -418,8 +441,8 @@ public final class EngravingScoreFollower {
     /// The beat range currently displayed by the scroll view.
     ///
     /// After ``reset()``, assignments update the pending acquisition hint until the first
-    /// note-on. During tracking, assignments are used only to decide whether a viewport request
-    /// is necessary; follower-driven scrolling therefore cannot reinforce its own alignment.
+    /// note-on. During tracking, assignments define the perceptual boundary between a local
+    /// replay and a nonlocal jump; they never add evidence to a score-position hypothesis.
     public var visibleRange: ClosedRange<Double>? {
         didSet {
             guard phase == .awaitingPerformance else { return }
@@ -445,21 +468,22 @@ public final class EngravingScoreFollower {
         phase = .awaitingPerformance
         pendingAcquisitionRange = nil
         acquisitionMeasureOffsets = nil
-        hypotheses.removeAll(keepingCapacity: true)
-        recoveryHypotheses.removeAll(keepingCapacity: true)
+        primaryHypotheses.removeAll(keepingCapacity: true)
+        replayHypotheses.removeAll(keepingCapacity: true)
+        relocationHypotheses.removeAll(keepingCapacity: true)
         sustainIsDown = false
         sostenutoIsDown = false
         poorEvidenceStreak = 0
-        recoveryWinningStreak = 0
-        lastRecoveryWinningGestureCount = 0
-        lastCommittedMeasureOffset = nil
+        relocationWinningStreak = 0
+        lastRelocationWinningGestureCount = 0
         lastCommittedGestureCount = 0
-        practiceRegion = nil
         recentObservedGestures.removeAll(keepingCapacity: true)
         inferredParticipation = .unknown
         leftParticipationEvidence = 0
         rightParticipationEvidence = 0
-        lastRecommendedMeasures = nil
+        committedMomentIndex = nil
+        displayMomentIndex = nil
+        viewportLineOffset = nil
         lastUpdate = nil
     }
 
@@ -493,13 +517,15 @@ public final class EngravingScoreFollower {
     }
 
     private enum CandidateKind: UInt8, Hashable {
-        case local
-        case recovery
+        case primary
+        case replay
+        case relocation
     }
 
     private struct CompiledMoment {
         let beat: Double
         let measureOffset: Int
+        let lineOffset: Int
         let attack: EngravingReference.Attack
         let allPitchMask: UInt128
         let leftPitchMask: UInt128
@@ -522,7 +548,6 @@ public final class EngravingScoreFollower {
         let moments: [CompiledMoment]
         let momentsByPitch: [[[Int]]]
         let lineOffsetByMeasureOffset: [Int]
-        let measureOffsetsByLineOffset: [ClosedRange<Int>]
 
         init(_ reference: EngravingReference) {
             measures = reference.measures
@@ -535,21 +560,6 @@ public final class EngravingScoreFollower {
                 } ?? 0
             }
             lineOffsetByMeasureOffset = lineByMeasure
-
-            var firstMeasureByLine = Array<Int?>(
-                repeating: nil,
-                count: reference.lines.count
-            )
-            var lastMeasureByLine = firstMeasureByLine
-            for (measureOffset, lineOffset) in lineByMeasure.enumerated() {
-                firstMeasureByLine[lineOffset] = firstMeasureByLine[lineOffset] ?? measureOffset
-                lastMeasureByLine[lineOffset] = measureOffset
-            }
-            measureOffsetsByLineOffset = reference.lines.indices.map { lineOffset in
-                let lower = firstMeasureByLine[lineOffset] ?? 0
-                let upper = lastMeasureByLine[lineOffset] ?? lower
-                return lower...upper
-            }
 
             var compiledMoments: [CompiledMoment] = []
             compiledMoments.reserveCapacity(reference.moments.count)
@@ -587,6 +597,7 @@ public final class EngravingScoreFollower {
                 compiledMoments.append(CompiledMoment(
                     beat: moment.beat,
                     measureOffset: measureOffset,
+                    lineOffset: lineByMeasure[measureOffset],
                     attack: moment.attack,
                     allPitchMask: allMask,
                     leftPitchMask: leftMask,
@@ -606,9 +617,11 @@ public final class EngravingScoreFollower {
             )
             for (momentIndex, moment) in compiledMoments.enumerated() {
                 for mode in ParticipationMode.allCases {
-                    let mask = moment.pitchMask(for: mode)
-                    for pitch in 0..<128 where mask & EngravingScoreFollower.pitchMask(for: UInt8(pitch)) != 0 {
+                    var remainingPitches = moment.pitchMask(for: mode)
+                    while remainingPitches != 0 {
+                        let pitch = remainingPitches.trailingZeroBitCount
                         pitchIndex[Int(mode.rawValue)][pitch].append(momentIndex)
+                        remainingPitches &= remainingPitches - 1
                     }
                 }
             }
@@ -627,17 +640,19 @@ public final class EngravingScoreFollower {
             for momentIndex in moments.indices {
                 var values = SIMD3<Double>.zero
                 for mode in ParticipationMode.allCases {
-                    let mask = moments[momentIndex].pitchMask(for: mode)
-                    guard mask != 0 else { continue }
+                    var remainingPitches = moments[momentIndex].pitchMask(for: mode)
+                    guard remainingPitches != 0 else { continue }
                     var information = 0.0
                     var pitchCount = 0
-                    for pitch in 0..<128 where mask & EngravingScoreFollower.pitchMask(for: UInt8(pitch)) != 0 {
+                    while remainingPitches != 0 {
+                        let pitch = remainingPitches.trailingZeroBitCount
                         let occurrences = max(
                             1,
                             momentsByPitch[Int(mode.rawValue)][pitch].count
                         )
                         information += Foundation.log1p(scoreCount / Double(occurrences))
                         pitchCount += 1
+                        remainingPitches &= remainingPitches - 1
                     }
                     let normalized = information / Double(max(1, pitchCount))
                     values[Int(mode.rawValue)] = min(1, normalized / Foundation.log1p(scoreCount))
@@ -661,7 +676,8 @@ public final class EngravingScoreFollower {
         var gestureCount: Int
         var evidenceEventCount: Int
         var mismatchLoad: Double
-        var recoveryEvidence: Double
+        var probeEvidence: Double
+        var seedMomentIndex: Int
         var lastCompletedGestureMask: UInt128
     }
 
@@ -683,19 +699,13 @@ public final class EngravingScoreFollower {
         var score: Double
     }
 
-    private struct PracticeRegion {
-        var lowerMeasureOffset: Int
-        var upperMeasureOffset: Int
-        var lastDirection: Int
-        var observedReversal: Bool
-    }
-
     private enum Configuration {
         static let beamWidth = 48
-        static let recoveryBeamWidth = 24
+        static let replayBeamWidth = 18
+        static let relocationBeamWidth = 24
         static let maximumForwardTargets = 7
-        static let maximumBackwardTargets = 12
-        static let maximumRecoverySeedsPerMode = 10
+        static let maximumReplaySeedsPerMode = 8
+        static let maximumRelocationSeedsPerMode = 10
         static let scoreMemory = 0.985
         static let fullGestureReward = 5.0
         static let supplementalHandReward = 0.0
@@ -704,16 +714,18 @@ public final class EngravingScoreFollower {
         static let missingGesturePenalty = 2.6
         static let substitutionPenalty = 2.2
         static let incompleteBoundaryPenalty = 2.0
-        static let localBackwardPenalty = 0.45
         static let adjacentMeasurePenalty = 0.7
         static let skippedMomentPenalty = 0.55
-        static let recoverySeedPenalty = 7.5
+        static let replaySeedPenalty = 5.0
+        static let replayCommitLead = 2.75
+        static let replayEvidenceRequired = 1.35
+        static let relocationSeedPenalty = 7.5
         static let acquisitionReseedPenalty = 12.0
-        static let recoveryCommitLead = 4.0
-        static let recoveryEvidenceRequired = 2.4
-        static let recoveryActivationLoad = 3.0
-        static let poorEvidenceToRecover = 4.5
-        static let poorEvidenceEventsToRecover = 3
+        static let relocationCommitLead = 4.0
+        static let relocationEvidenceRequired = 2.4
+        static let relocationActivationLoad = 3.0
+        static let poorEvidenceToRelocate = 4.5
+        static let poorEvidenceEventsToRelocate = 3
         static let acquisitionPrior = 3.5
         static let adjacentAcquisitionPrior = 1.25
         static let acquisitionEvidenceToTrack = 2
@@ -726,21 +738,22 @@ public final class EngravingScoreFollower {
     private var phase: Phase = .awaitingPerformance
     private var pendingAcquisitionRange: ClosedRange<Double>?
     private var acquisitionMeasureOffsets: ClosedRange<Int>?
-    private var hypotheses: [Hypothesis] = []
-    private var recoveryHypotheses: [Hypothesis] = []
+    private var primaryHypotheses: [Hypothesis] = []
+    private var replayHypotheses: [Hypothesis] = []
+    private var relocationHypotheses: [Hypothesis] = []
     private var sustainIsDown = false
     private var sostenutoIsDown = false
     private var poorEvidenceStreak = 0
-    private var recoveryWinningStreak = 0
-    private var lastRecoveryWinningGestureCount = 0
-    private var lastCommittedMeasureOffset: Int?
+    private var relocationWinningStreak = 0
+    private var lastRelocationWinningGestureCount = 0
     private var lastCommittedGestureCount = 0
-    private var practiceRegion: PracticeRegion?
     private var recentObservedGestures: [UInt128] = []
     private var inferredParticipation: HandParticipation = .unknown
     private var leftParticipationEvidence = 0.0
     private var rightParticipationEvidence = 0.0
-    private var lastRecommendedMeasures: ClosedRange<Int>?
+    private var committedMomentIndex: Int?
+    private var displayMomentIndex: Int?
+    private var viewportLineOffset: Int?
 
     // MARK: - Performance input
 
@@ -770,21 +783,21 @@ public final class EngravingScoreFollower {
             beginAcquisition(using: compiled)
         }
 
-        if hypotheses.isEmpty {
-            hypotheses = seedHypotheses(
+        let previousPrimaryBest = primaryHypotheses.max(by: { $0.score < $1.score })
+        if primaryHypotheses.isEmpty {
+            primaryHypotheses = seedHypotheses(
                 for: pitch,
                 velocity: velocity,
                 timestamp: timestamp,
                 in: compiled
             )
-            guard !hypotheses.isEmpty else { return nil }
+            guard !primaryHypotheses.isEmpty else { return nil }
         } else {
             var expanded: [Hypothesis] = []
             expanded.reserveCapacity(
-                hypotheses.count
-                    * (2 + Configuration.maximumForwardTargets + Configuration.maximumBackwardTargets)
+                primaryHypotheses.count * (2 + Configuration.maximumForwardTargets)
             )
-            for hypothesis in hypotheses {
+            for hypothesis in primaryHypotheses {
                 expand(
                     hypothesis,
                     with: pitch,
@@ -806,42 +819,65 @@ public final class EngravingScoreFollower {
                 )
                 expanded.append(contentsOf: reseeds)
             }
-            hypotheses = prune(expanded, limit: Configuration.beamWidth, in: compiled)
+            primaryHypotheses = prune(expanded, limit: Configuration.beamWidth, in: compiled)
         }
 
-        guard let bestLocal = hypotheses.max(by: { $0.score < $1.score }) else { return nil }
-        poorEvidenceStreak = bestLocal.mismatchLoad >= Configuration.poorEvidenceToRecover
+        if phase != .acquiring, let committedMomentIndex {
+            primaryHypotheses.removeAll { $0.momentIndex < committedMomentIndex }
+        }
+
+        guard var bestPrimary = primaryHypotheses.max(by: { $0.score < $1.score }) else {
+            return nil
+        }
+
+        var didReplay = false
+        if phase != .acquiring, let previousPrimaryBest {
+            updateReplay(
+                with: pitch,
+                velocity: velocity,
+                timestamp: timestamp,
+                previousPrimaryBest: previousPrimaryBest,
+                primaryBest: bestPrimary,
+                in: compiled
+            )
+            didReplay = commitReplayIfReady(primaryBest: bestPrimary, in: compiled)
+            if didReplay,
+               let promotedBest = primaryHypotheses.max(by: { $0.score < $1.score }) {
+                bestPrimary = promotedBest
+            }
+        }
+
+        poorEvidenceStreak = bestPrimary.mismatchLoad >= Configuration.poorEvidenceToRelocate
             ? poorEvidenceStreak + 1
             : max(0, poorEvidenceStreak - 1)
 
         if phase != .acquiring,
-           bestLocal.mismatchLoad >= Configuration.poorEvidenceToRecover,
-           poorEvidenceStreak >= Configuration.poorEvidenceEventsToRecover {
+           bestPrimary.mismatchLoad >= Configuration.poorEvidenceToRelocate,
+           poorEvidenceStreak >= Configuration.poorEvidenceEventsToRelocate {
             phase = .lost
         }
 
-        let shouldEvaluateRecovery = phase == .lost
+        let shouldEvaluateRelocation = !didReplay && (phase == .lost
             || (phase != .acquiring
-                && bestLocal.mismatchLoad >= Configuration.recoveryActivationLoad)
-        if shouldEvaluateRecovery {
-            updateRecovery(
+                && bestPrimary.mismatchLoad >= Configuration.relocationActivationLoad))
+        if shouldEvaluateRelocation {
+            updateRelocationProbe(
                 with: pitch,
                 velocity: velocity,
                 timestamp: timestamp,
-                localBest: bestLocal,
+                primaryBest: bestPrimary,
                 in: compiled
             )
         } else {
-            recoveryHypotheses.removeAll(keepingCapacity: true)
-            recoveryWinningStreak = 0
-            lastRecoveryWinningGestureCount = 0
+            clearRelocationProbe()
         }
 
-        let didRelocate = commitRecoveryIfReady(localBest: bestLocal, in: compiled)
-        let effectiveBest = hypotheses.max(by: { $0.score < $1.score }) ?? bestLocal
+        let didRelocate = commitRelocationIfReady(primaryBest: bestPrimary, in: compiled)
+        let effectiveBest = primaryHypotheses.max(by: { $0.score < $1.score }) ?? bestPrimary
         return makeUpdate(
             from: effectiveBest,
             observedPitch: pitch,
+            didReplay: didReplay,
             didRelocate: didRelocate,
             in: compiled
         )
@@ -851,13 +887,17 @@ public final class EngravingScoreFollower {
     func consume(noteOff pitch: UInt8) {
         guard pitch < 128 else { return }
         let mask = Self.pitchMask(for: pitch)
-        for index in hypotheses.indices
-        where hypotheses[index].performedPitchMask & mask != 0 {
-            hypotheses[index].releasedPitchMask |= mask
+        for index in primaryHypotheses.indices
+        where primaryHypotheses[index].performedPitchMask & mask != 0 {
+            primaryHypotheses[index].releasedPitchMask |= mask
         }
-        for index in recoveryHypotheses.indices
-        where recoveryHypotheses[index].performedPitchMask & mask != 0 {
-            recoveryHypotheses[index].releasedPitchMask |= mask
+        for index in replayHypotheses.indices
+        where replayHypotheses[index].performedPitchMask & mask != 0 {
+            replayHypotheses[index].releasedPitchMask |= mask
+        }
+        for index in relocationHypotheses.indices
+        where relocationHypotheses[index].performedPitchMask & mask != 0 {
+            relocationHypotheses[index].releasedPitchMask |= mask
         }
     }
 
@@ -877,15 +917,6 @@ public final class EngravingScoreFollower {
             measureOffsets(intersecting: $0, in: compiled)
         }
         phase = .acquiring
-
-        if let acquisitionMeasureOffsets {
-            practiceRegion = PracticeRegion(
-                lowerMeasureOffset: acquisitionMeasureOffsets.lowerBound,
-                upperMeasureOffset: acquisitionMeasureOffsets.upperBound,
-                lastDirection: 0,
-                observedReversal: false
-            )
-        }
     }
 
     private struct SeedCandidate {
@@ -979,7 +1010,7 @@ public final class EngravingScoreFollower {
             return Hypothesis(
                 momentIndex: seed.momentIndex,
                 mode: seed.mode,
-                kind: .local,
+                kind: .primary,
                 performedPitchMask: Self.pitchMask(for: pitch),
                 releasedPitchMask: 0,
                 score: scoreBase + seed.prior + reward,
@@ -990,7 +1021,8 @@ public final class EngravingScoreFollower {
                 gestureCount: 0,
                 evidenceEventCount: 1,
                 mismatchLoad: 0,
-                recoveryEvidence: 0,
+                probeEvidence: 0,
+                seedMomentIndex: seed.momentIndex,
                 lastCompletedGestureMask: 0
             )
         }
@@ -1070,7 +1102,7 @@ public final class EngravingScoreFollower {
             )
         )
 
-        let targets = localTargets(
+        let targets = forwardTargets(
             from: base,
             matching: pitch,
             in: compiled
@@ -1183,12 +1215,12 @@ public final class EngravingScoreFollower {
             transitioned.mismatchLoad += 0.8
         }
 
-        if hypothesis.kind == .recovery {
+        if hypothesis.kind != .primary {
             let distinguishing = currentMoment.distinctiveness[Int(hypothesis.mode.rawValue)]
             if currentCoverage >= 0.7 {
-                transitioned.recoveryEvidence += distinguishing * currentCoverage
+                transitioned.probeEvidence += distinguishing * currentCoverage
             } else {
-                transitioned.recoveryEvidence *= 0.8
+                transitioned.probeEvidence *= 0.8
             }
         }
 
@@ -1209,7 +1241,7 @@ public final class EngravingScoreFollower {
         return transitioned
     }
 
-    private func localTargets(
+    private func forwardTargets(
         from hypothesis: Hypothesis,
         matching pitch: UInt8,
         in compiled: CompiledReference
@@ -1236,9 +1268,7 @@ public final class EngravingScoreFollower {
         }
 
         var targets: [Int] = []
-        targets.reserveCapacity(
-            Configuration.maximumForwardTargets + Configuration.maximumBackwardTargets + 1
-        )
+        targets.reserveCapacity(Configuration.maximumForwardTargets + 1)
 
         var forwardRelevantCount = 0
         var index = current + 1
@@ -1270,7 +1300,7 @@ public final class EngravingScoreFollower {
         ), !targets.contains(immediate) {
             let immediateMeasure = compiled.moments[immediate].measureOffset
             let isReachable: Bool
-            if hypothesis.kind == .recovery {
+            if hypothesis.kind != .primary {
                 isReachable = true
             } else {
                 let bounds = localMeasureBounds(
@@ -1283,25 +1313,6 @@ public final class EngravingScoreFollower {
             if isReachable {
                 targets.append(immediate)
             }
-        }
-
-        guard hypothesis.kind == .local else { return targets }
-
-        let allowedMeasures = localMeasureBounds(around: currentMoment.measureOffset, in: compiled)
-        var backwardRelevantCount = 0
-        index = current - 1
-        while index >= 0,
-              backwardRelevantCount < Configuration.maximumBackwardTargets {
-            let moment = compiled.moments[index]
-            if moment.measureOffset < allowedMeasures.lowerBound { break }
-            let expected = moment.pitchMask(for: hypothesis.mode)
-            if expected != 0 {
-                backwardRelevantCount += 1
-                if expected & noteMask != 0 {
-                    targets.append(index)
-                }
-            }
-            index -= 1
         }
 
         return targets
@@ -1328,10 +1339,7 @@ public final class EngravingScoreFollower {
     ) -> ClosedRange<Int> {
         var lower = max(0, measureOffset - 1)
         var upper = min(compiled.measures.count - 1, measureOffset + 1)
-        if let practiceRegion {
-            lower = min(lower, practiceRegion.lowerMeasureOffset)
-            upper = max(upper, practiceRegion.upperMeasureOffset)
-        } else if let acquisitionMeasureOffsets {
+        if let acquisitionMeasureOffsets, phase == .acquiring {
             lower = min(lower, acquisitionMeasureOffsets.lowerBound)
             upper = max(upper, acquisitionMeasureOffsets.upperBound)
         }
@@ -1413,9 +1421,6 @@ public final class EngravingScoreFollower {
             score += min(1.25, max(-0.5, logRatio * 0.35))
         }
 
-        if target < hypothesis.momentIndex {
-            score -= Configuration.localBackwardPenalty
-        }
         return score
     }
 
@@ -1590,21 +1595,245 @@ public final class EngravingScoreFollower {
         }
     }
 
-    // MARK: - Global recovery
+    // MARK: - Visible replay
 
-    private func updateRecovery(
+    /// Maintains an earlier, forward-running interpretation without allowing it to influence
+    /// the published position. A replay is a change of origin, not a backward transition.
+    private func updateReplay(
         with pitch: UInt8,
         velocity: UInt8,
         timestamp: MIDITimeStamp,
-        localBest: Hypothesis,
+        previousPrimaryBest: Hypothesis,
+        primaryBest: Hypothesis,
         in compiled: CompiledReference
     ) {
-        if recoveryHypotheses.isEmpty {
-            recoveryHypotheses = recoverySeeds(
+        guard let committedMomentIndex,
+              let visibleRange = Self.validRange(visibleRange) else {
+            clearReplayProbe()
+            return
+        }
+        let shouldSeed = canBeginNewGesture(
+            from: previousPrimaryBest,
+            with: pitch,
+            in: compiled
+        )
+        guard !replayHypotheses.isEmpty || shouldSeed else { return }
+
+        var candidates: [Hypothesis] = []
+        candidates.reserveCapacity(
+            replayHypotheses.count * (2 + Configuration.maximumForwardTargets)
+                + Configuration.maximumReplaySeedsPerMode * ParticipationMode.allCases.count
+        )
+
+        for hypothesis in replayHypotheses {
+            expand(
+                hypothesis,
+                with: pitch,
+                velocity: velocity,
+                timestamp: timestamp,
+                in: compiled,
+                into: &candidates
+            )
+        }
+
+        if shouldSeed {
+            candidates.append(contentsOf: replaySeeds(
                 for: pitch,
                 velocity: velocity,
                 timestamp: timestamp,
-                localBest: localBest,
+                scoreBase: primaryBest.score,
+                before: committedMomentIndex,
+                visibleRange: visibleRange,
+                in: compiled
+            ))
+        }
+
+        candidates.removeAll { candidate in
+            candidate.seedMomentIndex >= committedMomentIndex
+                || candidate.momentIndex >= committedMomentIndex
+                || !isMomentVisible(candidate.momentIndex, in: visibleRange, compiled: compiled)
+        }
+        replayHypotheses = prune(
+            candidates,
+            limit: Configuration.replayBeamWidth,
+            in: compiled
+        )
+    }
+
+    private func replaySeeds(
+        for pitch: UInt8,
+        velocity: UInt8,
+        timestamp: MIDITimeStamp,
+        scoreBase: Double,
+        before committedMomentIndex: Int,
+        visibleRange: ClosedRange<Double>,
+        in compiled: CompiledReference
+    ) -> [Hypothesis] {
+        var ranked: [ProbeSeed] = []
+        ranked.reserveCapacity(
+            Configuration.maximumReplaySeedsPerMode * ParticipationMode.allCases.count
+        )
+
+        for mode in ParticipationMode.allCases {
+            let occurrences = compiled.momentsByPitch[Int(mode.rawValue)][Int(pitch)]
+            var modeSeeds: [ProbeSeed] = []
+            modeSeeds.reserveCapacity(min(occurrences.count, 24))
+            for momentIndex in occurrences where momentIndex < committedMomentIndex {
+                guard isMomentVisible(momentIndex, in: visibleRange, compiled: compiled) else {
+                    continue
+                }
+                let historySimilarity = historicalSimilarity(
+                    endingBefore: momentIndex,
+                    mode: mode,
+                    in: compiled
+                )
+                let distinctiveness = compiled.moments[momentIndex]
+                    .distinctiveness[Int(mode.rawValue)]
+                modeSeeds.append(ProbeSeed(
+                    momentIndex: momentIndex,
+                    mode: mode,
+                    evidence: historySimilarity * 2.4 + distinctiveness
+                ))
+            }
+            modeSeeds.sort {
+                if $0.evidence != $1.evidence { return $0.evidence > $1.evidence }
+                return $0.momentIndex > $1.momentIndex
+            }
+            ranked.append(contentsOf: modeSeeds.prefix(Configuration.maximumReplaySeedsPerMode))
+        }
+
+        let velocityWeight = self.velocityWeight(for: velocity)
+        let seeded = ranked.map { seed in
+            let expected = compiled.moments[seed.momentIndex].pitchMask(for: seed.mode)
+            return Hypothesis(
+                momentIndex: seed.momentIndex,
+                mode: seed.mode,
+                kind: .replay,
+                performedPitchMask: Self.pitchMask(for: pitch),
+                releasedPitchMask: 0,
+                score: scoreBase
+                    - Configuration.replaySeedPenalty
+                    + seed.evidence
+                    + exactPitchReward(expectedPitchMask: expected) * velocityWeight,
+                gestureStartedAt: Self.valid(timestamp) ? timestamp : nil,
+                lastNoteOnAt: Self.valid(timestamp) ? timestamp : nil,
+                ticksPerBeat: nil,
+                intraGestureTicks: nil,
+                gestureCount: 0,
+                evidenceEventCount: 1,
+                mismatchLoad: 0,
+                probeEvidence: compiled.moments[seed.momentIndex]
+                    .distinctiveness[Int(seed.mode.rawValue)] * 0.25,
+                seedMomentIndex: seed.momentIndex,
+                lastCompletedGestureMask: 0
+            )
+        }
+        return prune(seeded, limit: Configuration.replayBeamWidth, in: compiled)
+    }
+
+    private func canBeginNewGesture(
+        from hypothesis: Hypothesis,
+        with pitch: UInt8,
+        in compiled: CompiledReference
+    ) -> Bool {
+        let moment = compiled.moments[hypothesis.momentIndex]
+        let expected = moment.pitchMask(for: hypothesis.mode)
+        let pitchMask = Self.pitchMask(for: pitch)
+        let alreadyPerformed = hypothesis.performedPitchMask & pitchMask != 0
+        let unmatchedExpected = expected & pitchMask != 0 && !alreadyPerformed
+        guard !unmatchedExpected else { return false }
+
+        let coverage = Self.coverage(
+            matched: hypothesis.performedPitchMask & expected,
+            expected: expected
+        )
+        if moment.attack == .rolled && coverage < 0.8 {
+            return false
+        }
+        if alreadyPerformed {
+            return hypothesis.releasedPitchMask & pitchMask != 0
+        }
+        return coverage >= 0.7
+    }
+
+    private func commitReplayIfReady(
+        primaryBest: Hypothesis,
+        in compiled: CompiledReference
+    ) -> Bool {
+        guard phase != .acquiring,
+              let committedMomentIndex,
+              let visibleRange = Self.validRange(visibleRange),
+              let replayBest = replayHypotheses.max(by: { $0.score < $1.score }),
+              replayBest.seedMomentIndex < committedMomentIndex,
+              replayBest.momentIndex < committedMomentIndex,
+              replayBest.gestureCount >= 2,
+              replayBest.probeEvidence >= Configuration.replayEvidenceRequired,
+              replayBest.score >= primaryBest.score + Configuration.replayCommitLead,
+              isMomentVisible(replayBest.momentIndex, in: visibleRange, compiled: compiled) else {
+            return false
+        }
+
+        primaryHypotheses = replayHypotheses.map { hypothesis in
+            var promoted = hypothesis
+            promoted.kind = .primary
+            promoted.mismatchLoad = 0
+            promoted.probeEvidence = 0
+            return promoted
+        }
+        self.committedMomentIndex = replayBest.momentIndex
+        phase = .tracking
+        poorEvidenceStreak = 0
+        clearReplayProbe()
+        clearRelocationProbe()
+        recentObservedGestures.removeAll(keepingCapacity: true)
+        lastCommittedGestureCount = replayBest.gestureCount
+        return true
+    }
+
+    private func clearReplayProbe() {
+        replayHypotheses.removeAll(keepingCapacity: true)
+    }
+
+    private func isMomentVisible(
+        _ momentIndex: Int,
+        in visibleRange: ClosedRange<Double>,
+        compiled: CompiledReference
+    ) -> Bool {
+        let moment = compiled.moments[momentIndex]
+        let epsilon = EngravingReference.simultaneousBeatEpsilon
+        let lineRange = compiled.lines[moment.lineOffset].beatRange
+        if visibleRange.upperBound - visibleRange.lowerBound <= epsilon {
+            let sample = visibleRange.lowerBound
+            return abs(moment.beat - sample) <= epsilon
+                && sample >= lineRange.lowerBound - epsilon
+                && sample <= lineRange.upperBound + epsilon
+        }
+        return moment.beat >= visibleRange.lowerBound - epsilon
+            && moment.beat <= visibleRange.upperBound + epsilon
+            && Self.hasPositiveOverlap(lineRange, visibleRange)
+    }
+
+    // MARK: - Global relocation
+
+    private func clearRelocationProbe() {
+        relocationHypotheses.removeAll(keepingCapacity: true)
+        relocationWinningStreak = 0
+        lastRelocationWinningGestureCount = 0
+    }
+
+    private func updateRelocationProbe(
+        with pitch: UInt8,
+        velocity: UInt8,
+        timestamp: MIDITimeStamp,
+        primaryBest: Hypothesis,
+        in compiled: CompiledReference
+    ) {
+        if relocationHypotheses.isEmpty {
+            relocationHypotheses = relocationSeeds(
+                for: pitch,
+                velocity: velocity,
+                timestamp: timestamp,
+                primaryBest: primaryBest,
                 in: compiled
             )
             return
@@ -1612,9 +1841,9 @@ public final class EngravingScoreFollower {
 
         var expanded: [Hypothesis] = []
         expanded.reserveCapacity(
-            recoveryHypotheses.count * (2 + Configuration.maximumForwardTargets)
+            relocationHypotheses.count * (2 + Configuration.maximumForwardTargets)
         )
-        for hypothesis in recoveryHypotheses {
+        for hypothesis in relocationHypotheses {
             expand(
                 hypothesis,
                 with: pitch,
@@ -1624,42 +1853,50 @@ public final class EngravingScoreFollower {
                 into: &expanded
             )
         }
-        recoveryHypotheses = prune(
+        relocationHypotheses = prune(
             expanded,
-            limit: Configuration.recoveryBeamWidth,
+            limit: Configuration.relocationBeamWidth,
             in: compiled
         )
     }
 
-    private struct RecoverySeed {
+    private struct ProbeSeed {
         let momentIndex: Int
         let mode: ParticipationMode
         let evidence: Double
     }
 
-    private func recoverySeeds(
+    private func relocationSeeds(
         for pitch: UInt8,
         velocity: UInt8,
         timestamp: MIDITimeStamp,
-        localBest: Hypothesis,
+        primaryBest: Hypothesis,
         in compiled: CompiledReference
     ) -> [Hypothesis] {
-        var ranked: [RecoverySeed] = []
+        var ranked: [ProbeSeed] = []
         ranked.reserveCapacity(
-            Configuration.maximumRecoverySeedsPerMode * ParticipationMode.allCases.count * 2
+            Configuration.maximumRelocationSeedsPerMode * ParticipationMode.allCases.count * 2
         )
-        let localBounds = localMeasureBounds(
-            around: compiled.moments[localBest.momentIndex].measureOffset,
-            in: compiled
-        )
+        let currentVisibleRange = Self.validRange(visibleRange)
+        let primaryMeasureOffset = compiled.moments[primaryBest.momentIndex].measureOffset
 
         for mode in ParticipationMode.allCases {
             let occurrences = compiled.momentsByPitch[Int(mode.rawValue)][Int(pitch)]
-            var modeSeeds: [RecoverySeed] = []
+            var modeSeeds: [ProbeSeed] = []
             modeSeeds.reserveCapacity(occurrences.count)
             for momentIndex in occurrences {
                 let measureOffset = compiled.moments[momentIndex].measureOffset
-                guard !localBounds.contains(measureOffset) else { continue }
+                if momentIndex >= primaryBest.momentIndex,
+                   measureOffset <= primaryMeasureOffset + 1 {
+                    // The primary lane owns continuous forward motion through the following
+                    // measure. Earlier offscreen moments remain valid jump destinations even
+                    // when they are musically adjacent to the current position.
+                    continue
+                }
+                if let currentVisibleRange,
+                   isMomentVisible(momentIndex, in: currentVisibleRange, compiled: compiled) {
+                    continue
+                }
                 let historySimilarity = historicalSimilarity(
                     endingBefore: momentIndex,
                     mode: mode,
@@ -1667,7 +1904,7 @@ public final class EngravingScoreFollower {
                 )
                 let distinctiveness = compiled.moments[momentIndex]
                     .distinctiveness[Int(mode.rawValue)]
-                modeSeeds.append(RecoverySeed(
+                modeSeeds.append(ProbeSeed(
                     momentIndex: momentIndex,
                     mode: mode,
                     evidence: historySimilarity * 2.4 + distinctiveness
@@ -1678,7 +1915,7 @@ public final class EngravingScoreFollower {
                     ? $0.momentIndex < $1.momentIndex
                     : $0.evidence > $1.evidence
             }
-            ranked.append(contentsOf: modeSeeds.prefix(Configuration.maximumRecoverySeedsPerMode))
+            ranked.append(contentsOf: modeSeeds.prefix(Configuration.maximumRelocationSeedsPerMode))
         }
 
         let velocityWeight = self.velocityWeight(for: velocity)
@@ -1687,11 +1924,11 @@ public final class EngravingScoreFollower {
             return Hypothesis(
                 momentIndex: seed.momentIndex,
                 mode: seed.mode,
-                kind: .recovery,
+                kind: .relocation,
                 performedPitchMask: Self.pitchMask(for: pitch),
                 releasedPitchMask: 0,
-                score: localBest.score
-                    - Configuration.recoverySeedPenalty
+                score: primaryBest.score
+                    - Configuration.relocationSeedPenalty
                     + seed.evidence
                     + exactPitchReward(expectedPitchMask: expected) * velocityWeight,
                 gestureStartedAt: Self.valid(timestamp) ? timestamp : nil,
@@ -1701,12 +1938,13 @@ public final class EngravingScoreFollower {
                 gestureCount: 0,
                 evidenceEventCount: 1,
                 mismatchLoad: 0,
-                recoveryEvidence: compiled.moments[seed.momentIndex]
+                probeEvidence: compiled.moments[seed.momentIndex]
                     .distinctiveness[Int(seed.mode.rawValue)] * 0.25,
+                seedMomentIndex: seed.momentIndex,
                 lastCompletedGestureMask: 0
             )
         }
-        return prune(seeded, limit: Configuration.recoveryBeamWidth, in: compiled)
+        return prune(seeded, limit: Configuration.relocationBeamWidth, in: compiled)
     }
 
     private func historicalSimilarity(
@@ -1732,48 +1970,40 @@ public final class EngravingScoreFollower {
         return count == 0 ? 0 : total / Double(count)
     }
 
-    private func commitRecoveryIfReady(
-        localBest: Hypothesis,
+    private func commitRelocationIfReady(
+        primaryBest: Hypothesis,
         in compiled: CompiledReference
     ) -> Bool {
         guard phase == .lost,
-              let recoveryBest = recoveryHypotheses.max(by: { $0.score < $1.score }),
-              recoveryBest.recoveryEvidence >= Configuration.recoveryEvidenceRequired,
-              recoveryBest.score >= localBest.score + Configuration.recoveryCommitLead else {
-            recoveryWinningStreak = 0
-            lastRecoveryWinningGestureCount = 0
+              let relocationBest = relocationHypotheses.max(by: { $0.score < $1.score }),
+              relocationBest.probeEvidence >= Configuration.relocationEvidenceRequired,
+              relocationBest.score >= primaryBest.score + Configuration.relocationCommitLead else {
+            relocationWinningStreak = 0
+            lastRelocationWinningGestureCount = 0
             return false
         }
 
-        if recoveryBest.gestureCount > lastRecoveryWinningGestureCount {
-            recoveryWinningStreak += 1
-            lastRecoveryWinningGestureCount = recoveryBest.gestureCount
+        if relocationBest.gestureCount > lastRelocationWinningGestureCount {
+            relocationWinningStreak += 1
+            lastRelocationWinningGestureCount = relocationBest.gestureCount
         }
-        guard recoveryWinningStreak >= 2 else { return false }
+        guard relocationWinningStreak >= 2 else { return false }
 
-        hypotheses = recoveryHypotheses.map { hypothesis in
+        primaryHypotheses = relocationHypotheses.map { hypothesis in
             var promoted = hypothesis
-            promoted.kind = .local
+            promoted.kind = .primary
             promoted.mismatchLoad = 0
-            promoted.recoveryEvidence = 0
+            promoted.probeEvidence = 0
             return promoted
         }
-        recoveryHypotheses.removeAll(keepingCapacity: true)
-        recoveryWinningStreak = 0
-        lastRecoveryWinningGestureCount = 0
+        clearRelocationProbe()
         poorEvidenceStreak = 0
         phase = .tracking
-        let measureOffset = compiled.moments[recoveryBest.momentIndex].measureOffset
-        practiceRegion = PracticeRegion(
-            lowerMeasureOffset: measureOffset,
-            upperMeasureOffset: measureOffset,
-            lastDirection: 0,
-            observedReversal: false
-        )
-        retainLocalHypotheses(around: recoveryBest.momentIndex, in: compiled)
-        lastCommittedMeasureOffset = measureOffset
-        lastCommittedGestureCount = recoveryBest.gestureCount
-        lastRecommendedMeasures = nil
+        committedMomentIndex = relocationBest.momentIndex
+        clearReplayProbe()
+        retainLocalHypotheses(around: relocationBest.momentIndex, in: compiled)
+        lastCommittedGestureCount = relocationBest.gestureCount
+        recentObservedGestures.removeAll(keepingCapacity: true)
         return true
     }
 
@@ -1782,16 +2012,18 @@ public final class EngravingScoreFollower {
     private func makeUpdate(
         from bestCandidate: Hypothesis,
         observedPitch: UInt8,
+        didReplay: Bool,
         didRelocate: Bool,
         in compiled: CompiledReference
     ) -> Update {
-        let localCandidates = hypotheses.isEmpty ? [bestCandidate] : hypotheses
+        let localCandidates = primaryHypotheses.isEmpty ? [bestCandidate] : primaryHypotheses
         let positionScores = groupedPositionScores(from: localCandidates)
         let bestPosition = positionScores.first
             ?? PositionScore(momentIndex: bestCandidate.momentIndex, score: bestCandidate.score)
-        let best = localCandidates
-            .filter { $0.momentIndex == bestPosition.momentIndex }
-            .max(by: { $0.score < $1.score })
+        let best = bestHypothesis(
+            at: bestPosition.momentIndex,
+            among: localCandidates
+        )
             ?? bestCandidate
 
         let confidence = confidence(
@@ -1804,8 +2036,8 @@ public final class EngravingScoreFollower {
             at: best.momentIndex,
             in: compiled
         )
-        updateObservedGestureHistory(using: best)
 
+        var completedAcquisition = false
         if phase == .acquiring {
             let expected = compiled.moments[best.momentIndex].pitchMask(for: best.mode)
             let coverage = Self.coverage(
@@ -1816,62 +2048,153 @@ public final class EngravingScoreFollower {
                 || (expected.nonzeroBitCount > 1 && coverage >= 0.999)
             if hasEnoughEvidence && (confidence >= 0.52 || acquisitionMeasureOffsets != nil) {
                 phase = .tracking
+                committedMomentIndex = best.momentIndex
                 retainLocalHypotheses(around: best.momentIndex, in: compiled)
+                completedAcquisition = true
             }
         } else if phase == .lost,
-                  best.mismatchLoad < Configuration.poorEvidenceToRecover * 0.45 {
+                  best.mismatchLoad < Configuration.poorEvidenceToRelocate * 0.45 {
             phase = .tracking
-            recoveryHypotheses.removeAll(keepingCapacity: true)
+            poorEvidenceStreak = 0
+            clearRelocationProbe()
         }
 
-        if phase == .tracking || didRelocate {
-            updatePracticeRegion(using: best, in: compiled)
-        }
-
-        let plausibleRange = plausibleBeatRange(
-            around: best,
-            positionScores: positionScores,
-            in: compiled
-        )
-        let trackingState: TrackingState
+        let holdsPresentation = hasCredibleProbe(relativeTo: best)
+        let hasDirectPositionEvidence = directlySupportsPosition(best, in: compiled)
+        var trackingState: TrackingState
         switch phase {
         case .awaitingPerformance, .acquiring: trackingState = .acquiring
         case .tracking:
-            trackingState = confidence >= 0.45 ? .tracking : .uncertain
+            trackingState = confidence >= 0.45
+                && hasDirectPositionEvidence
+                && !holdsPresentation
+                ? .tracking
+                : .uncertain
         case .lost: trackingState = .lost
         }
 
-        let viewport = viewportRecommendation(
-            best: best,
-            plausibleBeatRange: plausibleRange,
-            state: trackingState,
-            didRelocate: didRelocate,
+        if didRelocate || didReplay {
+            committedMomentIndex = best.momentIndex
+        } else if trackingState == .tracking {
+            let floor = committedMomentIndex ?? best.momentIndex
+            committedMomentIndex = max(floor, best.momentIndex)
+        }
+
+        let publishedMomentIndex = committedMomentIndex ?? best.momentIndex
+        let publishedBest = bestHypothesis(
+            at: publishedMomentIndex,
+            among: localCandidates
+        )
+            ?? best
+
+        if trackingState == .tracking {
+            updateObservedGestureHistory(using: publishedBest)
+        }
+
+        var effectiveDidRelocate = didRelocate
+        if displayMomentIndex == nil {
+            displayMomentIndex = publishedMomentIndex
+        } else if didRelocate {
+            displayMomentIndex = publishedMomentIndex
+        } else if completedAcquisition,
+                  let currentDisplayIndex = displayMomentIndex,
+                  publishedMomentIndex < currentDisplayIndex {
+            // Acquisition may revise an early, provisional marker. Present that correction as
+            // one explicit jump rather than an unexplained backward movement.
+            displayMomentIndex = publishedMomentIndex
+            effectiveDidRelocate = true
+        } else if trackingState == .tracking,
+                  !didReplay,
+                  let currentDisplayIndex = displayMomentIndex {
+            displayMomentIndex = max(currentDisplayIndex, publishedMomentIndex)
+        }
+
+        let resolvedDisplayIndex = displayMomentIndex ?? publishedMomentIndex
+        if let viewportLineOffset,
+           !effectiveDidRelocate {
+            let displayLineOffset = compiled.moments[resolvedDisplayIndex].lineOffset
+            if displayLineOffset > viewportLineOffset + 1 {
+                // Skipping over an engraving line is a discontinuity from the performer's
+                // perspective even when the musical hypothesis moved in the forward direction.
+                effectiveDidRelocate = true
+            }
+        } else if viewportLineOffset == nil,
+                  trackingState == .tracking,
+                  let visibleRange = Self.validRange(visibleRange),
+                  !isMomentVisible(
+                    resolvedDisplayIndex,
+                    in: visibleRange,
+                    compiled: compiled
+                  ) {
+            effectiveDidRelocate = true
+        }
+
+        if effectiveDidRelocate {
+            displayMomentIndex = publishedMomentIndex
+            trackingState = .tracking
+        }
+
+        let plausibleRange = plausibleBeatRange(
+            around: publishedBest,
+            positionScores: positionScores,
             in: compiled
         )
-        let moment = compiled.moments[best.momentIndex]
+        let viewport = viewportRecommendation(
+            displayMomentIndex: displayMomentIndex ?? publishedMomentIndex,
+            state: trackingState,
+            didReplay: didReplay,
+            didRelocate: effectiveDidRelocate,
+            in: compiled
+        )
+        let moment = compiled.moments[publishedMomentIndex]
+        let displayMoment = compiled.moments[displayMomentIndex ?? publishedMomentIndex]
         let update = Update(
             beat: moment.beat,
+            displayBeat: displayMoment.beat,
             plausibleBeatRange: plausibleRange,
             measureIndex: compiled.measures[moment.measureOffset].index,
             confidence: confidence,
             state: trackingState,
             activeHands: inferredParticipation,
             viewport: viewport,
-            didRelocate: didRelocate
+            didRelocate: effectiveDidRelocate
         )
+        assertPresentationInvariants(previous: lastUpdate, current: update, in: compiled)
         lastUpdate = update
         return update
     }
 
+    private func hasCredibleProbe(relativeTo primaryBest: Hypothesis) -> Bool {
+        if let replayBest = replayHypotheses.max(by: { $0.score < $1.score }),
+           replayBest.gestureCount > 0,
+           replayBest.score >= primaryBest.score - Configuration.replayCommitLead {
+            return true
+        }
+        if let relocationBest = relocationHypotheses.max(by: { $0.score < $1.score }),
+           relocationBest.gestureCount > 0,
+           relocationBest.score >= primaryBest.score - Configuration.relocationCommitLead {
+            return true
+        }
+        return false
+    }
+
+    private func directlySupportsPosition(
+        _ hypothesis: Hypothesis,
+        in compiled: CompiledReference
+    ) -> Bool {
+        let expected = compiled.moments[hypothesis.momentIndex].pitchMask(for: hypothesis.mode)
+        return hypothesis.performedPitchMask & expected != 0
+    }
+
     /// Discards score-wide acquisition alternatives after a local commitment. From this point,
-    /// distant candidates may only re-enter through the guarded recovery beam.
+    /// distant candidates may only re-enter through the guarded relocation beam.
     private func retainLocalHypotheses(
         around momentIndex: Int,
         in compiled: CompiledReference
     ) {
         let measureOffset = compiled.moments[momentIndex].measureOffset
         let bounds = localMeasureBounds(around: measureOffset, in: compiled)
-        hypotheses.removeAll {
+        primaryHypotheses.removeAll {
             !bounds.contains(compiled.moments[$0.momentIndex].measureOffset)
         }
     }
@@ -1892,6 +2215,19 @@ public final class EngravingScoreFollower {
                 ? $0.momentIndex < $1.momentIndex
                 : $0.score > $1.score
         }
+    }
+
+    private func bestHypothesis(
+        at momentIndex: Int,
+        among candidates: [Hypothesis]
+    ) -> Hypothesis? {
+        var result: Hypothesis?
+        for candidate in candidates where candidate.momentIndex == momentIndex {
+            if result?.score ?? -.infinity < candidate.score {
+                result = candidate
+            }
+        }
+        return result
     }
 
     private func confidence(
@@ -1995,102 +2331,64 @@ public final class EngravingScoreFollower {
         lastCommittedGestureCount = best.gestureCount
     }
 
-    private func updatePracticeRegion(
-        using best: Hypothesis,
-        in compiled: CompiledReference
-    ) {
-        let measureOffset = compiled.moments[best.momentIndex].measureOffset
-        guard let previousMeasure = lastCommittedMeasureOffset else {
-            practiceRegion = PracticeRegion(
-                lowerMeasureOffset: measureOffset,
-                upperMeasureOffset: measureOffset,
-                lastDirection: 0,
-                observedReversal: false
-            )
-            lastCommittedMeasureOffset = measureOffset
-            return
-        }
-        guard previousMeasure != measureOffset else { return }
-
-        let direction = measureOffset > previousMeasure ? 1 : -1
-        if var region = practiceRegion {
-            let reversed = direction < 0
-                || (region.lastDirection != 0 && direction != region.lastDirection)
-            if reversed || region.observedReversal {
-                region.lowerMeasureOffset = min(
-                    region.lowerMeasureOffset,
-                    min(previousMeasure, measureOffset)
-                )
-                region.upperMeasureOffset = max(
-                    region.upperMeasureOffset,
-                    max(previousMeasure, measureOffset)
-                )
-                region.observedReversal = true
-            } else if direction > 0 && measureOffset > region.upperMeasureOffset {
-                region.lowerMeasureOffset = measureOffset
-                region.upperMeasureOffset = measureOffset
-            } else {
-                region.lowerMeasureOffset = min(region.lowerMeasureOffset, measureOffset)
-                region.upperMeasureOffset = max(region.upperMeasureOffset, measureOffset)
-            }
-            region.lastDirection = direction
-            practiceRegion = region
-        }
-        lastCommittedMeasureOffset = measureOffset
-    }
-
     // MARK: - Viewport policy
 
     private func viewportRecommendation(
-        best: Hypothesis,
-        plausibleBeatRange _: ClosedRange<Double>,
+        displayMomentIndex: Int,
         state: TrackingState,
+        didReplay: Bool,
         didRelocate: Bool,
         in compiled: CompiledReference
     ) -> ViewportRecommendation {
-        guard state == .tracking else { return .unchanged }
-        let bestMoment = compiled.moments[best.momentIndex]
-        var lowerMeasure = bestMoment.measureOffset
-        var upperMeasure = bestMoment.measureOffset
+        let lineOffset = compiled.moments[displayMomentIndex].lineOffset
+        let lineIndex = compiled.lines[lineOffset].index
 
-        if let practiceRegion,
-           practiceRegion.observedReversal,
-           practiceRegion.upperMeasureOffset - practiceRegion.lowerMeasureOffset <= 2 {
-            lowerMeasure = min(lowerMeasure, practiceRegion.lowerMeasureOffset)
-            upperMeasure = max(upperMeasure, practiceRegion.upperMeasureOffset)
+        if didRelocate {
+            viewportLineOffset = lineOffset
+            return .jump(toLine: lineIndex)
         }
 
-        // Keep complete engraving lines together when the resulting span remains compact.
-        let lowerLine = compiled.lineOffsetByMeasureOffset[lowerMeasure]
-        let upperLine = compiled.lineOffsetByMeasureOffset[upperMeasure]
-        if upperLine - lowerLine <= 1 {
-            lowerMeasure = min(
-                lowerMeasure,
-                compiled.measureOffsetsByLineOffset[lowerLine].lowerBound
-            )
-            upperMeasure = max(
-                upperMeasure,
-                compiled.measureOffsetsByLineOffset[upperLine].upperBound
-            )
-        }
-
-        let focusUpperBeat = compiled.measures[upperMeasure].onset
-            + compiled.measures[upperMeasure].duration
-        let focusBeatRange = compiled.measures[lowerMeasure].onset...focusUpperBeat
-        if !didRelocate,
-           let visibleRange = Self.validRange(visibleRange),
-           visibleRange.lowerBound <= focusBeatRange.lowerBound,
-           visibleRange.upperBound >= focusBeatRange.upperBound {
+        guard state == .tracking, !didReplay else {
             return .unchanged
         }
 
-        let measureRange = compiled.measures[lowerMeasure].index...compiled.measures[upperMeasure].index
-        guard measureRange != lastRecommendedMeasures else { return .unchanged }
-        lastRecommendedMeasures = measureRange
-        return .ensureVisible(
-            measures: measureRange,
-            preferredCenter: compiled.measures[bestMoment.measureOffset].index
-        )
+        guard let previousLineOffset = viewportLineOffset else {
+            viewportLineOffset = lineOffset
+            return .unchanged
+        }
+        guard lineOffset != previousLineOffset else { return .unchanged }
+
+        if lineOffset == previousLineOffset + 1 {
+            viewportLineOffset = lineOffset
+            return .advance(toLine: lineIndex)
+        }
+
+        // A nonlocal change should have been classified as a jump before reaching this point.
+        // Holding is safer than issuing an unexplained reverse or multi-line scroll in release
+        // builds; the assertion catches violations during development.
+        assert(lineOffset < previousLineOffset || lineOffset > previousLineOffset + 1)
+        return .unchanged
+    }
+
+    private func assertPresentationInvariants(
+        previous: Update?,
+        current: Update,
+        in compiled: CompiledReference
+    ) {
+        if let previous, current.displayBeat < previous.displayBeat {
+            assert(current.didRelocate)
+        }
+
+        switch current.viewport {
+        case .unchanged:
+            break
+        case let .advance(toLine: lineIndex):
+            assert(!current.didRelocate)
+            assert(compiled.lines.contains(where: { $0.index == lineIndex }))
+        case let .jump(toLine: lineIndex):
+            assert(current.didRelocate)
+            assert(compiled.lines.contains(where: { $0.index == lineIndex }))
+        }
     }
 
     // MARK: - Small numeric helpers
