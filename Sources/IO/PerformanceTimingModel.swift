@@ -3,6 +3,7 @@
 //  MIDIKit
 //
 
+import CoreAudio
 import CoreMIDI
 import Foundation
 
@@ -115,14 +116,19 @@ struct PerformanceTempoCalibration {
 /// Shared performer calibration that survives `userReset()` but not reference replacement.
 struct PerformanceTimingModel {
     private(set) var calibration: PerformanceTempoCalibration?
-    private var blockSpan = RobustPositiveEstimate(initial: 1_200)
-    private var rolledSpan = RobustPositiveEstimate(initial: 8_000)
+    private var blockSpan: RobustPositiveEstimate
+    private var rolledSpan: RobustPositiveEstimate
     private var dwellRatio = RobustPositiveEstimate(initial: 0.65)
+
+    init() {
+        blockSpan = RobustPositiveEstimate(initial: Self.hostTicks(seconds: 0.045))
+        rolledSpan = RobustPositiveEstimate(initial: Self.hostTicks(seconds: 0.22))
+    }
 
     mutating func hardReset() {
         calibration = nil
-        blockSpan = RobustPositiveEstimate(initial: 1_200)
-        rolledSpan = RobustPositiveEstimate(initial: 8_000)
+        blockSpan = RobustPositiveEstimate(initial: Self.hostTicks(seconds: 0.045))
+        rolledSpan = RobustPositiveEstimate(initial: Self.hostTicks(seconds: 0.22))
         dwellRatio = RobustPositiveEstimate(initial: 0.65)
     }
 
@@ -171,6 +177,44 @@ struct PerformanceTimingModel {
         let center = attack == .rolled ? rolledSpan.value : blockSpan.value
         let ratio = elapsedTicks / max(1, center)
         return ratio <= 1 ? 0 : max(-0.85, -Foundation.log1p(ratio - 1) * 0.42)
+    }
+
+    /// Prior evidence for opening a new performed onset before tempo has been learned. Core MIDI
+    /// timestamps use host-clock ticks, so the scale is derived from the host clock rather than a
+    /// machine-specific integer constant. The result is deliberately bounded: a very small gap is
+    /// strong evidence for a serialized chord, never a hard transition veto.
+    func newOnsetLogLikelihood(
+        elapsedTicks: Double?,
+        precedingAttack: EngravingReference.Attack
+    ) -> Double {
+        guard let elapsedTicks, elapsedTicks > 0 else { return 0 }
+        let center = precedingAttack == .rolled ? rolledSpan.value : blockSpan.value
+        let ratio = elapsedTicks / max(1, center)
+        guard ratio < 0.75 else { return 0 }
+        return max(-1.55, Foundation.log(max(0.08, ratio / 0.75)) * 0.58)
+    }
+
+    /// Zero means the timing clearly permits a boundary; one means it strongly resembles another
+    /// serialized attack in the same onset. Pitch and release evidence remain free to override it.
+    func sameOnsetSupport(
+        elapsedTicks: Double?,
+        attack: EngravingReference.Attack
+    ) -> Double {
+        // Missing, equal, and nonmonotonic timestamp relationships are unavailable evidence.
+        // Physical key overlap is handled by the caller and must not cause us to invent a
+        // midpoint timing observation when the host clock cannot describe this relationship.
+        guard let elapsedTicks, elapsedTicks > 0 else { return 0 }
+        let center = attack == .rolled ? rolledSpan.value : blockSpan.value
+        let ratio = elapsedTicks / max(1, center)
+        if ratio <= 0.45 { return 1 }
+        if ratio >= 1.5 { return 0 }
+        return (1.5 - ratio) / 1.05
+    }
+
+    private static func hostTicks(seconds: Double) -> Double {
+        let frequency = AudioGetHostClockFrequency()
+        guard frequency.isFinite, frequency > 0 else { return seconds * 1_000_000_000 }
+        return max(1, seconds * frequency)
     }
 }
 

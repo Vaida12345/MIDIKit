@@ -32,9 +32,14 @@ struct EngravingAlignmentResult {
 struct EngravingAlignmentModel {
     private enum Configuration {
         static let beamWidth = 96
+        static let continuityBeamWidth = 64
+        static let statesPerDestination = 3
         static let candidatesPerMode = 24
         static let localDeletionDepth = 3
         static let localNeighborhoodDepth = 4
+        static let lostRecoveryDepth = 12
+        static let localNeighborhoodBeatDistance = 4.0
+        static let lostRecoveryBeatDistance = 16.0
 
         static let insertionPenalty = 1.35
         static let missingNotePenalty = 0.48
@@ -63,7 +68,9 @@ struct EngravingAlignmentModel {
         var episodeOnsets: Int
         var coherentOnsets: Int
         var currentHasContradiction: Bool
+        var consecutiveUnexpectedAttacks: Int
         var lookupIsExhaustive: Bool
+        var preferredLookupIsExhaustive: Bool
     }
 
     private struct HypothesisKey: Hashable {
@@ -75,12 +82,29 @@ struct EngravingAlignmentModel {
         let episodeOnsets: Int
         let coherentOnsets: Int
         let currentHasContradiction: Bool
+        let consecutiveUnexpectedAttacks: Int
+        let onsetStartedAt: MIDITimeStamp?
+        let lastAttackAt: MIDITimeStamp?
+        let completedOnsetSpanTicks: Double?
+        let completedOnsetAttack: EngravingReference.Attack?
+        let clockLogTicksPerBeat: Double?
+        let clockLogDeviation: Double
+        let clockSampleCount: Int
+        let clockLastTimestamp: MIDITimeStamp?
+        let clockLastBeat: Double?
+        let lookupIsExhaustive: Bool
+        let preferredLookupIsExhaustive: Bool
     }
 
     private struct DestinationEvidence {
         var mass = 0.0
         var bestHypothesis: Int = 0
         var bestWeight = -Double.infinity
+    }
+
+    private struct DestinationClassKey: Hashable {
+        let index: Int
+        let isRestart: Bool
     }
 
     let score: EngravingScoreFeatureIndex
@@ -144,10 +168,19 @@ struct EngravingAlignmentModel {
                 restart: false,
                 // Fresh seeds let acquisition recover from an initial mistake, but continuing
                 // a coherent sequence must be preferred to forgetting the preceding evidence.
-                penalty: hypotheses.isEmpty ? 0 : 3.2,
+                penalty: hypotheses.isEmpty ? 0 : 2.8,
                 to: &expanded
             )
         } else {
+            appendLocalRecoverySeeds(
+                attack: attack,
+                bit: bit,
+                depth: lastState == .lost
+                    ? Configuration.lostRecoveryDepth
+                    : Configuration.localNeighborhoodDepth,
+                penalty: lastState == .lost ? 0.9 : (lastState == .uncertain ? 1.5 : 2.6),
+                to: &expanded
+            )
             let pause = bestContinuityClock()?.pauseEvidence(at: attack.timestamp) ?? 0
             var penalty = Configuration.ordinaryRestartPenalty - pause
             if lastState == .lost { penalty -= Configuration.lostRestartDiscount }
@@ -172,19 +205,34 @@ struct EngravingAlignmentModel {
 
     mutating func consume(_ release: PerformanceNoteRelease) {
         guard let dwell = release.dwellTicks else { return }
-        for offset in hypotheses.indices {
-            let hypothesis = hypotheses[offset]
+        var deltas: [Double] = []
+        deltas.reserveCapacity(hypotheses.count)
+        var minimumDelta = Double.infinity
+        var maximumDelta = -Double.infinity
+        for hypothesis in hypotheses {
+            let delta: Double
             if let duration = score.gestures[hypothesis.index].duration(
                 of: release.pitch,
                 mode: hypothesis.mode
             ) {
-                hypotheses[offset].logWeight += timing.dwellLogLikelihood(
+                delta = timing.dwellLogLikelihood(
                     ticks: dwell,
                     writtenBeats: duration
                 )
+            } else {
+                delta = 0
             }
+            deltas.append(delta)
+            minimumDelta = min(minimumDelta, delta)
+            maximumDelta = max(maximumDelta, delta)
         }
-        hypotheses = prune(hypotheses)
+        // A common additive likelihood cannot change any posterior or pruning decision.
+        if maximumDelta - minimumDelta > 1e-12 {
+            for offset in hypotheses.indices {
+                hypotheses[offset].logWeight += deltas[offset]
+            }
+            hypotheses = prune(hypotheses)
+        }
 
         guard let committedIndex, score.gestures.indices.contains(committedIndex) else { return }
         let gesture = score.gestures[committedIndex]
@@ -213,13 +261,19 @@ struct EngravingAlignmentModel {
         let wasAlreadyObserved = source.observedMask & bit != 0
         if expected & bit != 0 {
             candidate.logWeight += wasAlreadyObserved ? -0.30 : 1.55
+            candidate.consecutiveUnexpectedAttacks = 0
             if wasAlreadyObserved, attack.wasReleasedSincePreviousAttack {
                 // Re-articulation is a boundary cue, so the stay explanation remains possible
                 // but loses against a matching successor.
                 candidate.logWeight -= 0.45
             }
         } else {
+            candidate.consecutiveUnexpectedAttacks = min(
+                8,
+                candidate.consecutiveUnexpectedAttacks + 1
+            )
             candidate.logWeight -= Configuration.insertionPenalty
+                + min(1.25, Double(candidate.consecutiveUnexpectedAttacks - 1) * 0.28)
             candidate.currentHasContradiction = true
         }
 
@@ -247,6 +301,7 @@ struct EngravingAlignmentModel {
             candidate.unexpectedMask = candidate.observedMask & ~expected
             candidate.lastAttackAt = attack.timestamp ?? source.lastAttackAt
             candidate.currentHasContradiction = candidate.unexpectedMask != 0
+            candidate.consecutiveUnexpectedAttacks = 0
             candidate.logWeight += 1.35 - Configuration.handModeChangePenalty
             result.append(candidate)
         }
@@ -263,6 +318,13 @@ struct EngravingAlignmentModel {
             && source.observedMask & bit == 0
         let coverage = Self.coverage(source.observedMask, expected: currentExpected)
         let closure = closurePenalty(for: source, expected: currentExpected)
+        let interAttackInterval = elapsed(from: source.lastAttackAt, to: attack.timestamp)
+        let sameOnsetSupport = attack.hadDepressedKeysBeforeAttack
+            ? timing.sameOnsetSupport(
+                elapsedTicks: interAttackInterval,
+                attack: score.gestures[source.index].attack
+            )
+            : 0
 
         for newMode in EngravingHandMode.allCases {
             let successors = score.successors(
@@ -295,6 +357,7 @@ struct EngravingAlignmentModel {
                     ? 1
                     : source.coherentOnsets + 1
                 candidate.currentHasContradiction = expected & bit == 0
+                candidate.consecutiveUnexpectedAttacks = expected & bit == 0 ? 1 : 0
 
                 candidate.logWeight -= closure
                 candidate.logWeight -= Double(skipCount) * Configuration.deletionPenalty
@@ -306,9 +369,15 @@ struct EngravingAlignmentModel {
                     at: attack.timestamp,
                     beat: score.gestures[destination].beat
                 )
+                if attack.hadDepressedKeysBeforeAttack {
+                    candidate.logWeight += timing.newOnsetLogLikelihood(
+                        elapsedTicks: interAttackInterval,
+                        precedingAttack: score.gestures[source.index].attack
+                    )
+                }
 
                 if pitchIsUnplayedCurrentNote {
-                    candidate.logWeight -= 5.2
+                    candidate.logWeight -= 0.45 + 1.75 * sameOnsetSupport
                 } else if currentExpected & bit == 0,
                           EngravingHandMode.allCases.contains(where: {
                               score.gestures[source.index].mask(for: $0) & bit != 0
@@ -345,15 +414,16 @@ struct EngravingAlignmentModel {
             let lookup = score.candidateLookup(
                 for: bit,
                 mode: mode,
-                limit: Configuration.candidatesPerMode
+                limit: Configuration.candidatesPerMode,
+                preferredRange: committedIndex == nil ? acquisitionRange : nil
             )
             for index in lookup.indices {
                 if restart, let committedIndex,
                    isInLocalNeighborhood(index, of: committedIndex) { continue }
                 let expected = score.gestures[index].mask(for: mode)
                 var prior = -penalty + (expected & bit != 0 ? 1.65 : -1.45)
-                if committedIndex == nil, score.isVisible(index, in: acquisitionRange) {
-                    prior += 1.35
+                if committedIndex == nil {
+                    prior += score.acquisitionLogPrior(for: index, in: acquisitionRange)
                 }
                 if score.gestures[index].beginsMeasure { prior += 0.12 }
 
@@ -375,7 +445,58 @@ struct EngravingAlignmentModel {
                     episodeOnsets: 1,
                     coherentOnsets: 1,
                     currentHasContradiction: expected & bit == 0,
-                    lookupIsExhaustive: lookup.isExhaustive
+                    consecutiveUnexpectedAttacks: expected & bit == 0 ? 1 : 0,
+                    lookupIsExhaustive: lookup.isExhaustive,
+                    preferredLookupIsExhaustive: lookup.preferredRangeIsExhaustive
+                ))
+            }
+        }
+    }
+
+    /// Starts a clean local interpretation without turning ordinary recovery into a global jump.
+    /// This branch is essential when a surviving hypothesis has assigned several mistakes to one
+    /// onset: recovery must not depend on that contaminated onset eventually closing itself.
+    private func appendLocalRecoverySeeds(
+        attack: PerformanceNoteAttack,
+        bit: UInt128,
+        depth: Int,
+        penalty: Double,
+        to result: inout [Hypothesis]
+    ) {
+        guard let committedIndex else { return }
+        for mode in EngravingHandMode.allCases {
+            let destinations = [committedIndex]
+                + score.successors(of: committedIndex, mode: mode, limit: depth)
+            for destination in destinations {
+                let expected = score.gestures[destination].mask(for: mode)
+                guard expected & bit != 0 else { continue }
+                let maximumBeatDistance = depth > Configuration.localNeighborhoodDepth
+                    ? Configuration.lostRecoveryBeatDistance
+                    : Configuration.localNeighborhoodBeatDistance
+                guard score.gestures[destination].beat
+                    - score.gestures[committedIndex].beat
+                    <= maximumBeatDistance + EngravingReference.beatEpsilon else { continue }
+                var clock = timing.newClock()
+                clock.beginEpisode(at: attack.timestamp, beat: score.gestures[destination].beat)
+                result.append(Hypothesis(
+                    index: destination,
+                    mode: mode,
+                    observedMask: bit,
+                    unexpectedMask: 0,
+                    onsetStartedAt: attack.timestamp,
+                    lastAttackAt: attack.timestamp,
+                    completedOnsetSpanTicks: nil,
+                    completedOnsetAttack: nil,
+                    logWeight: -penalty + 1.45,
+                    clock: clock,
+                    isRestart: false,
+                    episodeStartIndex: destination,
+                    episodeOnsets: 1,
+                    coherentOnsets: 1,
+                    currentHasContradiction: false,
+                    consecutiveUnexpectedAttacks: 0,
+                    lookupIsExhaustive: true,
+                    preferredLookupIsExhaustive: true
                 ))
             }
         }
@@ -384,7 +505,7 @@ struct EngravingAlignmentModel {
     // MARK: - Commitment
 
     private mutating func commitAcquisitionIfReady() -> EngravingAlignmentResult? {
-        let evidence = destinationEvidence(where: { !$0.isRestart })
+        let evidence = destinationEvidence(restart: false)
         guard let winner = strongestDestination(in: evidence) else { return nil }
         let runnerUp = evidence.values.map(\.mass).sorted(by: >).dropFirst().first ?? 0
         let hypothesis = hypotheses[winner.value.bestHypothesis]
@@ -399,15 +520,18 @@ struct EngravingAlignmentModel {
         let isVisible = score.isVisible(hypothesis.index, in: acquisitionRange)
         let requiredOnsets = isVisible ? 2 : 3
         let minimumSequentialConfidence = hypothesis.lookupIsExhaustive ? 0.50 : 0.14
-        let minimumSequentialMargin = hypothesis.lookupIsExhaustive ? 0.14 : 0.08
+        let minimumSequentialMargin = hypothesis.lookupIsExhaustive
+            ? 0.14
+            : (isVisible ? 0.025 : 0.08)
         let sequential = hypothesis.coherentOnsets >= requiredOnsets
             && confidence >= minimumSequentialConfidence
             && margin >= minimumSequentialMargin
         let ambiguityResolved = hypothesis.lookupIsExhaustive
             || (isVisible
-                && hypothesis.coherentOnsets >= 3
-                && confidence >= 0.14
-                && margin >= 0.08)
+                && hypothesis.preferredLookupIsExhaustive
+                && hypothesis.coherentOnsets >= 4
+                && confidence >= 0.25
+                && margin >= 0.025)
         guard ambiguityResolved, distinctiveChord || sequential else { return nil }
 
         committedIndex = hypothesis.index
@@ -416,7 +540,7 @@ struct EngravingAlignmentModel {
         lastState = .tracking
         updateParticipation(from: hypothesis)
         adoptTiming(from: hypothesis)
-        hypotheses = [asContinuity(hypothesis)]
+        retainCommittedBeam(around: hypothesis, fromRestart: false)
         let movement: EngravingAlignmentMovement = acquisitionRange != nil && !isVisible
             ? .jump
             : .held
@@ -434,7 +558,7 @@ struct EngravingAlignmentModel {
     ) -> EngravingAlignmentResult? {
         guard let oldIndex = committedIndex else { return nil }
 
-        let restartEvidence = destinationEvidence(where: { $0.isRestart })
+        let restartEvidence = destinationEvidence(restart: true)
         if let relocation = readyRelocation(
             evidence: restartEvidence,
             from: oldIndex
@@ -450,7 +574,7 @@ struct EngravingAlignmentModel {
             postReframeRecovery = movement == .jump ? 2 : postReframeRecovery
             updateParticipation(from: hypothesis)
             adoptTiming(from: hypothesis)
-            hypotheses = [asContinuity(hypothesis)]
+            retainCommittedBeam(around: hypothesis, fromRestart: true)
             return makeResult(
                 index: hypothesis.index,
                 confidence: relocation.confidence,
@@ -459,13 +583,13 @@ struct EngravingAlignmentModel {
             )
         }
 
-        let continuityEvidence = destinationEvidence(where: { !$0.isRestart })
+        let continuityEvidence = destinationEvidence(restart: false)
         let continuityMass = continuityEvidence.values.reduce(0) { $0 + $1.mass }
-        let allMass = max(Double.leastNonzeroMagnitude, totalMass())
         let localMass = continuityEvidence.reduce(0.0) { partial, entry in
             partial + (isInLocalNeighborhood(entry.key, of: oldIndex) ? entry.value.mass : 0)
         }
-        let localPosterior = localMass / allMass
+        // Destination masses have already been normalized across continuity and restart classes.
+        let localPosterior = localMass
         let supported = isSupportedLocally(bit: bit, from: oldIndex)
 
         if supported { weakEventStreak = 0 }
@@ -486,24 +610,28 @@ struct EngravingAlignmentModel {
                 Double.leastNonzeroMagnitude,
                 continuityMass
             )
+            let isRecoverableForwardDestination = isInLocalNeighborhood(
+                hypothesis.index,
+                of: oldIndex
+            ) || (lastState == .lost && isInLostRecoveryNeighborhood(
+                hypothesis.index,
+                of: oldIndex
+            ))
             if hypothesis.index > oldIndex,
-               isInLocalNeighborhood(hypothesis.index, of: oldIndex),
-               conditionalConfidence >= 0.40,
-               Self.coverage(
-                   hypothesis.observedMask,
-                   expected: score.gestures[hypothesis.index].mask(for: hypothesis.mode)
-               ) >= 0.45 {
+               isRecoverableForwardDestination,
+               conditionalConfidence >= 0.36,
+               hypothesis.observedMask
+                   & score.gestures[hypothesis.index].mask(for: hypothesis.mode) != 0 {
                 let immediate = score.successor(of: oldIndex, mode: hypothesis.mode)
                     == hypothesis.index
                 committedIndex = hypothesis.index
                 forwardFrontier = max(forwardFrontier ?? hypothesis.index, hypothesis.index)
                 weakEventStreak = 0
-                state = .tracking
                 lastState = state
-                if postReframeRecovery > 0 { postReframeRecovery -= 1 }
+                if state == .tracking, postReframeRecovery > 0 { postReframeRecovery -= 1 }
                 updateParticipation(from: hypothesis)
                 adoptTiming(from: hypothesis)
-                discardStaleContinuity(behind: hypothesis.index)
+                retainAfterForwardCommit(at: hypothesis.index)
                 return makeResult(
                     index: hypothesis.index,
                     confidence: min(0.99, winner.value.mass),
@@ -535,14 +663,14 @@ struct EngravingAlignmentModel {
         guard let winner = strongestDestination(in: evidence) else { return nil }
         let restartMass = evidence.values.reduce(0) { $0 + $1.mass }
         let conditional = winner.value.mass / max(Double.leastNonzeroMagnitude, restartMass)
-        let overall = winner.value.mass / max(Double.leastNonzeroMagnitude, totalMass())
+        let overall = winner.value.mass
         let runnerUp = evidence.values.map(\.mass).sorted(by: >).dropFirst().first ?? 0
         let margin = (winner.value.mass - runnerUp)
             / max(Double.leastNonzeroMagnitude, restartMass)
         let hypothesis = hypotheses[winner.value.bestHypothesis]
         let visibleReplay = hypothesis.index < (forwardFrontier ?? incumbent)
             && score.isVisible(hypothesis.index, in: visibleRange)
-        let requiredOverall = visibleReplay ? 0.42 : 0.56
+        let requiredOverall = visibleReplay ? 0.40 : 0.48
         let expected = score.gestures[hypothesis.index].mask(for: hypothesis.mode)
         return hypothesis.coherentOnsets >= 3
             && hypothesis.lookupIsExhaustive
@@ -561,16 +689,7 @@ struct EngravingAlignmentModel {
         var bestByState: [HypothesisKey: Hypothesis] = [:]
         bestByState.reserveCapacity(min(candidates.count, Configuration.beamWidth * 3))
         for candidate in candidates where candidate.logWeight.isFinite {
-            let key = HypothesisKey(
-                index: candidate.index,
-                mode: candidate.mode,
-                observedMask: candidate.observedMask,
-                isRestart: candidate.isRestart,
-                episodeStartIndex: candidate.episodeStartIndex,
-                episodeOnsets: candidate.episodeOnsets,
-                coherentOnsets: candidate.coherentOnsets,
-                currentHasContradiction: candidate.currentHasContradiction
-            )
+            let key = hypothesisKey(candidate)
             if let existing = bestByState[key] {
                 if candidate.logWeight > existing.logWeight {
                     bestByState[key] = candidate
@@ -580,10 +699,84 @@ struct EngravingAlignmentModel {
             }
         }
 
-        var ranked = Array(bestByState.values)
-        ranked.sort(by: Self.hypothesisPrecedes)
-        if ranked.count > Configuration.beamWidth {
-            ranked.removeLast(ranked.count - Configuration.beamWidth)
+        let unique = Array(bestByState.values)
+        var ranked: [Hypothesis]
+        if committedIndex == nil {
+            let preferred = unique.filter {
+                score.isVisible($0.index, in: acquisitionRange)
+            }
+            let scoreWide = unique.filter {
+                !score.isVisible($0.index, in: acquisitionRange)
+            }
+            let preferredCapacity = acquisitionRange == nil
+                ? 0
+                : Configuration.beamWidth / 2
+            ranked = selectDiverse(preferred, limit: preferredCapacity)
+            ranked += selectDiverse(
+                scoreWide,
+                limit: Configuration.beamWidth - ranked.count
+            )
+            if ranked.count < Configuration.beamWidth {
+                var selected = Set(ranked.map(hypothesisKey))
+                let remainder = selectDiverse(unique, limit: Configuration.beamWidth).filter {
+                    selected.insert(hypothesisKey($0)).inserted
+                }
+                ranked += remainder.prefix(Configuration.beamWidth - ranked.count)
+            }
+            ranked.sort(by: Self.hypothesisPrecedes)
+        } else {
+            ranked = selectDiverse(
+                unique.filter { !$0.isRestart },
+                limit: Configuration.continuityBeamWidth
+            )
+            ranked += selectDiverse(
+                unique.filter(\.isRestart),
+                limit: Configuration.beamWidth - Configuration.continuityBeamWidth
+            )
+
+            if ranked.count < Configuration.beamWidth {
+                var selected = Set(ranked.map(hypothesisKey))
+                let remainder = selectDiverse(unique, limit: Configuration.beamWidth).filter {
+                    selected.insert(hypothesisKey($0)).inserted
+                }
+                ranked += remainder.prefix(Configuration.beamWidth - ranked.count)
+            }
+            ranked.sort(by: Self.hypothesisPrecedes)
+        }
+
+        // Lookup exhaustiveness is only meaningful if destination-diverse beam pruning also kept
+        // every retrieved destination. Otherwise beam capacity itself could manufacture a unique
+        // acquisition or relocation winner.
+        if committedIndex == nil {
+            let allDestinations = Set(unique.map(\.index))
+            let retainedDestinations = Set(ranked.map(\.index))
+            if retainedDestinations.count < allDestinations.count {
+                for index in ranked.indices { ranked[index].lookupIsExhaustive = false }
+            }
+
+            let allPreferredDestinations = Set(unique.compactMap { hypothesis in
+                score.isVisible(hypothesis.index, in: acquisitionRange)
+                    ? hypothesis.index
+                    : nil
+            })
+            let retainedPreferredDestinations = Set(ranked.compactMap { hypothesis in
+                score.isVisible(hypothesis.index, in: acquisitionRange)
+                    ? hypothesis.index
+                    : nil
+            })
+            if retainedPreferredDestinations.count < allPreferredDestinations.count {
+                for index in ranked.indices {
+                    ranked[index].preferredLookupIsExhaustive = false
+                }
+            }
+        } else {
+            let allRestartDestinations = Set(unique.lazy.filter(\.isRestart).map(\.index))
+            let retainedRestartDestinations = Set(ranked.lazy.filter(\.isRestart).map(\.index))
+            if retainedRestartDestinations.count < allRestartDestinations.count {
+                for index in ranked.indices where ranked[index].isRestart {
+                    ranked[index].lookupIsExhaustive = false
+                }
+            }
         }
         if let maximum = ranked.first?.logWeight {
             for index in ranked.indices { ranked[index].logWeight -= maximum }
@@ -591,11 +784,61 @@ struct EngravingAlignmentModel {
         return ranked
     }
 
-    private func destinationEvidence(
-        where predicate: (Hypothesis) -> Bool
-    ) -> [Int: DestinationEvidence] {
+    private func selectDiverse(_ candidates: [Hypothesis], limit: Int) -> [Hypothesis] {
+        guard limit > 0, !candidates.isEmpty else { return [] }
+        let ordered = candidates.sorted(by: Self.hypothesisPrecedes)
+        var counts: [DestinationClassKey: Int] = [:]
+        counts.reserveCapacity(min(ordered.count, limit))
+        var representatives: [Hypothesis] = []
+        var alternatives: [Hypothesis] = []
+        representatives.reserveCapacity(min(ordered.count, limit))
+        alternatives.reserveCapacity(min(ordered.count, limit))
+        for candidate in ordered {
+            let key = DestinationClassKey(index: candidate.index, isRestart: candidate.isRestart)
+            let count = counts[key, default: 0]
+            guard count < Configuration.statesPerDestination else { continue }
+            counts[key] = count + 1
+            if count == 0 {
+                representatives.append(candidate)
+            } else {
+                alternatives.append(candidate)
+            }
+        }
+
+        if representatives.count >= limit { return Array(representatives.prefix(limit)) }
+        var selected = representatives
+        selected += alternatives.prefix(limit - selected.count)
+        return selected
+    }
+
+    private func hypothesisKey(_ candidate: Hypothesis) -> HypothesisKey {
+        HypothesisKey(
+            index: candidate.index,
+            mode: candidate.mode,
+            observedMask: candidate.observedMask,
+            isRestart: candidate.isRestart,
+            episodeStartIndex: candidate.episodeStartIndex,
+            episodeOnsets: candidate.episodeOnsets,
+            coherentOnsets: candidate.coherentOnsets,
+            currentHasContradiction: candidate.currentHasContradiction,
+            consecutiveUnexpectedAttacks: candidate.consecutiveUnexpectedAttacks,
+            onsetStartedAt: candidate.onsetStartedAt,
+            lastAttackAt: candidate.lastAttackAt,
+            completedOnsetSpanTicks: candidate.completedOnsetSpanTicks,
+            completedOnsetAttack: candidate.completedOnsetAttack,
+            clockLogTicksPerBeat: candidate.clock.logTicksPerBeat,
+            clockLogDeviation: candidate.clock.logDeviation,
+            clockSampleCount: candidate.clock.sampleCount,
+            clockLastTimestamp: candidate.clock.lastTimestamp,
+            clockLastBeat: candidate.clock.lastBeat,
+            lookupIsExhaustive: candidate.lookupIsExhaustive,
+            preferredLookupIsExhaustive: candidate.preferredLookupIsExhaustive
+        )
+    }
+
+    private func destinationEvidence(restart: Bool) -> [Int: DestinationEvidence] {
         var evidence: [Int: DestinationEvidence] = [:]
-        for (offset, hypothesis) in hypotheses.enumerated() where predicate(hypothesis) {
+        for (offset, hypothesis) in hypotheses.enumerated() where hypothesis.isRestart == restart {
             var item = evidence[hypothesis.index] ?? DestinationEvidence(
                 bestHypothesis: offset,
                 bestWeight: hypothesis.logWeight
@@ -607,57 +850,61 @@ struct EngravingAlignmentModel {
             evidence[hypothesis.index] = item
         }
 
-        // Alternative onset-membership and hand paths ending at one score moment are not
-        // independent votes. Normalize the best representative of each destination, preventing
-        // path multiplicity from diluting or manufacturing posterior confidence.
-        let denominator = bestDestinationDenominator()
+        let classWeights = destinationClassLogWeights()
+        let logDenominator = Self.logSumExp(Array(classWeights.values))
         for index in evidence.keys {
             guard var item = evidence[index] else { continue }
-            item.mass = Foundation.exp(item.bestWeight) / denominator
+            let key = DestinationClassKey(index: index, isRestart: restart)
+            guard let classWeight = classWeights[key] else { continue }
+            item.mass = Foundation.exp(classWeight - logDenominator)
             evidence[index] = item
         }
         return evidence
     }
 
-    private func bestDestinationDenominator() -> Double {
-        struct ClassKey: Hashable {
-            let index: Int
-            let isRestart: Bool
-        }
-        var best: [ClassKey: Double] = [:]
+    /// Marginalizes the mutually exclusive hand interpretations while using the best retained
+    /// onset-history representative within each hand. This prevents branch multiplicity from
+    /// manufacturing confidence while still giving hand uncertainty a normalized prior.
+    private func destinationClassLogWeights() -> [DestinationClassKey: Double] {
+        var bestByMode: [DestinationClassKey: [EngravingHandMode: Double]] = [:]
         for hypothesis in hypotheses {
-            let key = ClassKey(index: hypothesis.index, isRestart: hypothesis.isRestart)
-            best[key] = max(best[key] ?? -.infinity, hypothesis.logWeight)
+            let key = DestinationClassKey(
+                index: hypothesis.index,
+                isRestart: hypothesis.isRestart
+            )
+            bestByMode[key, default: [:]][hypothesis.mode] = max(
+                bestByMode[key]?[hypothesis.mode] ?? -.infinity,
+                hypothesis.logWeight
+            )
         }
-        return max(
-            Double.leastNonzeroMagnitude,
-            best.values.reduce(0) { $0 + Foundation.exp($1) }
-        )
+        let modePrior = Foundation.log(Double(EngravingHandMode.allCases.count))
+        return bestByMode.mapValues { scores in
+            Self.logSumExp(Array(scores.values)) - modePrior
+        }
     }
 
     private func strongestDestination(
         in evidence: [Int: DestinationEvidence]
     ) -> (key: Int, value: DestinationEvidence)? {
-        evidence.max {
-            if $0.value.mass != $1.value.mass { return $0.value.mass < $1.value.mass }
-            return $0.key > $1.key
+        let ranked = evidence.sorted {
+            if $0.value.mass != $1.value.mass { return $0.value.mass > $1.value.mass }
+            return $0.key < $1.key
         }
-    }
-
-    private func totalMass() -> Double {
-        bestDestinationDenominator()
+        guard let winner = ranked.first else { return nil }
+        if let runnerUp = ranked.dropFirst().first,
+           abs(winner.value.mass - runnerUp.value.mass) <= 1e-12 {
+            return nil
+        }
+        return winner
     }
 
     private func bestContinuityClock() -> PerformanceTempoTracker? {
         hypotheses.first(where: { !$0.isRestart })?.clock
     }
 
-    private mutating func discardStaleContinuity(behind index: Int) {
-        hypotheses.removeAll { !$0.isRestart && $0.index < index }
-        if hypotheses.isEmpty { return }
-        if let maximum = hypotheses.map(\.logWeight).max() {
-            for offset in hypotheses.indices { hypotheses[offset].logWeight -= maximum }
-        }
+    private mutating func retainAfterForwardCommit(at index: Int) {
+        hypotheses.removeAll { !$0.isRestart && $0.index != index }
+        hypotheses = prune(hypotheses)
     }
 
     // MARK: - Evidence helpers
@@ -682,11 +929,33 @@ struct EngravingAlignmentModel {
     }
 
     private func isInLocalNeighborhood(_ candidate: Int, of origin: Int) -> Bool {
+        isInForwardNeighborhood(
+            candidate,
+            of: origin,
+            depth: Configuration.localNeighborhoodDepth,
+            maximumBeatDistance: Configuration.localNeighborhoodBeatDistance
+        )
+    }
+
+    private func isInLostRecoveryNeighborhood(_ candidate: Int, of origin: Int) -> Bool {
+        isInForwardNeighborhood(
+            candidate,
+            of: origin,
+            depth: Configuration.lostRecoveryDepth,
+            maximumBeatDistance: Configuration.lostRecoveryBeatDistance
+        )
+    }
+
+    private func isInForwardNeighborhood(
+        _ candidate: Int,
+        of origin: Int,
+        depth: Int,
+        maximumBeatDistance: Double
+    ) -> Bool {
         if candidate == origin { return true }
-        let maximumBeatDistance = 4.0
         for mode in EngravingHandMode.allCases {
             var cursor = origin
-            for _ in 0..<Configuration.localNeighborhoodDepth {
+            for _ in 0..<depth {
                 guard let next = score.successor(of: cursor, mode: mode) else { break }
                 if score.gestures[next].beat - score.gestures[origin].beat
                     > maximumBeatDistance + EngravingReference.beatEpsilon { break }
@@ -745,16 +1014,27 @@ struct EngravingAlignmentModel {
         )
     }
 
-    private func asContinuity(_ hypothesis: Hypothesis) -> Hypothesis {
-        var result = hypothesis
-        result.isRestart = false
-        result.episodeStartIndex = hypothesis.index
-        result.episodeOnsets = 1
-        result.coherentOnsets = 1
-        result.currentHasContradiction = false
-        result.lookupIsExhaustive = true
-        result.logWeight = 0
-        return result
+    private mutating func retainCommittedBeam(
+        around winner: Hypothesis,
+        fromRestart: Bool
+    ) {
+        let cutoff = winner.logWeight - 6
+        hypotheses = hypotheses.compactMap { candidate in
+            guard candidate.isRestart == fromRestart,
+                  candidate.logWeight >= cutoff,
+                  candidate.index == winner.index else {
+                return nil
+            }
+            var retained = candidate
+            retained.isRestart = false
+            return retained
+        }
+        if hypotheses.isEmpty {
+            var retained = winner
+            retained.isRestart = false
+            hypotheses = [retained]
+        }
+        hypotheses = prune(hypotheses)
     }
 
     private mutating func resetPosition(acquisitionRange: ClosedRange<Double>?) {
@@ -774,6 +1054,13 @@ struct EngravingAlignmentModel {
     private static func coverage(_ observed: UInt128, expected: UInt128) -> Double {
         guard expected != 0 else { return 0 }
         return Double((observed & expected).nonzeroBitCount) / Double(expected.nonzeroBitCount)
+    }
+
+    private static func logSumExp(_ values: [Double]) -> Double {
+        guard let maximum = values.max(), maximum.isFinite else { return -.infinity }
+        return maximum + Foundation.log(values.reduce(0) {
+            $0 + Foundation.exp($1 - maximum)
+        })
     }
 
     private static func hypothesisPrecedes(_ lhs: Hypothesis, _ rhs: Hypothesis) -> Bool {

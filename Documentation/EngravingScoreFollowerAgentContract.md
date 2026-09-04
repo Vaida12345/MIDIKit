@@ -84,8 +84,11 @@ predecessors and successors, and pitch postings.
 
 Indexed candidate generation unions bounded postings for all observed pitches. Do not replace
 this with intersection or rarest-pitch selection: an accidental rare extra tone would exclude the
-correct location. Exact matches may be used as a fast path. Every bounded lookup carries whether
-unseen tied candidates may remain, and relocation must fail closed when they do.
+correct location. Exact-mask postings may add candidates, but must never exclude supersets while a
+serialized onset is incomplete. Acquisition candidate selection reserves space for the visible
+range, and its prior allocates probability to regions rather than adding the same bonus to every
+candidate. Every bounded lookup carries whether unseen tied candidates may remain, and relocation
+must fail closed when they do.
 
 Engraving line geometry must not influence musical continuity. It belongs only in acquisition
 prior and presentation.
@@ -94,7 +97,9 @@ prior and presentation.
 
 `PerformanceInputState` records depressed keys, attack and release times, re-articulation,
 sustain, sostenuto, velocity, and controller event order. It does not construct chords. Key
-release describes the physical controller even while a pedal sustains sound.
+release describes the physical controller even while a pedal sustains sound. Whether any physical
+key remains depressed is soft boundary evidence: it can distinguish a tightly serialized chord
+from successive detached attacks without making articulation a hard gate.
 
 Do not reintroduce a global gesture timeout or greedy chord builder. The same attack may be an
 extension under one alignment hypothesis and a new onset under another.
@@ -112,9 +117,10 @@ extension under one alignment hypothesis and a new onset under another.
 
 For each note-on, each hypothesis considers the same onset, a same-onset hand reinterpretation,
 the next relevant onset, bounded omissions, and—in parallel—indexed new-episode seeds. Equivalent
-states are merged before deterministic pruning. Posterior confidence is aggregated by score
-destination, not by raw path count; alternative hand and note-order paths are not independent
-votes.
+states are merged before deterministic, destination-diverse pruning, with separate capacity for
+continuity and restart evidence. Posterior confidence is aggregated by score destination; hand
+interpretations are marginalized with a normalized prior while note-order path multiplicity is not
+allowed to manufacture confidence.
 
 Pitch errors are penalized but survivable. Missing tones receive bounded penalties. A still
 unplayed expected chord member strongly favors the same onset. A released repeated pitch and a
@@ -122,8 +128,10 @@ note expected by the next onset favor transition. If a note can belong to the ot
 current moment, same-onset reinterpretation competes against advancement.
 
 Ordinary repair can absorb insertions and bounded omissions and must resume on the first strong
-local observation. `lost` broadens the prior odds of indexed resumption; it does not switch to a
-separate anchor algorithm.
+local observation. Clean local recovery seeds prevent a contaminated onset from absorbing
+unbounded future mistakes. They cannot target a nonlocal destination or bypass relocation
+confirmation. `lost` broadens the prior odds of indexed resumption; it does not switch to a separate
+anchor algorithm.
 
 ## Timing and change points
 
@@ -133,6 +141,9 @@ Timing likelihoods are heavy-tailed and transition specific:
 - inter-onset intervals update a smooth log-tempo path;
 - releases provide weak note-duration/articulation evidence;
 - a long break raises new-episode prior odds.
+
+Absolute block/roll scales are expressed using the Core MIDI host-clock frequency, never magic raw
+tick counts. Learned tempo may remain in host ticks per beat because it is a within-clock ratio.
 
 Invalid, equal, and nonmonotonic timestamp relationships are neutral. Timing never acts as a hard
 pitch or chord gate. A pause never chooses a destination: the notes after it must still establish
@@ -171,5 +182,7 @@ Changes must retain tests for partial/wrong chords, extra near-simultaneous tone
 legato and pedals, repeated notes, slow rolls, asynchronous hands, changing hand participation,
 tempo variation, pauses, replay, offscreen jumps, initial mistakes, invalid timestamps,
 velocity-zero note-off, user navigation, repeated-score ambiguity, deterministic presentation,
-and long-score boundedness. Run the focused follower suite, the complete package suite, and a
-release build before delivery.
+and long-score boundedness. Run the focused `EngravingScoreFollower` suite and a release build
+before delivery. Failures in the separate `ScoreFollower` subsystem are outside this contract and
+do not block delivery unless the engraving-follower change modifies shared code implicated by
+those failures.

@@ -5,6 +5,7 @@
 //  Created by Vaida on 2026-09-03.
 //
 
+import CoreAudio
 import CoreMIDI
 import Testing
 @testable import MIDIKit
@@ -774,6 +775,32 @@ struct EngravingScoreFollowerTests {
         #expect(updates.allSatisfy { $0.displayBeat < 8 })
     }
 
+    @Test("the acquisition viewport reserves candidates without excluding score-wide evidence")
+    func acquisitionViewportDoesNotBecomeAHardFilter() throws {
+        let reference = try EngravingReference(
+            measures: [.init(index: 0, onset: 0, duration: 40)],
+            lines: [.init(index: 0, beatRange: 0...40, measureRange: 0...0)],
+            moments: (0..<30).map {
+                Self.rightMoment(beat: Double($0), pitches: [60])
+            } + [Self.rightMoment(beat: 35, pitches: [60, 64, 67])]
+        )
+        let score = EngravingScoreFeatureIndex(reference)
+        let observed = EngravingScoreFeatureIndex.pitchBit(60)
+            | EngravingScoreFeatureIndex.pitchBit(64)
+            | EngravingScoreFeatureIndex.pitchBit(67)
+
+        let lookup = score.candidateLookup(
+            for: observed,
+            mode: .right,
+            limit: 24,
+            preferredRange: 0...30
+        )
+
+        #expect(lookup.indices.contains(30))
+        #expect(!lookup.preferredRangeIsExhaustive)
+        #expect(!lookup.isExhaustive)
+    }
+
     @Test("presentation never promotes an unauthorized multi-line continuation to a jump")
     func presentationCannotManufactureJump() throws {
         let reference = try EngravingReference(
@@ -817,8 +844,73 @@ struct EngravingScoreFollowerTests {
 
         #expect(update.beat == 8)
         #expect(update.displayBeat == 0)
-        #expect(update.viewport == .unchanged)
+        #expect(update.viewport == .advance(toLine: 20))
         #expect(!update.didReframe)
+    }
+
+    @Test("multi-line continuity catches presentation up one system at a time")
+    func multiLinePresentationRecoveryIsStaged() throws {
+        let reference = try EngravingReference(
+            measures: (0..<3).map {
+                .init(index: $0, onset: Double($0 * 4), duration: 4)
+            },
+            lines: (0..<3).map {
+                .init(
+                    index: 10 + $0,
+                    beatRange: Double($0 * 4)...Double(($0 + 1) * 4),
+                    measureRange: $0...$0
+                )
+            },
+            moments: [
+                Self.rightMoment(beat: 0, pitches: [60]),
+                Self.rightMoment(beat: 4, pitches: [64]),
+                Self.rightMoment(beat: 8, pitches: [67])
+            ]
+        )
+        let score = EngravingScoreFeatureIndex(reference)
+        var presentation = EngravingPresentationPolicy()
+        let prefetchedIntermediate = presentation.makeUpdate(
+            from: .init(
+                gestureIndex: 0,
+                confidence: 1,
+                state: .tracking,
+                activeHands: .right,
+                movement: .held
+            ),
+            score: score,
+            visibleRange: 0...4
+        )
+
+        let firstStage = presentation.makeUpdate(
+            from: .init(
+                gestureIndex: 2,
+                confidence: 1,
+                state: .tracking,
+                activeHands: .right,
+                movement: .recovered
+            ),
+            score: score,
+            visibleRange: 0...4
+        )
+        let secondStage = presentation.makeUpdate(
+            from: .init(
+                gestureIndex: 2,
+                confidence: 1,
+                state: .tracking,
+                activeHands: .right,
+                movement: .recovered
+            ),
+            score: score,
+            visibleRange: 4...8
+        )
+
+        #expect(prefetchedIntermediate.viewport == .advance(toLine: 11))
+        #expect(firstStage.displayBeat == 8)
+        #expect(firstStage.viewport == .advance(toLine: 12))
+        #expect(!firstStage.didReframe)
+        #expect(secondStage.displayBeat == 8)
+        #expect(secondStage.viewport == .unchanged)
+        #expect(!secondStage.didReframe)
     }
 
     @Test("a committed jump must relock before another jump can be armed")
@@ -1054,6 +1146,14 @@ struct EngravingScoreFollowerTests {
         #expect(update?.didReframe == false)
     }
 
+    @Test("an unavailable timestamp contributes no same-onset timing support")
+    func unavailableTimestampIsTimingNeutral() {
+        let timing = PerformanceTimingModel()
+
+        #expect(timing.sameOnsetSupport(elapsedTicks: nil, attack: .block) == 0)
+        #expect(timing.sameOnsetSupport(elapsedTicks: nil, attack: .rolled) == 0)
+    }
+
     @Test("a learned tempo cannot impose a timeout on a slow rolled chord")
     func timingNeverClosesSlowRoll() async throws {
         let reference = try EngravingReference(
@@ -1180,6 +1280,35 @@ struct EngravingScoreFollowerTests {
         #expect(recovered?.didReframe == false)
     }
 
+    @Test("lost tracking widens bounded forward repair without reframing")
+    func lostTrackingUsesItsWiderRecoveryNeighborhood() async throws {
+        let pitches = (60...72).map(UInt8.init)
+        let reference = try EngravingReference(
+            measures: [.init(index: 0, onset: 0, duration: 16)],
+            lines: [.init(index: 0, beatRange: 0...16, measureRange: 0...0)],
+            moments: pitches.enumerated().map {
+                Self.rightMoment(beat: Double($0.offset), pitches: [$0.element])
+            }
+        )
+        let follower = EngravingScoreFollower()
+        await follower.update(reference: reference)
+        follower.visibleRange = 0...16
+
+        _ = Self.perform(pitch: 60, timestamp: 1_000, with: follower)
+        let acquired = Self.perform(pitch: 61, timestamp: 2_000, with: follower)
+        #expect(acquired?.beat == 1)
+
+        _ = Self.perform(pitch: 100, timestamp: 3_000, with: follower)
+        _ = Self.perform(pitch: 101, timestamp: 4_000, with: follower)
+        let lost = Self.perform(pitch: 102, timestamp: 5_000, with: follower)
+        #expect(lost?.state == .lost)
+
+        let recovered = Self.perform(pitch: 68, timestamp: 6_000, with: follower)
+        #expect(recovered?.beat == 8)
+        #expect(recovered?.viewport == .unchanged)
+        #expect(recovered?.didReframe == false)
+    }
+
     @Test("a long pause raises restart odds but does not block local continuation")
     func pauseStillAllowsLocalContinuation() async throws {
         let reference = try EngravingReference(
@@ -1256,6 +1385,22 @@ struct EngravingScoreFollowerTests {
         let repeated = follower.consume(.noteOn(pitch: 60, velocity: 100), timestamp: 2_000)
 
         #expect(repeated?.beat == 1)
+    }
+
+    @Test("physical input preserves controller order and pedal timestamps")
+    func physicalInputRecordsEveryControllerEventInOrder() {
+        var input = PerformanceInputState()
+
+        let first = input.noteOn(pitch: 60, velocity: 100, timestamp: 100)
+        input.controlChange(control: 64, value: 127, timestamp: 200)
+        let release = input.noteOff(pitch: 60, timestamp: 300)
+        let second = input.noteOn(pitch: 62, velocity: 90, timestamp: 400)
+
+        #expect(first.eventOrdinal == 0)
+        #expect(input.sustainIsDown)
+        #expect(input.sustainChangedAt == 200)
+        #expect(release.eventOrdinal == 2)
+        #expect(second.eventOrdinal == 3)
     }
 
     @Test("the viewport advances before an invisible next line is needed")
@@ -1379,6 +1524,162 @@ struct EngravingScoreFollowerTests {
 
         #expect(acquired?.beat == 2)
         #expect(acquired?.didReframe == false)
+    }
+
+    @Test("a visible chord remains an acquisition candidate when its notes occur alone elsewhere")
+    func partialChordLookupDoesNotExcludeSupersetMoments() async throws {
+        let reference = try EngravingReference(
+            measures: [
+                .init(index: 0, onset: 0, duration: 4),
+                .init(index: 1, onset: 4, duration: 4),
+                .init(index: 2, onset: 8, duration: 4)
+            ],
+            lines: [
+                .init(index: 0, beatRange: 0...4, measureRange: 0...0),
+                .init(index: 1, beatRange: 4...8, measureRange: 1...1),
+                .init(index: 2, beatRange: 8...12, measureRange: 2...2)
+            ],
+            moments: [
+                Self.rightMoment(beat: 0, pitches: [60]),
+                Self.rightMoment(beat: 1, pitches: [64]),
+                Self.rightMoment(beat: 2, pitches: [67]),
+                Self.rightMoment(beat: 4, pitches: [60]),
+                Self.rightMoment(beat: 5, pitches: [64]),
+                Self.rightMoment(beat: 6, pitches: [67]),
+                Self.rightMoment(beat: 8, pitches: [60, 64, 67]),
+                Self.rightMoment(beat: 9, pitches: [62, 65, 69])
+            ]
+        )
+        let follower = EngravingScoreFollower()
+        await follower.update(reference: reference)
+        follower.visibleRange = 8...12
+
+        var timestamp: MIDITimeStamp = 1_000
+        let acquired = Self.performChord([60, 64, 67], timestamp: &timestamp, with: follower)
+
+        #expect(acquired?.beat == 8)
+        #expect(acquired?.didReframe == false)
+    }
+
+    @Test("partial local onsets cannot outrun the committed cursor and deadlock")
+    func partialOnsetsContinueWithoutAJump() async throws {
+        let melody = (60..<72).map(UInt8.init)
+        let reference = try EngravingReference(
+            measures: [
+                .init(index: 0, onset: 0, duration: 4),
+                .init(index: 1, onset: 4, duration: 4),
+                .init(index: 2, onset: 8, duration: 4)
+            ],
+            lines: [
+                .init(index: 0, beatRange: 0...4, measureRange: 0...0),
+                .init(index: 1, beatRange: 4...8, measureRange: 1...1),
+                .init(index: 2, beatRange: 8...12, measureRange: 2...2)
+            ],
+            moments: melody.enumerated().map { offset, pitch in
+                Self.rightMoment(
+                    beat: Double(offset),
+                    pitches: [pitch, UInt8(84 + offset), UInt8(96 + offset)]
+                )
+            }
+        )
+        let follower = EngravingScoreFollower()
+        await follower.update(reference: reference)
+        follower.visibleRange = 0...12
+
+        var timestamp: MIDITimeStamp = 1_000_000_000
+        var updates: [EngravingScoreFollower.Update] = []
+        for pitch in melody {
+            if let update = Self.perform(pitch: pitch, timestamp: timestamp, with: follower) {
+                updates.append(update)
+            }
+            timestamp += 1_000_000_000
+        }
+
+        #expect(updates.last?.beat == 11)
+        #expect(updates.allSatisfy { !$0.didReframe })
+    }
+
+    @Test("host-clock timing distinguishes serialized chords from detached onsets")
+    func hostClockTimingUsesPhysicalUnits() async throws {
+        let reference = try EngravingReference(
+            measures: [.init(index: 0, onset: 0, duration: 4)],
+            lines: [.init(index: 0, beatRange: 0...4, measureRange: 0...0)],
+            moments: [
+                Self.rightMoment(beat: 0, pitches: [60, 64, 67]),
+                Self.rightMoment(beat: 1, pitches: [62, 65, 69])
+            ]
+        )
+        let follower = EngravingScoreFollower()
+        await follower.update(reference: reference)
+        follower.visibleRange = 0...4
+
+        let ticksPerSecond = AudioGetHostClockFrequency()
+        let start: MIDITimeStamp = 10_000
+        func timestamp(milliseconds: Double) -> MIDITimeStamp {
+            start + MIDITimeStamp(ticksPerSecond * milliseconds / 1_000)
+        }
+
+        var first: EngravingScoreFollower.Update?
+        for (pitch, milliseconds) in zip(
+            [60, 64, 67] as [UInt8],
+            [0.0, 3.0, 7.0]
+        ) {
+            first = follower.consume(noteOn: pitch, timestamp: timestamp(milliseconds: milliseconds))
+        }
+        for pitch in [60, 64, 67] as [UInt8] {
+            follower.consume(noteOff: pitch, timestamp: timestamp(milliseconds: 180))
+        }
+
+        var second: EngravingScoreFollower.Update?
+        for (pitch, milliseconds) in zip(
+            [62, 65, 69] as [UInt8],
+            [500.0, 503.0, 507.0]
+        ) {
+            second = follower.consume(noteOn: pitch, timestamp: timestamp(milliseconds: milliseconds))
+        }
+
+        #expect(first?.beat == 0)
+        #expect(second?.beat == 1)
+        #expect(second?.didReframe == false)
+    }
+
+    @Test("weak overall continuity does not publish tracking confidence")
+    func weakOverallContinuityRemainsUncertain() async throws {
+        let repeatedDestinations = (10..<42).map {
+            Self.rightMoment(beat: Double($0), pitches: [71])
+        }
+        let reference = try EngravingReference(
+            measures: [.init(index: 0, onset: 0, duration: 48)],
+            lines: [.init(index: 0, beatRange: 0...48, measureRange: 0...0)],
+            moments: [
+                Self.rightMoment(beat: 0, pitches: [60, 64, 67]),
+                Self.rightMoment(beat: 1, pitches: [62, 65, 69]),
+                Self.rightMoment(beat: 2, pitches: [71])
+            ] + repeatedDestinations
+        )
+        let follower = EngravingScoreFollower()
+        await follower.update(reference: reference)
+        follower.visibleRange = 0...4
+
+        let ticksPerSecond = AudioGetHostClockFrequency()
+        func timestamp(seconds: Double) -> MIDITimeStamp {
+            MIDITimeStamp(ticksPerSecond * seconds)
+        }
+
+        for pitch in [60, 64, 67] as [UInt8] {
+            _ = follower.consume(noteOn: pitch, timestamp: timestamp(seconds: 1))
+            follower.consume(noteOff: pitch, timestamp: timestamp(seconds: 1.1))
+        }
+        for pitch in [62, 65, 69] as [UInt8] {
+            _ = follower.consume(noteOn: pitch, timestamp: timestamp(seconds: 2))
+            follower.consume(noteOff: pitch, timestamp: timestamp(seconds: 2.1))
+        }
+
+        let update = follower.consume(noteOn: 71, timestamp: timestamp(seconds: 8))
+
+        #expect(update?.beat == 2)
+        #expect(update?.state != .tracking)
+        #expect(update?.viewport == .unchanged)
     }
 
     private static func rightMoment(

@@ -13,6 +13,7 @@ struct PerformanceNoteAttack {
     let velocity: UInt8
     let timestamp: MIDITimeStamp?
     let wasDepressed: Bool
+    let hadDepressedKeysBeforeAttack: Bool
     let wasReleasedSincePreviousAttack: Bool
     let previousAttackTimestamp: MIDITimeStamp?
     let previousReleaseTimestamp: MIDITimeStamp?
@@ -23,6 +24,7 @@ struct PerformanceNoteRelease {
     let pitch: UInt8
     let timestamp: MIDITimeStamp?
     let attackTimestamp: MIDITimeStamp?
+    let eventOrdinal: UInt64
 
     var dwellTicks: Double? {
         guard let timestamp, let attackTimestamp, timestamp > attackTimestamp else { return nil }
@@ -39,6 +41,8 @@ struct PerformanceInputState {
     private(set) var depressedMask: UInt128 = 0
     private(set) var sustainIsDown = false
     private(set) var sostenutoIsDown = false
+    private(set) var sustainChangedAt: MIDITimeStamp?
+    private(set) var sostenutoChangedAt: MIDITimeStamp?
 
     private var lastAttack = Array<MIDITimeStamp?>(repeating: nil, count: 128)
     private var lastRelease = Array<MIDITimeStamp?>(repeating: nil, count: 128)
@@ -49,6 +53,8 @@ struct PerformanceInputState {
         depressedMask = 0
         sustainIsDown = false
         sostenutoIsDown = false
+        sustainChangedAt = nil
+        sostenutoChangedAt = nil
         lastAttack = Array(repeating: nil, count: 128)
         lastRelease = Array(repeating: nil, count: 128)
         releasedAfterAttack = Array(repeating: false, count: 128)
@@ -68,6 +74,7 @@ struct PerformanceInputState {
             velocity: velocity,
             timestamp: validTimestamp,
             wasDepressed: depressedMask & bit != 0,
+            hadDepressedKeysBeforeAttack: depressedMask != 0,
             wasReleasedSincePreviousAttack: releasedAfterAttack[index],
             previousAttackTimestamp: lastAttack[index],
             previousReleaseTimestamp: lastRelease[index],
@@ -91,17 +98,29 @@ struct PerformanceInputState {
         depressedMask &= ~bit
         lastRelease[index] = validTimestamp
         releasedAfterAttack[index] = true
+        let releaseOrdinal = ordinal
+        ordinal &+= 1
         return PerformanceNoteRelease(
             pitch: pitch,
             timestamp: validTimestamp,
-            attackTimestamp: lastAttack[index]
+            attackTimestamp: lastAttack[index],
+            eventOrdinal: releaseOrdinal
         )
     }
 
-    mutating func controlChange(control: UInt8, value: UInt8) {
+    mutating func controlChange(
+        control: UInt8,
+        value: UInt8,
+        timestamp: MIDITimeStamp
+    ) {
+        ordinal &+= 1
         switch control {
-        case 64: sustainIsDown = value >= 64
-        case 66: sostenutoIsDown = value >= 64
+        case 64:
+            sustainIsDown = value >= 64
+            sustainChangedAt = Self.valid(timestamp)
+        case 66:
+            sostenutoIsDown = value >= 64
+            sostenutoChangedAt = Self.valid(timestamp)
         default: break
         }
     }

@@ -74,6 +74,10 @@ struct EngravingScoreGesture {
 struct EngravingCandidateLookup {
     let indices: [Int]
     let isExhaustive: Bool
+    /// True when every candidate in `preferredRange` was retained. This is separate from global
+    /// exhaustiveness so acquisition may use a bounded score-wide lookup without pretending that
+    /// omitted candidates inside the user's current frame have been disambiguated.
+    let preferredRangeIsExhaustive: Bool
 }
 
 /// Immutable score features used by the real-time alignment path.
@@ -208,46 +212,106 @@ struct EngravingScoreFeatureIndex {
     func candidateLookup(
         for observedMask: UInt128,
         mode: EngravingHandMode,
-        limit: Int
+        limit: Int,
+        preferredRange: ClosedRange<Double>? = nil
     ) -> EngravingCandidateLookup {
         guard observedMask != 0, limit > 0 else {
-            return EngravingCandidateLookup(indices: [], isExhaustive: true)
-        }
-
-        if let exact = exactMaskPostings[mode.rawValue][observedMask], !exact.isEmpty {
             return EngravingCandidateLookup(
-                indices: Self.distributedSample(exact, limit: limit),
-                isExhaustive: exact.count <= limit
+                indices: [],
+                isExhaustive: true,
+                preferredRangeIsExhaustive: true
             )
         }
 
         let probeLimit = max(limit, limit * Self.maximumPostingProbeMultiplier)
         var union = Set<Int>()
+        var preferred = Set<Int>()
         var exhaustive = true
+        var preferredExhaustive = true
         var remaining = observedMask
         while remaining != 0 {
             let pitch = remaining.trailingZeroBitCount
             let posting = pitchPostings[mode.rawValue][pitch]
             if posting.count > probeLimit { exhaustive = false }
             union.formUnion(Self.distributedSample(posting, limit: probeLimit))
+            if let preferredRange {
+                let isPoint = preferredRange.upperBound - preferredRange.lowerBound
+                    <= EngravingReference.beatEpsilon
+                let lower = Self.lowerBound(in: posting) {
+                    gestures[$0].beat >= preferredRange.lowerBound - EngravingReference.beatEpsilon
+                }
+                let upper = Self.lowerBound(in: posting) {
+                    gestures[$0].beat >= preferredRange.upperBound
+                        + (isPoint
+                            ? EngravingReference.beatEpsilon
+                            : -EngravingReference.beatEpsilon)
+                }
+                let visible = posting[lower..<upper]
+                let sample = Self.distributedSample(visible, limit: limit)
+                preferred.formUnion(sample)
+                union.formUnion(sample)
+                if visible.count > limit {
+                    exhaustive = false
+                    preferredExhaustive = false
+                }
+            }
             remaining &= remaining - 1
         }
 
-        var ranked = union.map { index in
+        // Exact masks are useful candidates, but never an exclusive fast path: a serialized
+        // attack is generally only a partial observation of a performed onset.
+        if let exact = exactMaskPostings[mode.rawValue][observedMask] {
+            union.formUnion(Self.distributedSample(exact, limit: probeLimit))
+            if exact.count > probeLimit { exhaustive = false }
+        }
+
+        let ranked = union.map { index in
             (index: index, quality: Self.pitchSimilarity(
                 observedMask,
                 gestures[index].mask(for: mode)
             ))
-        }
-        ranked.sort {
+        }.sorted {
             if $0.quality != $1.quality { return $0.quality > $1.quality }
             return $0.index < $1.index
         }
-        if ranked.count > limit {
-            exhaustive = false
-            ranked.removeLast(ranked.count - limit)
+
+        let selected: [(index: Int, quality: Double)]
+        if preferredRange != nil, !preferred.isEmpty {
+            let preferredRanked = ranked.filter { preferred.contains($0.index) }
+            let scoreWideRanked = ranked.filter { !preferred.contains($0.index) }
+
+            if scoreWideRanked.isEmpty {
+                selected = Array(preferredRanked.prefix(limit))
+            } else {
+                // Visibility reserves bounded capacity but never consumes the whole lookup. Music
+                // outside the frame must remain able to overcome the acquisition prior.
+                let preferredCapacity = max(1, limit / 2)
+                var chosen = Array(preferredRanked.prefix(preferredCapacity))
+                let selectedPreferredCount = chosen.count
+                chosen += scoreWideRanked.prefix(limit - chosen.count)
+                if chosen.count < limit {
+                    chosen += preferredRanked.dropFirst(selectedPreferredCount)
+                        .prefix(limit - chosen.count)
+                }
+                selected = chosen
+            }
+            if preferredRanked.count > selected.reduce(0, {
+                $0 + (preferred.contains($1.index) ? 1 : 0)
+            }) {
+                preferredExhaustive = false
+            }
+        } else {
+            selected = Array(ranked.prefix(limit))
         }
-        return EngravingCandidateLookup(indices: ranked.map(\.index), isExhaustive: exhaustive)
+
+        if ranked.count > selected.count {
+            exhaustive = false
+        }
+        return EngravingCandidateLookup(
+            indices: selected.map(\.index),
+            isExhaustive: exhaustive,
+            preferredRangeIsExhaustive: preferredExhaustive
+        )
     }
 
     @inline(__always)
@@ -259,6 +323,49 @@ struct EngravingScoreFeatureIndex {
         }
         return beat >= range.lowerBound - EngravingReference.beatEpsilon
             && beat < range.upperBound - EngravingReference.beatEpsilon
+    }
+
+    /// Returns the furthest committed marker that can be shown on one intermediate line. The
+    /// binary search keeps presentation catch-up bounded even for very long scores.
+    func lastGestureIndex(onLine lineOffset: Int, atOrBefore upperIndex: Int) -> Int? {
+        guard lines.indices.contains(lineOffset), gestures.indices.contains(upperIndex) else {
+            return nil
+        }
+        var lower = gestures.startIndex
+        var upper = gestures.endIndex
+        while lower < upper {
+            let middle = lower + (upper - lower) / 2
+            if gestures[middle].lineOffset <= lineOffset { lower = middle + 1 }
+            else { upper = middle }
+        }
+        let candidate = min(upperIndex, lower - 1)
+        guard gestures.indices.contains(candidate),
+              gestures[candidate].lineOffset == lineOffset else { return nil }
+        return candidate
+    }
+
+    /// A region-level prior whose total probability is independent of how many repeated score
+    /// moments happen to exist on or off screen. A flat per-candidate bonus would let a long score
+    /// overwhelm the viewport merely by containing more occurrences of a common pitch.
+    func acquisitionLogPrior(
+        for gestureIndex: Int,
+        in range: ClosedRange<Double>?
+    ) -> Double {
+        guard let range, gestures.indices.contains(gestureIndex) else { return 0 }
+        let isPoint = range.upperBound - range.lowerBound <= EngravingReference.beatEpsilon
+        let lower = Self.lowerBoundGesture(in: gestures) {
+            $0.beat >= range.lowerBound - EngravingReference.beatEpsilon
+        }
+        let upper = Self.lowerBoundGesture(in: gestures) {
+            $0.beat >= range.upperBound
+                + (isPoint ? EngravingReference.beatEpsilon : -EngravingReference.beatEpsilon)
+        }
+        let visibleCount = upper - lower
+        guard visibleCount > 0 else { return 0 }
+        let offscreenCount = max(1, gestures.count - visibleCount)
+        return isVisible(gestureIndex, in: range)
+            ? Foundation.log(0.82 / Double(visibleCount))
+            : Foundation.log(0.18 / Double(offscreenCount))
     }
 
     static func pitchSimilarity(_ observed: UInt128, _ expected: UInt128) -> Double {
@@ -273,14 +380,49 @@ struct EngravingScoreFeatureIndex {
     @inline(__always)
     static func pitchBit(_ pitch: UInt8) -> UInt128 { UInt128(1) << UInt128(pitch) }
 
-    private static func distributedSample(_ values: [Int], limit: Int) -> [Int] {
+    private static func distributedSample<Values>(
+        _ values: Values,
+        limit: Int
+    ) -> [Int] where Values: RandomAccessCollection, Values.Element == Int {
         guard values.count > limit, limit > 1 else { return Array(values.prefix(max(0, limit))) }
         var result: [Int] = []
         result.reserveCapacity(limit)
         let scale = Double(values.count - 1) / Double(limit - 1)
         for offset in 0..<limit {
-            result.append(values[Int((Double(offset) * scale).rounded())])
+            let index = values.index(
+                values.startIndex,
+                offsetBy: Int((Double(offset) * scale).rounded())
+            )
+            result.append(values[index])
         }
         return result
+    }
+
+    private static func lowerBound(
+        in values: [Int],
+        where predicate: (Int) -> Bool
+    ) -> Int {
+        var lower = values.startIndex
+        var upper = values.endIndex
+        while lower < upper {
+            let middle = lower + (upper - lower) / 2
+            if predicate(values[middle]) { upper = middle }
+            else { lower = middle + 1 }
+        }
+        return lower
+    }
+
+    private static func lowerBoundGesture(
+        in values: [EngravingScoreGesture],
+        where predicate: (EngravingScoreGesture) -> Bool
+    ) -> Int {
+        var lower = values.startIndex
+        var upper = values.endIndex
+        while lower < upper {
+            let middle = lower + (upper - lower) / 2
+            if predicate(values[middle]) { upper = middle }
+            else { lower = middle + 1 }
+        }
+        return lower
     }
 }

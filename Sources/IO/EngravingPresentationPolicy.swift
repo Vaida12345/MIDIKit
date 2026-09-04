@@ -23,7 +23,6 @@ struct EngravingPresentationPolicy {
         let musicalIndex = alignment.gestureIndex
         let destinationIsVisible = score.isVisible(musicalIndex, in: visibleRange)
         let didReframe = alignment.movement == .jump && !destinationIsVisible
-
         if displayGestureIndex == nil {
             displayGestureIndex = musicalIndex
         } else {
@@ -34,8 +33,19 @@ struct EngravingPresentationPolicy {
                 let oldDisplay = displayGestureIndex ?? musicalIndex
                 let proposedLine = score.gestures[musicalIndex].lineOffset
                 let oldLine = score.gestures[oldDisplay].lineOffset
-                if alignment.state == .tracking, proposedLine <= oldLine + 1 {
-                    displayGestureIndex = max(oldDisplay, musicalIndex)
+                let stagedFromLine = max(oldLine, viewportLineOffset ?? oldLine)
+                if alignment.state == .tracking {
+                    if proposedLine <= stagedFromLine + 1 {
+                        displayGestureIndex = max(oldDisplay, musicalIndex)
+                    } else if let intermediate = score.lastGestureIndex(
+                        onLine: stagedFromLine + 1,
+                        atOrBefore: musicalIndex
+                    ) {
+                        // A legal musical repair can cross several short systems. Catch the
+                        // presentation up one system per event instead of freezing the marker or
+                        // manufacturing a discontinuous jump.
+                        displayGestureIndex = max(oldDisplay, intermediate)
+                    }
                 }
             case .held, .replay:
                 break
@@ -49,6 +59,33 @@ struct EngravingPresentationPolicy {
         if didReframe {
             viewportLineOffset = displayLine
             viewport = .jump(toLine: score.lines[displayLine].index)
+        } else if alignment.state == .tracking,
+                  let oldViewportLine = viewportLineOffset,
+                  oldViewportLine < displayLine,
+                  !lineIsVisible(
+                    oldViewportLine + 1,
+                    score: score,
+                    visibleRange: visibleRange
+                  ) {
+            // A marker that is catching up can cross several short or rest-only systems. Reveal
+            // exactly one intermediate system per event.
+            let nextLine = oldViewportLine + 1
+            viewportLineOffset = nextLine
+            viewport = .advance(toLine: score.lines[nextLine].index)
+        } else if alignment.state == .tracking,
+                  score.gestures[musicalIndex].lineOffset > displayLine + 1,
+                  let oldViewportLine = viewportLineOffset,
+                  oldViewportLine < score.gestures[musicalIndex].lineOffset,
+                  !lineIsVisible(
+                    oldViewportLine + 1,
+                    score: score,
+                    visibleRange: visibleRange
+                  ) {
+            // There may be no attack on an intervening rest-only system, so the display marker
+            // cannot be staged there. Advance the spatial frame independently while holding it.
+            let nextLine = oldViewportLine + 1
+            viewportLineOffset = nextLine
+            viewport = .advance(toLine: score.lines[nextLine].index)
         } else if alignment.state == .tracking,
                   let nextLine = nextNeededLine(after: displayIndex, score: score),
                   nextLine == displayLine + 1,

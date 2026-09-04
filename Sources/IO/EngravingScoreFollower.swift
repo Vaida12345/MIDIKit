@@ -124,7 +124,7 @@ public final class EngravingScoreFollower {
             consume(noteOff: pitch, timestamp: timestamp)
             return nil
         case let .controlChange(control, value):
-            consume(controlChange: control, value: value)
+            consume(controlChange: control, value: value, timestamp: timestamp)
             return nil
         }
     }
@@ -184,8 +184,12 @@ public final class EngravingScoreFollower {
 
     /// Records sustain and sostenuto controller state. Pedals affect physical state, not score
     /// onset boundaries directly.
-    func consume(controlChange control: UInt8, value: UInt8) {
-        inputState.controlChange(control: control, value: value)
+    func consume(
+        controlChange control: UInt8,
+        value: UInt8,
+        timestamp: MIDITimeStamp = 0
+    ) {
+        inputState.controlChange(control: control, value: value, timestamp: timestamp)
     }
 
     private func assertPresentationInvariants(previous: Update?, current: Update) {
