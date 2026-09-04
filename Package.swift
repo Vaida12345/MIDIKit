@@ -31,7 +31,8 @@ let package = Package(
         .target(
             name: "MIDIKit",
             dependencies: ["DetailedDescription", "FinderItem", "ConcurrentStream", "NativeImage", "Optimization", "Essentials", "ColorComponents"],
-            path: "Sources"
+            path: "Sources",
+            exclude: ["IO/EngravingScoreFollower/Documentation"]
         ),
         .executableTarget(
             name: "Client",
