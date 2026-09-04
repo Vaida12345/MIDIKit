@@ -142,8 +142,9 @@ Timing likelihoods are heavy-tailed and transition specific:
 - releases provide weak note-duration/articulation evidence;
 - a long break raises new-episode prior odds.
 
-Absolute block/roll scales are expressed using the Core MIDI host-clock frequency, never magic raw
-tick counts. Learned tempo may remain in host ticks per beat because it is a within-clock ratio.
+Absolute block/roll scales are converted through the Darwin Mach timebase used by Core MIDI host
+timestamps, never through platform-specific APIs or magic raw tick counts. Learned tempo may remain
+in host ticks per beat because it is a within-clock ratio.
 
 Invalid, equal, and nonmonotonic timestamp relationships are neutral. Timing never acts as a hard
 pitch or chord gate. A pause never chooses a destination: the notes after it must still establish

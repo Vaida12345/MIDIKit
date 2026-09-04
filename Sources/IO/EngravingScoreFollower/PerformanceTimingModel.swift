@@ -3,8 +3,8 @@
 //  MIDIKit
 //
 
-import CoreAudio
 import CoreMIDI
+import Darwin
 import Foundation
 
 
@@ -212,10 +212,22 @@ struct PerformanceTimingModel {
     }
 
     private static func hostTicks(seconds: Double) -> Double {
-        let frequency = AudioGetHostClockFrequency()
-        guard frequency.isFinite, frequency > 0 else { return seconds * 1_000_000_000 }
-        return max(1, seconds * frequency)
+        max(1, seconds * hostTicksPerSecond)
     }
+
+    /// Core MIDI timestamps use the Mach absolute-time clock on every supported Apple platform.
+    /// Its timebase expresses nanoseconds per host tick as `numer / denom`.
+    private static let hostTicksPerSecond: Double = {
+        var timebase = mach_timebase_info_data_t()
+        guard mach_timebase_info(&timebase) == KERN_SUCCESS,
+              timebase.numer > 0,
+              timebase.denom > 0 else {
+            // All currently supported Apple platforms provide a valid Mach timebase. Keeping a
+            // nanosecond fallback makes initialization total if the kernel call ever fails.
+            return 1_000_000_000
+        }
+        return 1_000_000_000 * Double(timebase.denom) / Double(timebase.numer)
+    }()
 }
 
 private struct RobustPositiveEstimate {

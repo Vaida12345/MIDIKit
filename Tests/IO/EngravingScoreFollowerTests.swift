@@ -5,8 +5,8 @@
 //  Created by Vaida on 2026-09-03.
 //
 
-import CoreAudio
 import CoreMIDI
+import Darwin
 import Testing
 @testable import MIDIKit
 
@@ -1613,7 +1613,7 @@ struct EngravingScoreFollowerTests {
         await follower.update(reference: reference)
         follower.visibleRange = 0...4
 
-        let ticksPerSecond = AudioGetHostClockFrequency()
+        let ticksPerSecond = Self.hostTicksPerSecond
         let start: MIDITimeStamp = 10_000
         func timestamp(milliseconds: Double) -> MIDITimeStamp {
             start + MIDITimeStamp(ticksPerSecond * milliseconds / 1_000)
@@ -1661,7 +1661,7 @@ struct EngravingScoreFollowerTests {
         await follower.update(reference: reference)
         follower.visibleRange = 0...4
 
-        let ticksPerSecond = AudioGetHostClockFrequency()
+        let ticksPerSecond = Self.hostTicksPerSecond
         func timestamp(seconds: Double) -> MIDITimeStamp {
             MIDITimeStamp(ticksPerSecond * seconds)
         }
@@ -1693,6 +1693,13 @@ struct EngravingScoreFollowerTests {
             attack: attack
         )
     }
+
+    private static let hostTicksPerSecond: Double = {
+        var timebase = mach_timebase_info_data_t()
+        precondition(mach_timebase_info(&timebase) == KERN_SUCCESS)
+        precondition(timebase.numer > 0 && timebase.denom > 0)
+        return 1_000_000_000 * Double(timebase.denom) / Double(timebase.numer)
+    }()
 
     @discardableResult
     private static func performChord(
