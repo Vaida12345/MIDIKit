@@ -38,7 +38,7 @@ public final class EngravingScoreFollower {
         /// Committed musical location. It can decrease only for confirmed replay or reframing.
         public let beat: Double
 
-        /// Stable primary marker. It never decreases without `didReframe`.
+        /// Stable decorative marker. It never decreases without `didReframe`.
         public let displayBeat: Double
 
         public let measureIndex: Int
@@ -47,6 +47,9 @@ public final class EngravingScoreFollower {
         public let activeHands: HandParticipation
         public let viewport: ViewportRecommendation
 
+        /// Epoch-local authority. A newer unchanged update cancels older deferred requests.
+        public let viewportRevision: UInt64
+
         /// True only when the application should change the performer's spatial frame.
         public let didReframe: Bool
     }
@@ -54,57 +57,64 @@ public final class EngravingScoreFollower {
     public private(set) var reference: EngravingReference?
 
     /// The beat range actually usable in the current engraving viewport.
-    ///
-    /// Before the first attack after `userReset()`, this is a defeasible acquisition prior.
-    /// During tracking it affects presentation and visible-replay classification, never ordinary
-    /// musical continuity.
     public var visibleRange: ClosedRange<Double>? {
         didSet {
-            let range = Self.validRange(visibleRange)
-            if !hasPerformanceStarted { pendingAcquisitionRange = range }
-            alignment?.setVisibleRange(range)
+            guard let score else { return }
+            presentation.report(visibleRange, score: score)
+            filter.refreshHint(visibleRange, score: score)
         }
     }
 
-    public private(set) var lastUpdate: Update?
-
-    private var score: EngravingScoreFeatureIndex?
-    private var inputState = PerformanceInputState()
-    private var alignment: EngravingAlignmentModel?
-    private var presentation = EngravingPresentationPolicy()
-    private var pendingAcquisitionRange: ClosedRange<Double>?
-    private var hasPerformanceStarted = false
+    private var score: EngravingScoreIndex?
+    private var input = EngravingInputState()
+    private var calibration = EngravingCalibration()
+    private var filter = EngravingFilter()
+    private var presentation = EngravingPresentation()
+    private var committed: EngravingPath?
+    private var lastUpdate: Update?
+    private var trackingState: TrackingState = .uncertain
+    private var hands: HandParticipation = .unknown
 
     public init() {}
 
     /// Atomically replaces music and layout, recompiles immutable features, and hard-resets all
     /// positional and performer-specific evidence.
     public func update(reference: EngravingReference) async {
-        let compiled = EngravingScoreFeatureIndex(reference)
+        let compiled = EngravingScoreIndex(reference)
         self.reference = reference
         score = compiled
-        var model = EngravingAlignmentModel(score: compiled)
-        model.hardReset(acquisitionRange: Self.validRange(visibleRange))
-        alignment = model
-        inputState.reset()
-        presentation.reset()
-        pendingAcquisitionRange = Self.validRange(visibleRange)
-        hasPerformanceStarted = false
-        lastUpdate = nil
+        reset()
     }
 
-    /// Signals the beginning of user navigation. This is the sole public reset/navigation API.
-    /// It clears position and partial-onset evidence, retains learned performer calibration, and
-    /// detaches timing across the interaction. Publish the new `visibleRange` while scrolling;
-    /// the last range received before the next attack becomes the acquisition hint.
+    /// Begins a navigation epoch, retaining only broad calibration and provisional visibility.
+    /// The caller clears its marker and queued requests. This does not identify when a drag ends;
+    /// manual-scroll interval signaling remains an integration concern.
     public func userReset() {
-        pendingAcquisitionRange = nil
-        hasPerformanceStarted = false
-        inputState.reset()
-        alignment?.userReset(acquisitionRange: nil)
-        alignment?.setVisibleRange(Self.validRange(visibleRange))
-        presentation.reset()
+        clearState(retainingCalibration: true)
+    }
+
+    /// Clears all mutable state, including visibility, while retaining the installed score.
+    /// The caller clears its marker and queued viewport requests immediately.
+    public func reset() {
+        clearState(retainingCalibration: false)
+    }
+
+    private func clearState(retainingCalibration: Bool) {
+        input = EngravingInputState()
+        filter = EngravingFilter()
+        presentation = EngravingPresentation()
+        committed = nil
         lastUpdate = nil
+        trackingState = .uncertain
+        hands = .unknown
+        if !retainingCalibration {
+            calibration = EngravingCalibration()
+            visibleRange = nil
+        }
+        if let score {
+            presentation.report(visibleRange, score: score)
+            filter.refreshHint(visibleRange, score: score)
+        }
     }
 
     public func consume(_ input: MIDIInputEvent) -> Update? {
@@ -117,99 +127,111 @@ public final class EngravingScoreFollower {
         _ event: ParsedInputEvent,
         timestamp: MIDITimeStamp
     ) -> Update? {
-        switch event {
-        case let .noteOn(pitch, velocity):
-            return consume(noteOn: pitch, velocity: velocity, timestamp: timestamp)
-        case let .noteOff(pitch):
-            consume(noteOff: pitch, timestamp: timestamp)
-            return nil
-        case let .controlChange(control, value):
-            consume(controlChange: control, value: value, timestamp: timestamp)
-            return nil
+        guard let score else { return nil }
+        let observation = input.consume(event, timestamp: timestamp)
+        _ = filter.consume(observation, score: score, calibration: calibration, lost: trackingState == .lost)
+        if observation.attack != nil { filter.refineAcquisition(score: score, calibration: calibration) }
+        let evidence = filter.evidence()
+        guard let best = evidence.best else { return publishHeld(evidence: evidence, observation: observation, score: score) }
+        let exact = evidence.exact(best.current.offset)
+        let mode = committed == nil
+            ? evidence.acquisitionMode(best)
+            : evidence.mode(best)
+        let fresh = observation.attack != nil && best.matched
+        let resolving = observation.attack == nil && observation.changed && observation.released != nil
+        let coherent = (best.fit >= 0.55 || best.matched && best.advanced && exact >= 0.98)
+            && mode >= 0.90 && evidence.noiseSupport < 0.20
+        if committed == nil {
+            guard (fresh || resolving), exact >= 0.80, coherent else { return nil }
+            committed = best
+            filter.acquire(best)
+            trackingState = .tracking
+        } else if let old = committed {
+            let continuous = old.episode == best.episode && best.current.offset >= old.current.offset
+            // The change point is latent. Several change-point ages can agree on the same
+            // new occurrence; demand corroboration within each path before marginalizing.
+            let relocation = evidence.support(where: {
+                $0.episode != old.episode && $0.current.offset == best.current.offset
+                    && $0.onsets >= 2 && $0.onsetEvidence >= log(4) && $0.fit >= 0.55
+            }, compatibleResidual: {
+                $0.episode != old.episode && $0.range == best.current.offset...best.current.offset
+                    && $0.coherent && $0.onsets >= 2 && $0.separation >= log(4)
+            })
+            if continuous && exact >= 0.80 && coherent && (fresh || resolving) {
+                committed = best
+                trackingState = .tracking
+            } else if !continuous && relocation >= 0.95,
+                      best.onsets >= 2, best.onsetEvidence >= log(4), fresh || resolving {
+                filter.acquire(best, preservingEpisode: old.episode)
+                committed = best
+                trackingState = .tracking
+            } else {
+                let incumbentSupport = evidence.support { $0.episode == old.episode && abs($0.current.offset - old.current.offset) <= 2 }
+                let incumbentFit = evidence.paths.first { $0.path.episode == old.episode }?.path.fit ?? 0
+                if incumbentSupport < 0.20 || evidence.noiseSupport > 0.80 || incumbentFit < 0.20 { trackingState = .lost }
+                else if incumbentSupport < 0.70 || incumbentFit < 0.55 || !continuous { trackingState = .uncertain }
+                if let held = evidence.paths.first(where: { $0.path.episode == old.episode && $0.path.current.offset == old.current.offset }) {
+                    committed = held.path
+                }
+            }
+        }
+        guard let committed else { return nil }
+        filter.committedEpisode = committed.episode
+        filter.committedOffset = committed.current.offset
+        updateHands(evidence, path: committed)
+        if trackingState == .tracking && fresh && committed.episode == best.episode,
+           committed.onsets >= 3, exact >= 0.98, !best.advanced,
+           let spread = EngravingHostTime.seconds(from: best.trailing ? best.previous?.firstTime ?? 0 : best.current.firstTime, to: timestamp) {
+            if best.trailing { calibration.observeHandOffset(spread) }
+            else { calibration.observe(spread: spread, rolled: score.moments[best.current.offset].rolled) }
+        }
+        let action = presentation.consume(path: committed, evidence: filter.evidence(), state: trackingState,
+                                          fresh: fresh || resolving, score: score)
+        return publish(path: committed, evidence: evidence, action: action, score: score)
+    }
+
+    private func updateHands(_ evidence: EngravingEvidence, path: EngravingPath) {
+        guard trackingState == .tracking, path.onsets >= 3 else { hands = .unknown; return }
+        let left = evidence.support { $0.hands == .left && $0.leftAssignments >= 3 }
+        let right = evidence.support { $0.hands == .right && $0.rightAssignments >= 3 }
+        let both = evidence.support { $0.hands == .both && $0.leftAssignments >= 2 && $0.rightAssignments >= 2 }
+        if left >= 0.85 { hands = .left }
+        else if right >= 0.85 { hands = .right }
+        else if both >= 0.85 { hands = .both }
+        else {
+            let support: Double = hands == .left ? left : hands == .right ? right : hands == .both ? both : 0
+            if support < 0.60 { hands = .unknown }
         }
     }
 
-    /// Deterministic decoded-note entry point used by trace playback and package tests.
-    func consume(
-        noteOn pitch: UInt8,
-        velocity: UInt8 = 127,
-        timestamp: MIDITimeStamp
-    ) -> Update? {
-        guard pitch < 128 else { return nil }
-        if velocity == 0 {
-            consume(noteOff: pitch, timestamp: timestamp)
-            return nil
-        }
-        guard let score, var alignment else { return nil }
+    private func publishHeld(evidence: EngravingEvidence, observation: EngravingInputState.Observation,
+                             score: EngravingScoreIndex) -> Update? {
+        guard let committed else { return nil }
+        trackingState = .lost
+        hands = .unknown
+        let action = presentation.consume(path: committed, evidence: evidence, state: .lost, fresh: false, score: score)
+        return publish(path: committed, evidence: evidence, action: action, score: score)
+    }
 
-        let isStarting = !hasPerformanceStarted
-        if isStarting {
-            alignment.userReset(acquisitionRange: pendingAcquisitionRange)
-            alignment.setVisibleRange(Self.validRange(visibleRange))
-            hasPerformanceStarted = true
-        }
-
-        let attack = inputState.noteOn(
-            pitch: pitch,
-            velocity: velocity,
-            timestamp: timestamp
-        )
-        let aligned = alignment.consume(attack)
-        if isStarting, aligned == nil, !alignment.hasAcquisitionEvidence {
-            // A pitch absent from the score is not allowed to latch a false epoch.
-            inputState.reset()
-            alignment.userReset(acquisitionRange: pendingAcquisitionRange)
-            alignment.setVisibleRange(Self.validRange(visibleRange))
-            hasPerformanceStarted = false
-        }
-        self.alignment = alignment
-        guard let aligned else { return nil }
-
-        let update = presentation.makeUpdate(
-            from: aligned,
-            score: score,
-            visibleRange: Self.validRange(visibleRange)
-        )
-        assertPresentationInvariants(previous: lastUpdate, current: update)
+    private func publish(path: EngravingPath, evidence: EngravingEvidence,
+                         action: ViewportRecommendation, score: EngravingScoreIndex) -> Update? {
+        let moment = score.moments[path.current.offset]
+        let reframe: Bool
+        if case .jump = action { reframe = true } else { reframe = false }
+        let update = Update(beat: moment.beat, displayBeat: presentation.displayBeat ?? moment.beat,
+                            measureIndex: moment.measure, confidence: evidence.exact(path.current.offset),
+                            state: trackingState, activeHands: hands, viewport: action,
+                            viewportRevision: presentation.revision, didReframe: reframe)
+        if let last = lastUpdate, update.beat == last.beat, update.displayBeat == last.displayBeat,
+           update.state == last.state, update.activeHands == last.activeHands,
+           abs(update.confidence - last.confidence) < 0.05,
+           update.viewportRevision == last.viewportRevision, action == .unchanged { return nil }
         lastUpdate = update
         return update
     }
 
-    /// Records physical key release and note dwell without creating a score attack.
-    func consume(noteOff pitch: UInt8, timestamp: MIDITimeStamp = 0) {
-        guard pitch < 128 else { return }
-        let release = inputState.noteOff(pitch: pitch, timestamp: timestamp)
-        alignment?.consume(release)
-    }
-
-    /// Records sustain and sostenuto controller state. Pedals affect physical state, not score
-    /// onset boundaries directly.
-    func consume(
-        controlChange control: UInt8,
-        value: UInt8,
-        timestamp: MIDITimeStamp = 0
-    ) {
-        inputState.controlChange(control: control, value: value, timestamp: timestamp)
-    }
-
-    private func assertPresentationInvariants(previous: Update?, current: Update) {
-        if let previous, current.displayBeat < previous.displayBeat {
-            assert(current.didReframe)
-        }
-        switch current.viewport {
-        case .unchanged:
-            break
-        case .advance:
-            assert(!current.didReframe)
-        case .jump:
-            assert(current.didReframe)
-        }
-    }
-
-    private static func validRange(
-        _ range: ClosedRange<Double>?
-    ) -> ClosedRange<Double>? {
-        guard let range, range.lowerBound.isFinite, range.upperBound.isFinite else { return nil }
-        return range
+    // Internal diagnostics are intentionally not a second public following API.
+    var diagnostics: (paths: Int, residuals: Int, history: Int, expansions: Int, destinations: Int, calibration: Int) {
+        (filter.paths.count, filter.residuals.count, filter.history.count, filter.expansions, filter.destinations, calibration.support)
     }
 }
