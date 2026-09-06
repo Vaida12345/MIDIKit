@@ -142,10 +142,10 @@ public final class EngravingScoreFollower {
         let coherent = (best.fit >= 0.55 || best.matched && best.advanced && exact >= 0.98)
             && mode >= 0.90 && evidence.noiseSupport < 0.20
         if committed == nil {
-            guard (fresh || resolving), exact >= 0.80, coherent else { return nil }
+            guard (fresh || resolving), exact >= 0.80, best.fit >= 0.55, evidence.noiseSupport < 0.20 else { return nil }
             committed = best
             filter.acquire(best)
-            trackingState = .tracking
+            trackingState = coherent ? .tracking : .uncertain
         } else if let old = committed {
             let continuous = old.episode == best.episode && best.current.offset >= old.current.offset
             // The change point is latent. Several change-point ages can agree on the same
@@ -158,6 +158,7 @@ public final class EngravingScoreFollower {
                     && $0.coherent && $0.onsets >= 2 && $0.separation >= log(4)
             })
             if continuous && exact >= 0.80 && coherent && (fresh || resolving) {
+                filter.acquire(best)
                 committed = best
                 trackingState = .tracking
             } else if !continuous && relocation >= 0.95,

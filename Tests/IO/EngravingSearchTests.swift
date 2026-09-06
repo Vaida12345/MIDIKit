@@ -113,4 +113,59 @@ struct EngravingSearchTests {
             for destination in score.moments.indices { #expect(bound.exact(destination) <= exact.exact(destination) + 1e-10) }
         }
     }
+    @Test(arguments: [4, 32, 128], [
+        [UInt8(67), 64, 60, 69, 65, 62],
+        [67, 69, 64, 65, 60, 62],
+        [67, 64, 70, 60, 69, 65]
+    ])
+    func chordCoverageAndTrailingHandBoundsRemainConservative(residualCap: Int, pitches: [UInt8]) throws {
+        let phrase: [[UInt8]] = [[60, 64, 67], [62, 65, 69]]
+        let chords = Array(repeating: phrase, count: 6).flatMap { $0 }
+        let score = EngravingScoreIndex(try EngravingReference(
+            measures: [.init(index: 0, onset: 0, duration: Double(chords.count))],
+            lines: [.init(index: 0, beatRange: 0...Double(chords.count), measureRange: 0...0)],
+            moments: chords.enumerated().map { i, chord in
+                .init(beat: Double(i), notes: chord.enumerated().map {
+                    .init(pitch: $0.element, duration: 1, hand: $0.offset == 0 ? .left : .right)
+                })
+            }))
+        var bounded = EngravingFilter(), exhaustive = EngravingFilter(), input = EngravingInputState()
+        bounded.limits.hypotheses = 8
+        bounded.limits.perDestination = 2
+        bounded.limits.destinations = 3
+        bounded.limits.residuals = residualCap
+        bounded.limits.expansions = 256
+        exhaustive.limits.hypotheses = 500_000
+        exhaustive.limits.perDestination = 500_000
+        exhaustive.limits.destinations = chords.count
+        exhaustive.limits.expansions = 4_000_000
+        for (i, pitch) in pitches.enumerated() {
+            let seconds = 1 + Double(i / 3) * 0.8 + Double(i % 3) * 0.012
+            let event = input.consume(.noteOn(pitch: pitch, velocity: 80),
+                                      timestamp: UInt64(seconds / EngravingHostTime.secondsPerTick))
+            let bound = bounded.consume(event, score: score, calibration: .init(), lost: false)
+            let exact = exhaustive.consume(event, score: score, calibration: .init(), lost: false)
+            #expect(exhaustive.residuals.isEmpty, "The oracle must enumerate all chord assignments")
+            #expect(bounded.residuals.count <= residualCap)
+            for destination in score.moments.indices {
+                #expect(bound.exact(destination) <= exact.exact(destination) + 1e-10)
+                if let probe = exact.paths.first(where: { $0.path.current.offset == destination })?.path {
+                    #expect(bound.acquisitionMode(probe) <= exact.acquisitionMode(probe) + 1e-10)
+                }
+                let upper = min(score.moments.count, destination + 3)
+                func matches(_ path: EngravingPath) -> Bool {
+                    guard path.matched, path.current.offset >= destination, path.current.offset < upper else { return false }
+                    guard path.hands == .both, let previous = path.previous,
+                          score.moments[previous.offset].pitches & ~previous.pitches != 0 else { return true }
+                    return previous.offset >= destination
+                }
+                let actionBound = bound.support(where: matches, compatibleResidual: {
+                    $0.fresh && $0.range.lowerBound >= destination && $0.range.upperBound < upper
+                        && $0.readingOffset(score: score) >= destination
+                })
+                #expect(actionBound <= exact.support(where: matches) + 1e-10)
+            }
+        }
+    }
+
 }

@@ -44,6 +44,7 @@ struct EngravingScoreIndex {
     private let treeBase: Int
     private let chordPrefix: [Int]
     private let monoBounds: [[Double]]
+    private let transitionFamilies: [[Int]]
 
     init(_ reference: EngravingReference) {
         // Line identifiers and beat-range sorting are not musical order.
@@ -111,6 +112,21 @@ struct EngravingScoreIndex {
             if compiled[i].right != 0 { right = i }
         }
         moments = compiled
+        transitionFamilies = compiled.contains(where: { $0.pitches.nonzeroBitCount > 1 }) ? [8, 16].map { reach in
+            var identifiers: [[UInt128]: Int] = [:]
+            return compiled.indices.map { source in
+                var signature: [UInt128] = []
+                for i in source..<min(compiled.count, source + reach + 1) {
+                    signature.append(compiled[i].left)
+                    signature.append(compiled[i].right)
+                    signature.append(compiled[i].rolled ? 1 : 0)
+                }
+                if let id = identifiers[signature] { return id }
+                let id = identifiers.count
+                identifiers[signature] = id
+                return id
+            }
+        } : []
         chordPrefix = compiled.reduce(into: [0]) { $0.append($0.last! + ($1.pitches.nonzeroBitCount > 1 ? 1 : 0)) }
         postings = pitchPostings
         var contextIndex: [Context: [Int]] = [:]
@@ -167,6 +183,8 @@ struct EngravingScoreIndex {
             monoBounds = bounds
         } else { monoBounds = [] }
     }
+
+    func transitionFamily(at offset: Int, reach: Int) -> Int { transitionFamilies[reach > 8 ? 1 : 0][offset] }
 
     static func mask(_ pitch: UInt8) -> UInt128 { UInt128(1) << UInt128(pitch) }
 
@@ -244,11 +262,12 @@ struct EngravingScoreIndex {
 
 /// Engineering budgets, not musical thresholds. Tests can use a larger exact-search budget.
 struct EngravingLimits {
+    static let revision = 2
     var hypotheses = 128
     var perDestination = 8
     var destinations = 64
     var expansions = 4_096
     var history = 256
-    var residuals = 128
+    var residuals = 4_096
     var localReach = 8
 }

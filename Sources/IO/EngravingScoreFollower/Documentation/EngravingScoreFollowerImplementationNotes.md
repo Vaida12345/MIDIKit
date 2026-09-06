@@ -70,14 +70,22 @@ starting outside the usable range as requiring a direct reframe, even across adj
 Omitting just the next line's first attack remains eligible for ordinary confirmed-entry advance.
 
 The filter caps active paths at 128, detailed substates per destination at eight, new destination
-evaluations at 64, detailed expansions at 4,096, event history at 256, and residual groups at 128.
+evaluations at 64, detailed expansions at 4,096, and event history at 256. Budget revision 2
+retains 128 residual groups for monophonic scores and permits 4,096 for polyphonic scores.
+The polyphonic bound keeps hand identity, chord coverage, preceding-tone counts, and timestamp
+intervals; collapsing these into the original 128 generic groups caused clean chord traces to freeze.
 Half the path slots reserve destination diversity across continuity and recovery; the remaining
-slots retain high-mass hand/onset alternatives. Unused capacity is redistributed. Normal repair
+slots retain high-mass hand/onset alternatives. Polyphonic pruning reserves a credible state
+for each hand mode before filling a destination with variants of one mode. Unused capacity is
+redistributed. Normal repair
 examines up to eight score attacks; lost repair widens to sixteen within the same work budget.
 Private acquisition replay uses at most sixteen retained events and shares the current consume
 call's work and retrieval budgets. Physical state has exactly 128 pitch slots, and presentation
 retains at most one pending intent. Coarse residual-envelope arithmetic is separately bounded by
-these fixed capacities. Transient expansion buffers are also capped by the event work budget.
+these fixed capacities. Exact expansion buffers are capped by the event work budget; residual
+transition buffers are bounded by the residual cap and the local transition fan-out. A per-attack
+cache shares identical envelope rows across indexed equivalent score continuations, with at
+most one cache entry per residual-budget slot. It changes computation, not probability mass.
 
 Bounds can remain loose in complicated repetitive/polyphonic material. The correct response is
 to retain uncertainty and withhold uncertified movement. The tests include both false-certainty
@@ -249,3 +257,71 @@ the unchanged general-purpose `ScoreFollowerTests`. Both 200-event release stres
 zero late commitments and retained the 128-path / 128-residual caps. At 1,000 / 10,000 moments,
 median event latency was 1.146 / 1.303 ms and p99 was 2.702 / 1.524 ms. These measurements
 supersede the earlier stress numbers; no real practice-trace validation is claimed.
+
+
+## Ordinary chord correction (2026-09-06)
+
+The previous synthetic coverage missed an ordinary-play regression. The same twelve-chord MIDI
+trace followed correctly with the unchanged general-purpose `ScoreFollower`, while the engraving
+follower either failed to acquire or lost the passage around the third chord. Extending the trace
+to repeated pages also exposed accumulated uncertainty that short tests did not catch.
+
+The correction preserves predictive information through pruning. An exact discarded state can
+compete for the active beam again when the next attack supports it. Merged states retain hand
+identity, attacked-pitch coverage, possible preceding tones and their count, and earliest/latest
+timestamp bounds. A past onset therefore cannot become a fresh roll merely because its states
+were merged. Tail summaries preserve individual musical frontiers before using a broad range.
+Discarded fit evidence has a conservative four-onset summary and can recover with new support.
+Alternative histories with identical future transition state are marginalized within the
+polyphonic beam; their reporting and corroboration fields retain conservative bounds.
+
+Restart contributions from unresolved history use destination/hand emission weights when those
+destinations are actually retrieved. They are not replaced by a single broad, high-likelihood
+range on every chord tone. Position coherence marginalizes change-point age, while relocation
+retains its separate episode and onset-corroboration tests. Exact discarded states also receive
+release likelihoods, visibility-prior changes, and clock-anchor detachment before re-entry.
+
+Presentation now recognizes residual interpretations whose reading anchors provably agree with
+the proposed line. The previous blanket rejection of polyphonic residuals could prevent a page
+advance despite correct musical following. Acquisition also uses its own 0.80 exact-position
+gate: it can publish an uncertain marker before the separate 0.90 tracking gate is satisfied.
+
+`EngravingChordContinuityTests` compares ordinary playing against `ScoreFollower`, checks both
+consume overloads, equal-time chords, 12/60 ms serialization, bass-first and upper-hand-first
+orders, and two-, three-, four-, and six-tone voicings. It checks following through 36 repeated
+chords and following plus ordinary page advances through 72 chords after a distinctive opening.
+Once the opening context is distinguishing, every fully played chord must have its committed
+beat and marker by its final attack. Line-entry tests also require actual readability by that
+attack and acknowledge each recommendation as it is emitted.
+
+The longer search oracle adds six-attack chord, interleaved-hand, and insertion sequences on
+repeated material at residual caps of 4, 32, and 128. It checks destination, coherent-mode, and
+reading-action lower bounds against an exhaustive run that must have no residuals. These are
+bounds against the implemented model; real performer calibration remains unvalidated.
+
+### Verification and remaining performance limits
+
+The final release package run executed **350 tests in 51 suites**. All **64 engraving tests**
+passed. The package still reported the same **11 existing issues in `ScoreFollowerTests`**;
+the general-purpose follower and its tests were not changed. Both 200-attack monophonic stress
+traces had zero late commitments. Chord traces checked the 128 active-path, 4,096 residual,
+4,096 exact-expansion, and 64 new-destination caps on every attack.
+
+Measured consume latency in that package run (milliseconds):
+
+| Trace | Attacks | Median | p99 |
+|---|---:|---:|---:|
+| 1,000-moment monophonic score | 200 | 1.63 | 8.04 |
+| 10,000-moment monophonic score | 200 | 1.77 | 2.10 |
+| 12 two-tone chords | 24 | 15.70 | 24.56 |
+| 12 three-tone chords | 36 | 14.16 | 22.95 |
+| 12 six-tone chords | 72 | 26.54 | 42.76 |
+| 72 repeated four-tone chords with distinctive opening | 288 | 70.08 | 106.64 |
+
+The long chord trace passes the event-based commitment and reveal deadlines, but its processing
+cost is still substantial. Further profiling and optimization are needed for a low-latency
+guarantee under dense live MIDI. Reducing the residual budget to 2,048 reintroduced delayed page
+advances, so revision 2 retains 4,096 for polyphony. These timings are synthetic measurements on
+the development machine during a package run; allocation profiling and timestamped real-practice
+evaluation remain outstanding. No empirical confidence-calibration or production-readiness claim
+is made from these tests.

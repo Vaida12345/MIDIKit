@@ -141,7 +141,7 @@ struct EngravingPresentation {
             residual.episode == path.episode && residual.coherent && residual.fresh
                 && score.moments[residual.range.lowerBound].line == line
                 && score.moments[residual.range.upperBound].line == line
-                && !score.hasChords(in: max(0, residual.range.lowerBound - 16)...residual.range.upperBound)
+                && score.moments[residual.readingOffset(score: score)].line == line
                 && (!jump || residual.onsets >= 2 && residual.separation >= log(4))
         }
         let actionSupport = evidence.support(where: {
