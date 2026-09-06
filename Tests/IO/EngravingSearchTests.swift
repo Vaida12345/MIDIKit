@@ -4,6 +4,29 @@ import Testing
 
 @Suite("Engraving conservative search")
 struct EngravingSearchTests {
+    @Test(arguments: [0.0, 0.25, 0.7, 1.4], [
+        [UInt8(60), 62, 62, 64], [62, 62, 62, 64], [99, 60, 62, 62]
+    ])
+    func timedRepeatedNoteBoundsRemainConservative(step: Double, pitches: [UInt8]) throws {
+        let score = try reference([60, 62, 62, 62, 64, 60])
+        var bounded = EngravingFilter(), exhaustive = EngravingFilter(), input = EngravingInputState()
+        bounded.limits.hypotheses = 8
+        bounded.limits.perDestination = 2
+        exhaustive.limits.hypotheses = 50_000
+        exhaustive.limits.perDestination = 50_000
+        exhaustive.limits.expansions = 1_000_000
+        for (i, pitch) in pitches.enumerated() {
+            let time = step == 0 ? 0 : UInt64((1 + Double(i) * step) / EngravingHostTime.secondsPerTick)
+            let event = input.consume(.noteOn(pitch: pitch, velocity: 80), timestamp: time)
+            let bound = bounded.consume(event, score: score, calibration: .init(), lost: false)
+            let exact = exhaustive.consume(event, score: score, calibration: .init(), lost: false)
+            #expect(exhaustive.residuals.isEmpty, "The comparison must enumerate every path")
+            for destination in score.moments.indices {
+                #expect(bound.exact(destination) <= exact.exact(destination) + 1e-10)
+            }
+        }
+    }
+
     private func reference(_ pitches: [UInt8]) throws -> EngravingScoreIndex {
         EngravingScoreIndex(try EngravingReference(measures: [.init(index: 0, onset: 0, duration: Double(pitches.count))],
             lines: [.init(index: 0, beatRange: 0...Double(pitches.count), measureRange: 0...0)],

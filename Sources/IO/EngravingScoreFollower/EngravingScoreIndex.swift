@@ -145,7 +145,7 @@ struct EngravingScoreIndex {
                         let last = min(compiled.count - 1, source + reach)
                         if last > source {
                             for target in (source + 1)...last {
-                                let baseWeight = 0.86 * pow(0.12, Double(omissions))
+                                let baseWeight = 0.86 * pow(0.04, Double(omissions))
                                 for nextHand in 0..<3 where audible(target, nextHand) != 0 {
                                     let contribution = baseWeight * (hand == nextHand ? 0.98 : 0.01)
                                     total += contribution
@@ -157,7 +157,7 @@ struct EngravingScoreIndex {
                         weights[sourcePitch, default: 0] += 0
                         for (pitch, matching) in weights {
                             let numerator = matching + (pitch == sourcePitch ? 0.12 : 0)
-                            let denominator = 0.12 + matching + 0.90 * (total - matching)
+                            let denominator = (pitch == sourcePitch ? 0.12 : 0.006) + matching + 0.90 * (total - matching)
                             let slot = sourcePitch * 128 + pitch
                             bounds[row][slot] = max(bounds[row][slot], 0.975 * numerator / denominator)
                         }
@@ -170,9 +170,15 @@ struct EngravingScoreIndex {
 
     static func mask(_ pitch: UInt8) -> UInt128 { UInt128(1) << UInt128(pitch) }
 
-    func monophonicBound(from pitch: UInt128, to next: UInt8, reach: Int) -> Double? {
+    func monophonicBound(from pitch: UInt128, to next: UInt8, reach: Int, restrike: Double? = nil) -> Double? {
         guard !monoBounds.isEmpty, pitch.nonzeroBitCount == 1, reach == 8 || reach == 16 else { return nil }
-        return monoBounds[reach == 8 ? 0 : 1][pitch.trailingZeroBitCount * 128 + Int(next)]
+        let bound = monoBounds[reach == 8 ? 0 : 1][pitch.trailingZeroBitCount * 128 + Int(next)]
+        guard let restrike, pitch & Self.mask(next) == 0 else { return bound }
+        // For a different pitch the numerator is unchanged. Every structural row has
+        // non-correction denominator D <= this geometric sum, so this ratio bounds
+        // (0.006 + D) / (restrike + D) without scanning occurrences during consumption.
+        let maximumProgressWeight = 0.86 / (1 - 0.04)
+        return bound * (0.006 + maximumProgressWeight) / (max(0.006, restrike) + maximumProgressWeight)
     }
 
     func hasChords(in range: ClosedRange<Int>) -> Bool {

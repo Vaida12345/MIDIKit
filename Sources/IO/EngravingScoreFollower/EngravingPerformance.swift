@@ -119,6 +119,14 @@ struct EngravingCalibration {
     var handSpread = log(0.09)
     var support = 0
 
+    /// Correction/rearticulation competes with a new onset using the preceding attack,
+    /// independently of the onset's total spread. The tail retains slow corrections.
+    func restrikeFactor(from start: MIDITimeStamp, to end: MIDITimeStamp, rolled: Bool) -> Double {
+        guard let elapsed = EngravingHostTime.seconds(from: start, to: end) else { return 1 }
+        let spread = exp(rolled ? rolledSpread : blockSpread)
+        return 0.05 + 0.95 / (1 + pow(elapsed / (3 * spread), 2))
+    }
+
     mutating func observe(spread: Double, rolled: Bool) {
         guard spread > 0, spread < 5 else { return }
         let value = log(spread)

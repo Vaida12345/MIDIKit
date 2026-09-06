@@ -80,6 +80,7 @@ struct EngravingResidual {
     var onsets = 0
     var separation = 0.0
     var onsetTime: MIDITimeStamp = 0
+    var lastTime: MIDITimeStamp = 0
     var played: UInt128 = 0
     var possiblePlayed: UInt128 = .max
 }
@@ -264,7 +265,11 @@ struct EngravingFilter {
         // All branches use the same preceding evidence scale. A fresh change point receives
         // the mixture evidence, never a likelihood from an unrelated shorter suffix.
         let base = oldTotal.isFinite ? oldTotal : 0
-        let hazard = !hasStarted ? 1.0 : committedEpisode == nil ? 0.12 : lost ? 0.04 : 0.001
+        let hazard = !hasStarted ? 1.0 : lost ? 0.04 : 0.001
+        // A score-less prefix can end without claiming that a coherent musical passage
+        // restarted. Keep the two hazards on their own mass, on the same history scale.
+        let seedMass = !hasStarted ? 0 : EngravingMath.add(
+            EngravingMath.sum(paths.map(\.logMass)) + log(hazard), noiseLogMass + log(0.12))
         let logContinuity = log(max(0, 1 - hazard - 0.0001))
         var generated: [EngravingWeightedPath] = []
         generated.reserveCapacity(limits.expansions)
@@ -280,7 +285,7 @@ struct EngravingFilter {
             let seedBound = min(1, postingPriorMass(pitch, indices: 0..<score.postings[Int(pitch)].count, score: score) * (1 - Self.insertionProbability))
             nextResiduals.append(EngravingResidual(range: first...last,
                 logMass: EngravingMath.sum(residuals.map(\.logMass)) + log(hazard) + log(seedBound),
-                episode: observation.id, coherent: true, fresh: true, onsets: 1, onsetTime: observation.timestamp,
+                episode: observation.id, coherent: true, fresh: true, onsets: 1, onsetTime: observation.timestamp, lastTime: observation.timestamp,
                 played: bit, possiblePlayed: bit))
         }
         for weighted in paths {
@@ -309,9 +314,9 @@ struct EngravingFilter {
 
         // Prefix noise is score-less. A new episode starts at its first explained attack;
         // initial errors therefore cannot contaminate all subsequent acquisition candidates.
-        seed(pitch, observation: observation, score: score, logMass: base + log(hazard),
+        seed(pitch, observation: observation, score: score, logMass: seedMass,
              into: &generated, residuals: &nextResiduals)
-        noiseLogMass = EngravingMath.add(noiseLogMass + logContinuity - log(128), base + log(0.0001 / 128))
+        noiseLogMass = EngravingMath.add(noiseLogMass + log(1 - 0.12 - 0.0001) - log(128), base + log(0.0001 / 128))
         hasStarted = true
         prune(generated, into: &nextResiduals)
         residuals = compact(nextResiduals)
@@ -352,7 +357,7 @@ struct EngravingFilter {
         }
         if remaining != 0 { transitions.append(Transition(offset: offset, hands: source.hands, mask: remaining, weight: extensionWeight, kind: 0)) }
         transitions.append(Transition(offset: offset, hands: source.hands, mask: source.mask(moment),
-                                      weight: remaining == 0 ? 0.12 : 0.025, kind: 1))
+                                      weight: (remaining == 0 ? 0.12 : 0.025) * calibration.restrikeFactor(from: source.current.lastTime, to: observation.timestamp, rolled: moment.rolled), kind: 1))
         if let previous = source.previous {
             let missing = source.mask(score.moments[previous.offset]) & ~previous.pitches
             if missing != 0 {
@@ -374,7 +379,7 @@ struct EngravingFilter {
                 if skip > 0 {
                     for omitted in (offset + 1)..<target where source.mask(score.moments[omitted]) != 0 { relevantSkip += 1 }
                 }
-                let weight = (remaining == 0 ? 0.86 : 0.16) * coverageCost * pow(0.12, Double(relevantSkip))
+                let weight = (remaining == 0 ? 0.86 : 0.16) * coverageCost * pow(0.04, Double(relevantSkip))
                     * source.tempo.compatibility(beat: score.moments[target].beat, time: observation.timestamp)
                 for hands in EngravingPath.Hands.allCases {
                     var alternative = source
@@ -539,7 +544,7 @@ struct EngravingFilter {
             } else {
                 residuals.append(EngravingResidual(range: item.path.current.offset...item.path.current.offset, logMass: item.logMass,
                     episode: item.path.episode, coherent: item.path.fit >= 0.55, fresh: item.path.matched,
-                    onsets: item.path.onsets, separation: item.path.onsetEvidence, onsetTime: item.path.current.firstTime,
+                    onsets: item.path.onsets, separation: item.path.onsetEvidence, onsetTime: item.path.current.firstTime, lastTime: item.path.current.lastTime,
                     played: item.path.current.pitches, possiblePlayed: item.path.current.pitches))
             }
         }
@@ -576,6 +581,7 @@ struct EngravingFilter {
                     logMass: EngravingMath.add(last.logMass, value.logMass), episode: last.episode, coherent: last.coherent, fresh: last.fresh,
                     onsets: min(last.onsets, value.onsets), separation: min(last.separation, value.separation),
                     onsetTime: last.onsetTime == value.onsetTime ? last.onsetTime : 0,
+                    lastTime: last.lastTime == value.lastTime ? last.lastTime : 0,
                     played: last.played & value.played, possiblePlayed: last.possiblePlayed | value.possiblePlayed)
             } else { result.append(value) }
         }
@@ -597,8 +603,33 @@ struct EngravingFilter {
         // location, but cannot broaden that location as if it were a performed score attack.
         output.append(EngravingResidual(range: residual.range,
             logMass: residual.logMass + logContinuity + log(Self.noiseEmission), episode: residual.episode,
-            onsets: residual.onsets, separation: residual.separation, onsetTime: residual.onsetTime,
+            onsets: residual.onsets, separation: residual.separation, onsetTime: residual.onsetTime, lastTime: residual.lastTime,
             played: residual.played, possiblePlayed: residual.possiblePlayed))
+        // Keep destinations separate when a discarded monophonic state has an exact
+        // frontier. A single interval would let mass assigned to a very unlikely omission
+        // migrate back onto the ordinary successor on each subsequent repeated pitch.
+        let forward = residual.range.lowerBound...min(score.moments.count - 1, residual.range.upperBound + activeReach)
+        if residual.range.count == 1, !score.hasChords(in: 0...(score.moments.count - 1)),
+           residual.played == score.moments[residual.range.lowerBound].pitches {
+            let source = residual.range.lowerBound
+            for destination in forward where score.moments[destination].pitches & EngravingScoreIndex.mask(pitch) != 0 {
+                let upper = monophonicTransitionBound(from: source, to: destination, score: score,
+                    restrike: EngravingHostTime.seconds(from: residual.lastTime, to: observation.timestamp).map { _ in
+                        0.12 * calibration.restrikeFactor(from: residual.lastTime, to: observation.timestamp, rolled: score.moments[source].rolled)
+                    })
+                guard upper > 0 else { continue }
+                let progressed = destination > source
+                let elapsed = EngravingHostTime.seconds(from: residual.onsetTime, to: observation.timestamp)
+                output.append(EngravingResidual(range: destination...destination,
+                    logMass: residual.logMass + logContinuity + log(upper), episode: residual.episode,
+                    coherent: residual.coherent, fresh: true,
+                    onsets: min(1_024, residual.onsets + (progressed ? 1 : 0)),
+                    separation: residual.separation + (progressed ? elapsed.map { log1p($0 / exp(calibration.rolledSpread)) } ?? 0 : 0),
+                    onsetTime: progressed ? observation.timestamp : residual.onsetTime, lastTime: observation.timestamp,
+                    played: EngravingScoreIndex.mask(pitch), possiblePlayed: EngravingScoreIndex.mask(pitch)))
+            }
+            return
+        }
         let search = max(0, residual.range.lowerBound - 16)...min(score.moments.count - 1, residual.range.upperBound + activeReach)
         guard let matches = score.matchingRange(pitch: pitch, within: search) else { return }
         let couldLag = score.hasChords(in: search)
@@ -606,7 +637,11 @@ struct EngravingFilter {
         let high = min(score.moments.count - 1, max(matches.upperBound, couldLag ? residual.range.upperBound : matches.upperBound))
         guard low <= high else { return }
         var upper = 1 - Self.insertionProbability
-        if let familyBound = score.monophonicBound(from: residual.played, to: pitch, reach: activeReach) {
+        let minimumRestrike = EngravingHostTime.seconds(from: residual.lastTime, to: observation.timestamp).map { _ in
+            0.12 * min(calibration.restrikeFactor(from: residual.lastTime, to: observation.timestamp, rolled: false),
+                       calibration.restrikeFactor(from: residual.lastTime, to: observation.timestamp, rolled: true))
+        }
+        if let familyBound = score.monophonicBound(from: residual.played, to: pitch, reach: activeReach, restrike: minimumRestrike) {
             upper = min(upper, familyBound)
         }
         if residual.range.lowerBound == residual.range.upperBound {
@@ -633,6 +668,7 @@ struct EngravingFilter {
                 logMass: residual.logMass + logContinuity + log(upper), episode: residual.episode,
                 coherent: residual.coherent, fresh: true, onsets: min(1_024, residual.onsets + (progressed ? 1 : 0)),
                 separation: separation, onsetTime: progressed ? observation.timestamp : sameFrontier ? residual.onsetTime : 0,
+                lastTime: monophonic ? observation.timestamp : 0,
                 played: played, possiblePlayed: possiblePlayed))
         }
     }
@@ -681,13 +717,16 @@ struct EngravingFilter {
                     add(remaining, low: low, high: high)
                 }
                 let restrike = remaining == 0 ? 0.12 : 0.025
-                add(expected, low: restrike, high: restrike)
+                if EngravingHostTime.seconds(from: residual.lastTime, to: timestamp) != nil {
+                    let factor = calibration.restrikeFactor(from: residual.lastTime, to: timestamp, rolled: moment.rolled)
+                    add(expected, low: restrike * factor, high: restrike * factor)
+                } else { add(expected, low: restrike * 0.05, high: restrike) }
                 let last = min(score.moments.count - 1, source + activeReach)
                 if last > source {
                     var omitted = 0
                     for target in (source + 1)...last {
                         let weight = (remaining == 0 ? 0.86 : 0.16)
-                            * exp(-0.35 * Double(min(4, remaining.nonzeroBitCount))) * pow(0.12, Double(omitted))
+                            * exp(-0.35 * Double(min(4, remaining.nonzeroBitCount))) * pow(0.04, Double(omitted))
                         for nextHand in EngravingPath.Hands.allCases {
                             let pitches = mask(target, nextHand)
                             guard pitches != 0 else { continue }
@@ -706,7 +745,8 @@ struct EngravingFilter {
     /// For a complete monophonic source the structural row is known exactly apart from
     /// hand mode. Maximize the matching timing factor and minimize the competing factors.
     /// This avoids an ever-growing generic envelope on a long distinctive melody.
-    private func monophonicTransitionBound(from source: Int, to target: Int, score: EngravingScoreIndex) -> Double {
+    private func monophonicTransitionBound(from source: Int, to target: Int, score: EngravingScoreIndex,
+                                           restrike: Double? = nil) -> Double {
         var maximum = 0.0
         for hand in EngravingPath.Hands.allCases {
             func mask(_ i: Int, _ hand: EngravingPath.Hands) -> UInt128 {
@@ -717,13 +757,13 @@ struct EngravingFilter {
                 }
             }
             guard mask(source, hand) != 0 else { continue }
-            var total = 0.12
-            var matching = 0.0
+            let correction = restrike ?? (target == source ? 0.12 : 0.006)
+            var total = correction
+            var matching = target == source ? correction : 0.0
             let last = min(score.moments.count - 1, source + activeReach)
-            guard last > source else { continue }
             var omitted = 0
-            for destination in (source + 1)...last {
-                let weight = 0.86 * pow(0.12, Double(omitted))
+            for destination in (source + 1)..<(last + 1) {
+                let weight = 0.86 * pow(0.04, Double(omitted))
                 for nextHand in EngravingPath.Hands.allCases {
                     let pitches = mask(destination, nextHand)
                     guard pitches != 0 else { continue }
@@ -733,7 +773,9 @@ struct EngravingFilter {
                 }
                 if mask(destination, hand) != 0 { omitted += 1 }
             }
-            let minimumDenominator = 0.12 + matching + 0.90 * (total - 0.12 - matching)
+            let minimumDenominator = target == source
+                ? correction + 0.90 * (total - correction)
+                : correction + matching + 0.90 * (total - correction - matching)
             maximum = max(maximum, (1 - Self.insertionProbability) * matching / minimumDenominator)
         }
         return maximum

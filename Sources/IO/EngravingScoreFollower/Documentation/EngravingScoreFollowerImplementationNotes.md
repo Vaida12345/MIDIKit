@@ -58,10 +58,13 @@ reframing. Tracking hysteresis, the four-opportunity recent-fit window, two-onse
 floor, and 0.05 confidence-only publication granularity are implemented separately.
 
 Initial likelihood parameters are engineering defaults: insertion mass 0.025, ordinary break
-prior 0.001, lost break prior 0.04, acquisition noise-prefix renewal prior 0.12, and a geometrically
-decreasing relevant-onset omission weight of 0.12. Block, roll, and hand-offset initial spread
+prior 0.001, lost break prior 0.04, score-less noise-prefix renewal prior 0.12, and a geometrically
+decreasing relevant-onset omission weight of 0.04. Block, roll, and hand-offset initial spread
 scales are 45 ms, 200 ms, and 90 ms, with broad tails and robust adaptation. These scales are
 likelihood parameters, never chord deadlines. No absolute tempo or quarter-note unit is assumed.
+The noise-prefix renewal prior applies only to score-less mass; coherent private acquisition
+paths use the ordinary break prior. Restrikes use the preceding attack's elapsed time with a
+broad tail and a 0.05 likelihood floor, rather than a time-independent correction weight.
 The initial large-omission presentation policy treats four or more omitted relevant attacks
 starting outside the usable range as requiring a direct reframe, even across adjacent lines.
 Omitting just the next line's first attack remains eligible for ordinary confirmed-entry advance.
@@ -141,6 +144,7 @@ The Swift Testing suites cover the specification's scenario groups as follows:
 | Arbitrary/partial acquisition, initial noise | `distinctivePartialChordAcquiresBeforeCompletion`, `initialMistakesAndLocalOmissionsRecover` |
 | Repetition, lookup truncation, distinguishing continuation | `truncatedRepeatedAcquisitionRecoversOnDistinguishingContinuation`, exhaustive comparisons, repeated-score measurements |
 | Incomplete chords, late chord member after insertion, slow roll | `extraChordToneDoesNotPoisonLateMember`, parameterized serialization/roll traces |
+| Familiar one-finger melodies with repeated notes | `oneFingerMelody` (three melodies at three speeds), `missingClockStillAcquiresAndFinishes` |
 | Missing attacks, local recovery, remote-looking errors | omission/recovery tests, `oneRemoteLookingCohortCannotJump`, `separateRemoteErrorsCannotAccumulateAJump` |
 | Scored repetitions with/without releases | `scoredRepetitionsSurviveMissingReleases` |
 | Leading/trailing and changing hands | `oneHandAndDelayedOtherHandDoNotDoubleAdvance`, `participationAdaptsWhenTheOtherLaneJoins` |
@@ -177,6 +181,10 @@ before making product reliability claims. Synthetic timings are not usability ev
 
 ## Verification results — 5 September 2026
 
+These initial results predate the single-note acquisition defect found on 6 September; see the
+correction below. Passing the original synthetic suite did not establish usable acquisition
+on familiar repeated-note melodies.
+
 The final optimized engraving run passed all **54 tests in five suites**. The debug package
 regression run excluding `ScoreFollowerTests` passed **311 tests in 48 suites**. The unchanged
 general-purpose `ScoreFollowerTests` suite reproduces **11 failures when run in isolation**;
@@ -206,3 +214,38 @@ Bounded counts were checked; allocated bytes and allocation counts were not prof
 exhaustive comparisons cover the small synthetic scores in the tests and do not constitute a
 general proof for every score. Real performance quality, confidence calibration, and the
 remaining empirical measurements require the timestamped practice corpus described above.
+
+## Single-note acquisition correction — 6 September 2026
+
+A report that the marker never appeared exposed a missing acceptance case. A synthetic
+single-note rendition of “Mary Had a Little Lamb,” with ordinary key releases, reproduced
+the failure for the entire phrase. “Twinkle” and “Ode to Joy” acquired and subsequently stalled.
+The original ascending, mostly distinct-pitch melody tests did not catch this.
+
+Three interacting model problems were corrected:
+
+- Private acquisition applied the high score-less renewal rate to already coherent musical
+  paths, continually introducing fresh competing explanations. The two priors now apply to
+  their respective masses on the same preceding-history scale.
+- Discarded exact monophonic frontiers were widened into intervals. Subsequent events could
+  keep the entire interval's likelihood bound alive through different destinations. These
+  frontiers now retain separate bounded successor contributions, including the restrike branch
+  at the terminal note. Broad occurrence groups also retain preceding-attack timing when known.
+- Constant restrike weight and a high omission weight over-favored rearticulation and skipped
+  repeated notes during clean playing. Restrikes now use their own broad timing likelihood;
+  the relevant-onset omission factor is 0.04. Residual bounds and indexed envelopes were updated
+  with the same model changes. Commitment and viewport thresholds were not lowered.
+
+The new melody traces require acquisition by a named distinguishing attack and continued exact
+progress after acquisition at 0.25, 0.7, and 1.4 seconds per beat. Missing-clock variants require
+acquisition and correct final position. Twelve timed repeated-note/noise-prefix comparisons
+check bounded destination support against exhaustive inference with no discarded paths.
+These reproduce and address library behavior; the reporting application's actual score and
+event stream have not been supplied, so the host's observed case still needs a rebuild/retest.
+
+Verification after the correction: all **57 engraving tests in six suites passed in release**.
+The complete debug package run executed 343 tests and reproduced the same 11 issues, all in
+the unchanged general-purpose `ScoreFollowerTests`. Both 200-event release stress cases had
+zero late commitments and retained the 128-path / 128-residual caps. At 1,000 / 10,000 moments,
+median event latency was 1.146 / 1.303 ms and p99 was 2.702 / 1.524 ms. These measurements
+supersede the earlier stress numbers; no real practice-trace validation is claimed.
