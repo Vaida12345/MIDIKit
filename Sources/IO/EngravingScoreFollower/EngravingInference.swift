@@ -21,7 +21,8 @@ struct EngravingAssignment: Hashable {
 }
 
 struct EngravingPath: Hashable {
-    enum Hands: UInt8, CaseIterable { case left, right, both }
+    /// Only the union of both scored staves is followed. There are no lane-selection hypotheses.
+    enum Hands: UInt8, CaseIterable { case both }
     var current: EngravingAssignment
     var previous: EngravingAssignment?
     var hands: Hands
@@ -41,8 +42,6 @@ struct EngravingPath: Hashable {
     var omissionStart: Int?
     var lastObservation: UInt64
     var lastAttack: UInt8
-    var leftAssignments = 0
-    var rightAssignments = 0
 
     var fit: Double {
         let values = recentFit + [exp(-0.65 * Double(errors))]
@@ -51,17 +50,11 @@ struct EngravingPath: Hashable {
 
     func mask(_ moment: EngravingScoreIndex.Moment) -> UInt128 {
         switch hands {
-        case .left: moment.left
-        case .right: moment.right
         case .both: moment.pitches
         }
     }
 
-    mutating func recordHand(_ pitch: UInt128, moment: EngravingScoreIndex.Moment) {
-        // Shared pitches supply no independent hand identity.
-        if moment.left & pitch != 0 && moment.right & pitch == 0 { leftAssignments = min(16, leftAssignments + 1) }
-        if moment.right & pitch != 0 && moment.left & pitch == 0 { rightAssignments = min(16, rightAssignments + 1) }
-    }
+
 }
 
 struct EngravingWeightedPath {
@@ -107,7 +100,7 @@ struct EngravingResidual {
     var possiblePlayed: UInt128 = .max
     var continuation: EngravingContinuation? = nil
     var exactPath: EngravingPath? = nil
-    var handsMask: UInt8 = 7
+    var handsMask: UInt8 = 1
     var lagPitches: UInt128 = .max
     var lagKnown = false
     var lagCount: Int? = nil
@@ -152,8 +145,8 @@ struct EngravingResidual {
         exactPath = nil
     }
 
-    /// Earliest reading anchor possible in this group. Unknown hand participation assumes
-    /// both hands are active; only completed or absent lagging tones release that anchor.
+    /// Earliest reading anchor possible in this group, including any unresolved tones
+    /// from the preceding onset. Preserve known predecessor/coverage bounds after merging.
     func readingOffset(score: EngravingScoreIndex) -> Int {
         if !score.hasChords(in: max(0, range.lowerBound - 16)...range.upperBound) { return range.lowerBound }
         if let state = continuation {
@@ -163,10 +156,18 @@ struct EngravingResidual {
             }
             return min(range.lowerBound, previous.offset)
         }
-        if handsMask & (1 << EngravingPath.Hands.both.rawValue) == 0 || lagKnown && lagPitches == 0 {
-            return range.lowerBound
+        if lagCount == 0 || lagKnown && lagPitches == 0 { return range.lowerBound }
+        // Point groups retain predecessor distances and possible missing pitches. Do not
+        // turn that bounded lag into a blanket sixteen-onset reading requirement.
+        guard range.lowerBound == range.upperBound else { return max(0, range.lowerBound - 16) }
+        let source = range.lowerBound
+        for distance in stride(from: min(16, source), through: 1, by: -1) {
+            if let lagOrigins, lagOrigins & (1 << (distance - 1)) == 0 { continue }
+            if score.moments[source - distance].pitches & lagPitches & ~lagPlayed != 0 {
+                return source - distance
+            }
         }
-        return max(0, range.lowerBound - 16)
+        return source
     }
 }
 
@@ -181,9 +182,17 @@ struct EngravingEvidence {
 
     func support(where predicate: (EngravingPath) -> Bool,
                  compatibleResidual: (EngravingResidual) -> Bool = { _ in false }) -> Double {
-        let mass = EngravingMath.sum(paths.filter { predicate($0.path) }.map(\.logMass))
-        let opposingResidual = residuals.isEmpty ? residualLogMass : EngravingMath.sum(residuals.filter { !compatibleResidual($0) }.map(\.logMass))
-        let denominator = EngravingMath.add(EngravingMath.sum(paths.map(\.logMass)), EngravingMath.add(opposingResidual, EngravingMath.add(noiseLogMass, noiseUpperLogMass)))
+        var mass = -Double.infinity
+        var represented = -Double.infinity
+        for item in paths {
+            represented = EngravingMath.add(represented, item.logMass)
+            if predicate(item.path) { mass = EngravingMath.add(mass, item.logMass) }
+        }
+        var opposingResidual = residuals.isEmpty ? residualLogMass : -Double.infinity
+        for residual in residuals where !compatibleResidual(residual) {
+            opposingResidual = EngravingMath.add(opposingResidual, residual.logMass)
+        }
+        let denominator = EngravingMath.add(represented, EngravingMath.add(opposingResidual, EngravingMath.add(noiseLogMass, noiseUpperLogMass)))
         guard mass.isFinite, denominator.isFinite else { return 0 }
         return min(1, max(0, exp(mass - denominator)))
     }
@@ -216,7 +225,7 @@ private struct EngravingEnvelopeKey: Hashable {
     let played: UInt128
     let possiblePlayed: UInt128
     let hands: UInt8
-    let lagMasks: [UInt128]
+    let lagMask: UInt128
     let lagKnown: Bool
     let lagCount: Int?
     let onsetTime: MIDITimeStamp
@@ -408,7 +417,7 @@ struct EngravingFilter {
                 expansions += 1
                 continue
             }
-            if expansions >= limits.expansions - limits.destinations * 3 - paths.count - 64 {
+            if expansions >= limits.expansions - limits.destinations - paths.count - 64 {
                 let range = max(0, weighted.path.current.offset - 16)...min(score.moments.count - 1, weighted.path.current.offset + reach)
                 let upper = score.pitches(in: range) & bit == 0 ? Self.noiseEmission : 1.0
                 nextResiduals.append(EngravingResidual(range: range, logMass: weighted.logMass + logContinuity + log(upper)))
@@ -418,8 +427,11 @@ struct EngravingFilter {
                    logContinuity: logContinuity, into: &generated)
         }
 
-        for residual in residuals.sorted(by: { $0.logMass > $1.logMass }) {
-            propagate(residual, observation: observation, score: score, calibration: calibration,
+        let residualOrder = residuals.indices.sorted {
+            residuals[$0].logMass == residuals[$1].logMass ? $0 < $1 : residuals[$0].logMass > residuals[$1].logMass
+        }
+        for index in residualOrder {
+            propagate(residuals[index], observation: observation, score: score, calibration: calibration,
                       logContinuity: logContinuity, into: &nextResiduals, represented: &generated)
         }
 
@@ -504,7 +516,7 @@ struct EngravingFilter {
                     let mask = alternative.mask(score.moments[target])
                     if mask != 0 {
                         transitions.append(Transition(offset: target, hands: hands, mask: mask,
-                                                      weight: weight * (hands == source.hands ? 0.98 : 0.01), kind: 2, omissions: relevantSkip))
+                                                      weight: weight, kind: 2, omissions: relevantSkip))
                     }
                 }
             }
@@ -550,7 +562,6 @@ struct EngravingFilter {
                 path.current.pitches |= bit
                 path.current.lastTime = observation.timestamp
             }
-            path.recordHand(bit, moment: score.moments[transition.offset])
             let emission = (1 - Self.insertionProbability) / Double(transition.mask.nonzeroBitCount)
             // Residual structural states use a fresh tempo below. Their numerator is the
             // upper transition weight; only competing progression weights use the floor.
@@ -619,9 +630,8 @@ struct EngravingFilter {
                 let expected = path.mask(moment)
                 guard expected & bit != 0 else { continue }
                 expansions += 1
-                path.recordHand(bit, moment: moment)
                 path.tempo.observe(beat: moment.beat, time: observation.timestamp)
-                let likelihood = log(destinationPrior) + log(1.0 / 3)
+                let likelihood = log(destinationPrior)
                     + log((1 - Self.insertionProbability) / Double(expected.nonzeroBitCount))
                 output.append(EngravingWeightedPath(path: path, logMass: logMass + likelihood))
                 if !monophonic, unrepresentedMass.isFinite {
@@ -684,8 +694,6 @@ struct EngravingFilter {
                 merged[i].path.onsetEvidence = min(merged[i].path.onsetEvidence, path.onsetEvidence)
                 merged[i].path.errors = max(merged[i].path.errors, path.errors)
                 merged[i].path.recentFit = zip(merged[i].path.recentFit, path.recentFit).map { min($0, $1) }
-                merged[i].path.leftAssignments = min(merged[i].path.leftAssignments, path.leftAssignments)
-                merged[i].path.rightAssignments = min(merged[i].path.rightAssignments, path.rightAssignments)
                 merged[i].path.skippedAttacks = merged[i].path.skippedAttacks || path.skippedAttacks
                 merged[i].path.omittedAttacks = max(merged[i].path.omittedAttacks, path.omittedAttacks)
                 if let start = path.omissionStart { merged[i].path.omissionStart = min(merged[i].path.omissionStart ?? start, start) }
@@ -712,20 +720,6 @@ struct EngravingFilter {
                     retained.append(item); used.insert(i); taken += 1
                     counts[item.path.current.offset, default: 0] += 1
                 }
-            }
-        }
-        // The upper hand often arrives first. Reserve a plausible coupled-hand state
-        // before filling the destination's remaining slots with variations of one hand.
-        struct LaneKey: Hashable { let offset: Int; let hands: EngravingPath.Hands }
-        var lanes = Set(retained.map { LaneKey(offset: $0.path.current.offset, hands: $0.path.hands) })
-        for (i, item) in sorted.enumerated() where !used.contains(i) {
-            let lane = LaneKey(offset: item.path.current.offset, hands: item.path.hands)
-            if !lanes.contains(lane), retained.count < limits.hypotheses,
-               counts[item.path.current.offset, default: 0] < limits.perDestination {
-                lanes.insert(lane)
-                retained.append(item)
-                used.insert(i)
-                counts[item.path.current.offset, default: 0] += 1
             }
         }
         for (i, item) in sorted.enumerated() where !used.contains(i) {
@@ -828,7 +822,7 @@ struct EngravingFilter {
                 } else { result.append(value) }
             }
             if result.count > min(limits.residuals, 128) {
-                result.sort { $0.logMass > $1.logMass }
+                result = Self.sortedResiduals(result)
                 let excess = result.suffix(from: min(limits.residuals, 128) - 1)
                 let combined = EngravingResidual(range: excess.map(\.range.lowerBound).min()!...excess.map(\.range.upperBound).max()!,
                                                 logMass: EngravingMath.sum(excess.map(\.logMass)))
@@ -836,51 +830,13 @@ struct EngravingFilter {
             }
             return result
         }
-        struct Key: Hashable {
-            let range: ClosedRange<Int>
-            let episode: UInt64?
-            let coherent: Bool
-            let fresh: Bool
-            let continuation: EngravingContinuation?
-            let exactPath: EngravingPath?
-            let played: UInt128
-            let possiblePlayed: UInt128
-            let lagPitches: UInt128
-            let handsMask: UInt8
-            let lagOrigins: UInt16?
-            let lagPlayed: UInt128
-            let lagCount: Int?
-        }
-        var indices: [Key: Int] = [:]
-        var result: [EngravingResidual] = []
-        for value in values {
-            let key = Key(range: value.range, episode: value.episode, coherent: value.coherent,
-                          fresh: value.fresh, continuation: value.continuation, exactPath: value.exactPath, played: value.played,
-                          possiblePlayed: value.possiblePlayed, lagPitches: value.lagPitches, handsMask: value.handsMask,
-                          lagOrigins: value.lagOrigins, lagPlayed: value.lagPlayed, lagCount: value.lagCount)
-            if let index = indices[key] {
-                let last = result[index]
-                var timing = last
-                timing.mergeTiming(value)
-                result[index] = EngravingResidual(range: last.range,
-                    logMass: EngravingMath.add(last.logMass, value.logMass), episode: last.episode, coherent: last.coherent, fresh: last.fresh,
-                    onsets: min(last.onsets, value.onsets), separation: min(last.separation, value.separation),
-                    onsetTime: timing.onsetTime, lastTime: timing.lastTime,
-                    played: last.played & value.played, possiblePlayed: last.possiblePlayed | value.possiblePlayed,
-                    continuation: last.continuation, exactPath: last.exactPath, handsMask: last.handsMask | value.handsMask,
-                    lagPitches: last.lagPitches | value.lagPitches, lagKnown: last.lagKnown && value.lagKnown, lagCount: last.lagCount,
-                    lagOrigins: last.lagOrigins, lagPlayed: last.lagPlayed, fitDebt: last.fitDebt | value.fitDebt, earliestOnsetTime: timing.earliestOnsetTime,
-                    earliestLastTime: timing.earliestLastTime, latestLagTime: timing.latestLagTime)
-            } else {
-                indices[key] = result.count
-                result.append(value)
-            }
-        }
+        // These are disjoint contributions, even when their future states coincide.
+        // Keep them separately until the capacity requires coverage-envelope merging;
+        // hashing every full path here only to erase it below repeats expensive work.
+        var result = values
         let capacity = limits.residuals
         if result.count > capacity {
-            result = result.enumerated().sorted {
-                $0.element.logMass == $1.element.logMass ? $0.offset < $1.offset : $0.element.logMass > $1.element.logMass
-            }.map(\.element)
+            result = Self.sortedResiduals(result)
             let preciseCount = min(limits.hypotheses, capacity / 4)
             var coarse: [EngravingResidual] = []
             struct CoverageKey: Hashable {
@@ -932,9 +888,7 @@ struct EngravingFilter {
             }
             let available = capacity - preciseCount
             if coarse.count > available {
-                coarse = coarse.enumerated().sorted {
-                    $0.element.logMass == $1.element.logMass ? $0.offset < $1.offset : $0.element.logMass > $1.element.logMass
-                }.map(\.element)
+                coarse = Self.sortedResiduals(coarse)
                 // Spend the tail budget on musical frontiers. Collapsing all tail mass
                 // into one interval would let it choose an unrelated chord on each attack.
                 let retainedCount = available / 4
@@ -976,9 +930,7 @@ struct EngravingFilter {
                 }
                 if tail.count > available - retainedCount {
                     let tailBudget = available - retainedCount
-                    tail = tail.enumerated().sorted {
-                        $0.element.logMass == $1.element.logMass ? $0.offset < $1.offset : $0.element.logMass > $1.element.logMass
-                    }.map(\.element)
+                    tail = Self.sortedResiduals(tail)
                     struct Location: Hashable { let range: ClosedRange<Int>; let hands: UInt8; let coherent: Bool; let fresh: Bool }
                     var indices: [Location: Int] = [:]
                     var locations: [EngravingResidual] = []
@@ -992,7 +944,7 @@ struct EngravingFilter {
                     tail = Array(tail.prefix(detailedCount)) + locations
                 }
                 if tail.count > available - retainedCount {
-                    tail.sort { $0.logMass > $1.logMass }
+                    tail = Self.sortedResiduals(tail)
                     let count = available - retainedCount - 1
                     let excess = tail.dropFirst(count)
                     let combined = EngravingResidual(range: excess.map(\.range.lowerBound).min()!...excess.map(\.range.upperBound).max()!,
@@ -1006,6 +958,14 @@ struct EngravingFilter {
         return result
     }
 
+    /// Sort small indices rather than repeatedly moving large residual records (including
+    /// retained path arrays) through the sorting buffer. Ties retain deterministic order.
+    private static func sortedResiduals(_ values: [EngravingResidual]) -> [EngravingResidual] {
+        values.indices.sorted {
+            values[$0].logMass == values[$1].logMass ? $0 < $1 : values[$0].logMass > values[$1].logMass
+        }.map { values[$0] }
+    }
+
     private mutating func propagate(_ residual: EngravingResidual, observation: EngravingInputState.Observation,
                            score: EngravingScoreIndex, calibration: EngravingCalibration,
                            logContinuity: Double, into output: inout [EngravingResidual],
@@ -1016,14 +976,14 @@ struct EngravingFilter {
         // attack and let it compete for the active beam; a former pruning decision must
         // not permanently exile the hand/onset assignment that the new attack confirms.
         if !monophonicScore, let path = residual.exactPath,
-           expansions < limits.expansions - limits.destinations * 3 - 64 {
+           expansions < limits.expansions - limits.destinations - 64 {
             expand(.init(path: path, logMass: residual.logMass), observation: observation,
                    bit: EngravingScoreIndex.mask(pitch), score: score, calibration: calibration,
                    logContinuity: logContinuity, into: &represented)
             return
         }
         if !monophonicScore, let state = residual.continuation,
-           expansions < limits.expansions - limits.destinations * 3 - 64 {
+           expansions < limits.expansions - limits.destinations - 64 {
             var path = EngravingPath(current: state.current, previous: state.previous, hands: state.hands,
                 episode: residual.episode ?? 0, start: state.current.offset,
                 lastObservation: observation.id, lastAttack: pitch)
@@ -1137,8 +1097,6 @@ struct EngravingFilter {
 
     private func laneMask(_ offset: Int, hands: EngravingPath.Hands, score: EngravingScoreIndex) -> UInt128 {
         switch hands {
-        case .left: score.moments[offset].left
-        case .right: score.moments[offset].right
         case .both: score.moments[offset].pitches
         }
     }
@@ -1179,14 +1137,12 @@ struct EngravingFilter {
         noise.fresh = false
         output.append(noise)
 
-        let lagMasks = EngravingPath.Hands.allCases.map { hand in
-            residual.lagCount == 0 ? UInt128(0) : residual.lagKnown ? residual.lagPitches
-                : lagPossibilities(at: source, hands: hand, origins: residual.lagOrigins,
-                                   played: residual.lagPlayed, score: score).pitches & residual.lagPitches
-        }
+        let lagMask = residual.lagCount == 0 ? UInt128(0) : residual.lagKnown ? residual.lagPitches
+            : lagPossibilities(at: source, hands: .both, origins: residual.lagOrigins,
+                               played: residual.lagPlayed, score: score).pitches & residual.lagPitches
         let cacheKey = EngravingEnvelopeKey(family: score.transitionFamily(at: source, reach: activeReach),
             played: residual.played, possiblePlayed: residual.possiblePlayed, hands: residual.handsMask,
-            lagMasks: lagMasks, lagKnown: residual.lagKnown, lagCount: residual.lagCount,
+            lagMask: lagMask, lagKnown: residual.lagKnown, lagCount: residual.lagCount,
             onsetTime: residual.onsetTime, earliestOnsetTime: residual.earliestOnsetTime ?? residual.onsetTime,
             lastTime: residual.lastTime, earliestLastTime: residual.earliestLastTime ?? residual.lastTime,
             lagTime: residual.latestLagTime)
@@ -1231,7 +1187,7 @@ struct EngravingFilter {
             for hand in EngravingPath.Hands.allCases where residual.handsMask & (1 << hand.rawValue) != 0 {
                 let expected = laneMask(source, hands: hand, score: score)
                 guard expected != 0, residual.played & ~expected == 0 else { continue }
-                let possibleLag = lagMasks[Int(hand.rawValue)]
+                let possibleLag = lagMask
                 let lagLow = possibleLag != 0 && (residual.lagKnown || residual.lagCount != nil) ? 0.018 : 0.0
                 var progressions: [Progression] = []
                 var totalProgression = 0.0
@@ -1241,7 +1197,7 @@ struct EngravingFilter {
                     for nextHand in EngravingPath.Hands.allCases {
                         let pitches = laneMask(target, hands: nextHand, score: score)
                         guard pitches != 0 else { continue }
-                        let weight = omissionWeight * (nextHand == hand ? 0.98 : 0.01)
+                        let weight = omissionWeight
                         totalProgression += weight
                         if pitches & bit != 0 {
                             progressions.append(Progression(key: Key(target: target, hands: nextHand, kind: 1),
@@ -1351,8 +1307,6 @@ struct EngravingFilter {
         }
         func mask(_ i: Int, _ hand: EngravingPath.Hands) -> UInt128 {
             switch hand {
-            case .left: score.moments[i].left
-            case .right: score.moments[i].right
             case .both: score.moments[i].pitches
             }
         }
@@ -1390,7 +1344,7 @@ struct EngravingFilter {
                         for nextHand in EngravingPath.Hands.allCases {
                             let pitches = mask(target, nextHand)
                             guard pitches != 0 else { continue }
-                            let contribution = weight * (nextHand == hand ? 0.98 : 0.01)
+                            let contribution = weight
                             add(pitches, low: 0.90 * contribution, high: contribution)
                         }
                         if mask(target, hand) != 0 { omitted += 1 }
@@ -1411,8 +1365,6 @@ struct EngravingFilter {
         for hand in EngravingPath.Hands.allCases {
             func mask(_ i: Int, _ hand: EngravingPath.Hands) -> UInt128 {
                 switch hand {
-                case .left: score.moments[i].left
-                case .right: score.moments[i].right
                 case .both: score.moments[i].pitches
                 }
             }
@@ -1427,7 +1379,7 @@ struct EngravingFilter {
                 for nextHand in EngravingPath.Hands.allCases {
                     let pitches = mask(destination, nextHand)
                     guard pitches != 0 else { continue }
-                    let contribution = weight * (nextHand == hand ? 0.98 : 0.01)
+                    let contribution = weight
                     total += contribution
                     if destination == target { matching += contribution / Double(pitches.nonzeroBitCount) }
                 }

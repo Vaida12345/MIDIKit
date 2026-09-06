@@ -117,8 +117,7 @@ struct EngravingScoreIndex {
             return compiled.indices.map { source in
                 var signature: [UInt128] = []
                 for i in source..<min(compiled.count, source + reach + 1) {
-                    signature.append(compiled[i].left)
-                    signature.append(compiled[i].right)
+                    signature.append(compiled[i].pitches)
                     signature.append(compiled[i].rolled ? 1 : 0)
                 }
                 if let id = identifiers[signature] { return id }
@@ -151,9 +150,9 @@ struct EngravingScoreIndex {
             for (row, reach) in [8, 16].enumerated() {
                 for source in compiled.indices {
                     let sourcePitch = compiled[source].lowestPitch
-                    for hand in 0..<3 {
+                    for hand in 0..<1 {
                         func audible(_ i: Int, _ lane: Int) -> UInt128 {
-                            lane == 0 ? compiled[i].left : lane == 1 ? compiled[i].right : compiled[i].pitches
+                            compiled[i].pitches
                         }
                         guard audible(source, hand) != 0 else { continue }
                         var weights: [Int: Double] = [:]
@@ -162,8 +161,8 @@ struct EngravingScoreIndex {
                         if last > source {
                             for target in (source + 1)...last {
                                 let baseWeight = 0.86 * pow(0.04, Double(omissions))
-                                for nextHand in 0..<3 where audible(target, nextHand) != 0 {
-                                    let contribution = baseWeight * (hand == nextHand ? 0.98 : 0.01)
+                                for nextHand in 0..<1 where audible(target, nextHand) != 0 {
+                                    let contribution = baseWeight
                                     total += contribution
                                     weights[compiled[target].lowestPitch, default: 0] += contribution
                                 }
@@ -262,12 +261,12 @@ struct EngravingScoreIndex {
 
 /// Engineering budgets, not musical thresholds. Tests can use a larger exact-search budget.
 struct EngravingLimits {
-    static let revision = 2
+    static let revision = 3
     var hypotheses = 128
     var perDestination = 8
     var destinations = 64
     var expansions = 4_096
     var history = 256
-    var residuals = 4_096
+    var residuals = 2_048
     var localReach = 8
 }

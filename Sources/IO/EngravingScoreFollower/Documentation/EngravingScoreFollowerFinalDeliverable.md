@@ -1,6 +1,6 @@
 # EngravingScrollFollower — behavioral specification
 
-Revision 1, 5 September 2026. Consolidated design for review; implementation is not part of this deliverable.
+Revision 2, 6 September 2026. Both-hands-only following replaces the earlier single-hand practice requirement.
 
 This is the sole specification for the engraving follower. It supersedes the previous integration guide, agent contract, implementation plan, deliverable, and literature review. All behavior needed to implement the model is defined here; the linked papers explain evidence and limitations, not additional requirements. The user’s current requirements take precedence over earlier documents and the existing Swift stub.
 
@@ -12,7 +12,7 @@ The product is called **EngravingScrollFollower** in this document. Its existing
 
 The follower recommends when an engraving view should reveal the line the pianist has demonstrably entered, so the pianist can continue without manual scrolling. Ordinary scrolling occurs on confirmed entry into that line, as explicitly chosen by the user. Its marker is secondary: it helps the pianist see and assess the follower’s estimate.
 
-A piano performance is not an exact transcription of the reference. Normal input includes incomplete chords, wrong or extra notes, immediate corrections, omitted passages, repeated notes, short loops, structural repeats, asynchronous hands, one-hand practice, legato, pedals, rubato, and pauses. These are explanations the model must consider, not exceptions handled only after an exact matcher fails.
+A piano performance is not an exact transcription of the reference. Normal input includes incomplete chords, wrong or extra notes, immediate corrections, omitted passages, repeated notes, short loops, structural repeats, asynchronous hands, legato, pedals, rubato, and pauses. These are explanations the model must consider, not exceptions handled only after an exact matcher fails.
 
 The model has three separate responsibilities:
 
@@ -28,9 +28,9 @@ The aspiration is to scroll exactly when expected. The enforceable contract is m
 
 1. Silence never advances the musical position or triggers a later scheduled scroll. This is an event-driven component.
 2. Only an observed positive-velocity note-on can originate support for a new score attack. Releases and controls can refine existing explanations.
-3. The model MUST keep competing explanations for onset membership, mistakes, position, hands, and timing. No irreversible global chord grouping precedes alignment.
+3. The model MUST keep competing explanations for onset membership, mistakes, position, delayed notes, and timing. No irreversible global chord grouping precedes alignment.
 4. A serialized chord MUST NOT acquire several onset confirmations merely because it contains several MIDI messages. Genuine ambiguity between a roll and successive notes remains uncertainty.
-5. Exact chord completion, exact pitch masks, a mandatory hand, and a fixed chord timeout are never prerequisites for progress.
+5. Exact chord completion, exact pitch masks and a fixed chord timeout are never prerequisites for progress.
 6. An observation explained only as a mistake supplies no positive progress/action evidence; one anomalous onset cannot authorize a new-episode viewport jump. Correct local continuation after mistakes can recover without first obtaining a global-jump certificate.
 7. Long successful history supplies continuity preference; fresh evidence supplies permission to move. Old success cannot indefinitely excuse current mismatch.
 8. A new episode uses only its own post-change observations as destination evidence. Unrelated mistakes cannot accumulate into a jump.
@@ -117,7 +117,7 @@ Callers serialize lifecycle operations, visibility reports, and MIDI consumption
 | Pending viewport request, output revision, and movement hysteresis | Clear | Clear; caller discards previous navigation-epoch requests |
 | visibleRange | Clear; await a fresh report | Retain latest report provisionally; accept subsequent reports |
 | Beat/time phase, episode tempo, timestamp interval anchors | Clear | Clear; never time across navigation |
-| Current hand-participation certainty | Clear | Clear |
+| Published hand diagnostic | Clear | Clear |
 | Learned chord spread, hand-offset variability, articulation/error tendencies | Clear | Retain broad, robust distributions and sample support |
 | Learned absolute tempo | Clear | At most a broad initialization prior, never an active beat clock |
 | Known depressed-key/pedal facts | Clear to unknown | Clear to unknown; ignored input during navigation could otherwise leave stale held keys or pedals |
@@ -137,12 +137,12 @@ The design retains the useful existing diagnostic fields and fixes their meaning
 | measureIndex | Owner of beat, not necessarily owner of the held displayBeat |
 | confidence | Conservative model support for the exact published beat, after marginalizing latent substates and accounting for unexamined alternatives (§9) |
 | state | tracking, uncertain, or lost; acquisition remains private |
-| activeHands | unknown, left, right, or both; inferred score-lane participation with hysteresis |
+| activeHands | both after acquisition; legacy unknown/left/right enum cases remain source-compatible but no individual-hand mode is inferred |
 | viewport | unchanged, advance(toLine:), or jump(toLine:) |
 | viewportRevision | Epoch-local revision of viewport authority; changes on a new request or cancellation so the host can discard obsolete deferred requests (§13.5) |
 | didReframe | True exactly when this Update contains jump; it describes a recommendation, not acknowledgment that the view moved |
 
-Before initial acquisition, return nil. Afterwards, return an Update when committed position, display position, state, hand participation, a material confidence change, or viewport authority changes. A cancellation returns an Update even if beat and displayBeat stay the same. Default confidence-only publication granularity is 0.05 absolute; state and authority changes are never suppressed by this granularity. The confidence value itself is not rounded for inference.
+Before initial acquisition, return nil. Afterwards, return an Update when committed position, display position, state, a material confidence change, or viewport authority changes. A cancellation returns an Update even if beat and displayBeat stay the same. Default confidence-only publication granularity is 0.05 absolute; state and authority changes are never suppressed by this granularity. The confidence value itself is not rounded for inference.
 
 A recommendation is a one-time event in that Update, not a persistent command to replay from a cached snapshot. Later Updates return unchanged unless a new recommendation is authorized. Nil means no new public information, not permission to clear the last display or assume tracking failed.
 
@@ -158,7 +158,7 @@ Maintain a bounded distribution over plausible explanations, rather than one mut
 
 - Score occurrence and current score-onset assignment.
 - Which expected pitches have been attacked, unexpected attacks, and possible rearticulations.
-- Coupled left/right attack positions, uncertain participation, and delayed/early hand assignments.
+- Combined-staff onset coverage and delayed/early note assignments.
 - Attack and release timing relationships; onset-spread versus between-onset timing.
 - Episode identity, proposed change point, coherent post-change progress, and whether continuation or a restart explains the observation.
 - Local tempo tendency and uncertainty, independently from shared performer calibration.
@@ -183,7 +183,7 @@ One observation is explained once within each hypothesis. It may support differe
 
 ### 5.3 Chords, errors, and anti-sticking behavior
 
-Missing tones are charged when a hypothesis leaves or revises an onset, not repeatedly while the onset remains incomplete. Omission cost depends on inferred hand participation. Expected-note coverage has diminishing returns; ten notes in a chord do not count as ten independent episode observations.
+Missing tones are charged when a hypothesis leaves or revises an onset, not repeatedly while the onset remains incomplete. Both staves contribute to omission cost; the model cannot explain missing tones by switching to a single-hand mode. Expected-note coverage has diminishing returns; ten notes in a chord do not count as ten independent episode observations.
 
 An unexpected attack has a nonzero noise/insertion probability everywhere, with a finite penalty. A wrong note can combine insertion of the played pitch with omission of an expected pitch. Small pitch errors may receive a weak proximity preference, but exact register remains important: octave or chromatic similarity cannot erase positional distinctions.
 
@@ -195,13 +195,13 @@ That is an evidence-conditioned expectation, not an oracle guarantee. If the sam
 
 ### 5.4 Hands and the published musical position
 
-Left and right are coupled score lanes, not two unconstrained followers. Permit bounded early/late assignments across adjacent moments. The performance may contain either lane, both, or a gradual participation change without user selection.
+Follow the union of both scored staves in one mode. Do not instantiate left-only or right-only alternatives or infer participation changes. Scores containing notes on only one staff remain valid. Permit bounded early/late note assignments across adjacent moments; both-hands-only does not require simultaneous MIDI messages.
 
 Each hypothesis has a central progress frontier: the latest onset with a supported attack in its coherent forward episode. A trailing hand can finish an earlier onset without reversing or advancing that frontier. Two attacks at the same notated onset cannot advance it twice. A leading hand can propose the next frontier, but the same-onset/lagging alternatives still compete before commitment.
 
-Publish beat only when sufficient mass supports that exact frontier. Never average two different occurrences or two hand beats into an unobserved intermediate beat. Maintain separately the earliest still-relevant active-hand passage for presentation; an early hand must not make the viewport remove the other hand’s currently needed notation. An inactive lane must not hold progress hostage to its missing notes.
+Publish beat only when sufficient mass supports that exact frontier. Never average two different occurrences or two hand beats into an unobserved intermediate beat. Maintain separately the earliest still-relevant active-hand passage for presentation; an early hand must not make the viewport remove the other hand’s currently needed notation. Missing notes compete as omissions; exact chord completion is still not required.
 
-Participation changes gradually with repeated credible assignments, with faster widening to unknown when observations disagree. Do not confidently select a new hand from one convenient pitch, and do not repeatedly switch hand interpretations to eliminate omission costs. Shared-pitch and crossing-hand ambiguities can leave activeHands unknown while musical following remains useful.
+Publish activeHands as both after acquisition. Shared pitches remain one audible observation. The left and right enum cases are retained only for source compatibility, with no model branches or input requirements attached to them.
 
 ## 6. Timing and performer adaptation
 
@@ -296,7 +296,7 @@ A distinctive partial chord may acquire without completion. A single common note
 
 ### 8.2 Occurrence identity
 
-Index candidates using error-tolerant unions of pitch postings and ordered context. The rarest observed pitch may be the mistake; it cannot be a mandatory gate. Exact-mask and fingerprint matches may accelerate retrieval but cannot exclude partial chords, supersets, one-hand matches, or candidates with a plausible omission.
+Index candidates using error-tolerant unions of pitch postings and ordered context. The rarest observed pitch may be the mistake; it cannot be a mandatory gate. Exact-mask and fingerprint matches may accelerate retrieval but cannot exclude partial chords, supersets, or candidates with a plausible omission.
 
 Retain ordinary local paths independently of global retrieval. Allocate candidate capacity to materially different destinations and to both continuity and new episodes. A rich set of hand substates at one location must not evict every other occurrence.
 
@@ -436,7 +436,7 @@ Emit advance(toLine:) only when:
 1. The current episode is tracking and recent received attacks support ordinary forward reading, including a resolved local repair; the triggering consume call supplies new confirmation under §4.3.
 2. Musical progress has entered the adjacent target line under §13.2 and that line is not already readable in visibleRange.
 3. Credible interpretations agree that the performance has made this handoff; it is not an isolated extra note that might belong to the old line’s chord or a momentary early/late-hand ambiguity.
-4. The target and current coupled-hand reading anchor are compatible with the reveal; missing tones, already struck held notes, and inactive lanes do not require waiting for chord completion or physical release.
+4. The target and current coupled-hand reading anchor are compatible with the reveal; missing tones and already struck held notes do not require waiting for chord completion or physical release.
 5. The safe-action support threshold is met and no conflicting request is pending.
 
 An advance means reveal the **currently entered** line through an ordinary forward viewport transition. It never targets a future unentered line. Preserve a familiar visual landmark where the layout allows, but an overlap requirement must not become an earlier trigger or a requirement to retain an already completed line indefinitely. The view chooses its animation and alignment; this model supplies the line and action, not animation duration.
@@ -446,6 +446,8 @@ Once all conditions pass, emit on that consume call. Do not wait for another ons
 If the line was already fully visible on entry, return unchanged. Continue evaluating current visibility on later attacks. If it later becomes clipped without userReset, or supported progress moves beyond an acknowledged partial-line region, a same-line forward reveal may use advance(toLine:) for that already entered line. It is not a new musical handoff or a license to reveal the following line. Reject redundant requests when the achieved region still contains current progress and visibility has not changed.
 
 There are no attacks generated at notated line boundaries. The final onset of the previous line, its sustain ending, and silence before the next line never trigger an advance. A next relevant attack across multiple empty systems still waits for observed entry and uses §11.3 if direct reframing is necessary.
+
+Ordinary action support marginalizes alternatives with different change-point ages if they agree on the entered line and its current reading anchors. Episode identity alone must not veto the same safe forward reveal. This does not waive new-episode commitment or jump corroboration requirements.
 
 ### 13.4 Screen-capacity limitation
 
@@ -495,7 +497,7 @@ These are acceptance behaviors, not an implementation sequence. Trace fixtures m
 | Consecutive wrong notes followed by clear local continuation | Confidence falls; onset does not absorb forever; local recovery is possible without global relocation |
 | Repeated note with a release / without a received release | Both remain attacks; score context distinguishes restrike from scored repetition |
 | Left leads, right catches up; reverse ordering | No double advancement for one scored onset; no loss merely from lane order |
-| One hand is silent or a second hand joins | No mode selection and no requirement to play every reference lane; participation adapts |
+| Notes from a scored staff are omitted | Score coverage remains both hands; omissions never switch to a single-hand mode |
 | One pitch belongs to both hands | No duplicated likelihood or false certainty that both hands played |
 | Pedaled/legato overlap across chords | Key/sound overlap does not merge successive score attacks or wait for pedal-up |
 | Strong rubato, abrupt slowdown, invalid timestamps | Following remains pitch/sequence capable; tempo uncertainty widens instead of forcing a remote destination |
@@ -517,7 +519,7 @@ These are acceptance behaviors, not an implementation sequence. Trace fixtures m
 | Long held onset/rest before an unread line, no intervening events | No early reveal and no timer; wait for confirmed played entry |
 | Strong partial first onset in next line, after coherent continuity | Advance on the confirming consume call if the line is unreadable; do not wait for chord completion |
 | First written onset of next line omitted | Later supported actual entry can advance; no demand to replay the missing first onset |
-| Leading hand seems at new line but credible current-line assignment remains | Hold until handoff is supported; inactive-hand omissions and already struck sustains do not impose a release gate |
+| Leading hand seems at new line but credible current-line assignment remains | Hold until handoff is supported; omissions and already struck sustains do not impose a release gate |
 | Automatic request delayed or refused | No assumed viewport change, self-confirmation, or command storm |
 | Advance queued, then uncertainty or visible replay occurs | New viewportRevision cancels stale queued authority; unchanged does not allow the old advance to execute later |
 | Entry beat commits before the advance threshold passes | Handoff remains eligible; later confirming evidence in that same line emits the needed advance |

@@ -13,6 +13,7 @@ import Foundation
 /// separate presentation policy so uncertainty, ordinary mistakes, and visible replay do not
 /// destabilize the performer's spatial frame.
 public final class EngravingScoreFollower {
+    /// Legacy single-hand cases remain source-compatible but are no longer emitted.
     public enum HandParticipation: UInt8, Sendable, Hashable {
         case unknown
         case left
@@ -44,6 +45,7 @@ public final class EngravingScoreFollower {
         public let measureIndex: Int
         public let confidence: Double
         public let state: TrackingState
+        /// Always `.both` after acquisition; individual-hand practice is not inferred.
         public let activeHands: HandParticipation
         public let viewport: ViewportRecommendation
 
@@ -179,7 +181,7 @@ public final class EngravingScoreFollower {
         guard let committed else { return nil }
         filter.committedEpisode = committed.episode
         filter.committedOffset = committed.current.offset
-        updateHands(evidence, path: committed)
+        hands = .both
         if trackingState == .tracking && fresh && committed.episode == best.episode,
            committed.onsets >= 3, exact >= 0.98, !best.advanced,
            let spread = EngravingHostTime.seconds(from: best.trailing ? best.previous?.firstTime ?? 0 : best.current.firstTime, to: timestamp) {
@@ -191,25 +193,11 @@ public final class EngravingScoreFollower {
         return publish(path: committed, evidence: evidence, action: action, score: score)
     }
 
-    private func updateHands(_ evidence: EngravingEvidence, path: EngravingPath) {
-        guard trackingState == .tracking, path.onsets >= 3 else { hands = .unknown; return }
-        let left = evidence.support { $0.hands == .left && $0.leftAssignments >= 3 }
-        let right = evidence.support { $0.hands == .right && $0.rightAssignments >= 3 }
-        let both = evidence.support { $0.hands == .both && $0.leftAssignments >= 2 && $0.rightAssignments >= 2 }
-        if left >= 0.85 { hands = .left }
-        else if right >= 0.85 { hands = .right }
-        else if both >= 0.85 { hands = .both }
-        else {
-            let support: Double = hands == .left ? left : hands == .right ? right : hands == .both ? both : 0
-            if support < 0.60 { hands = .unknown }
-        }
-    }
-
     private func publishHeld(evidence: EngravingEvidence, observation: EngravingInputState.Observation,
                              score: EngravingScoreIndex) -> Update? {
         guard let committed else { return nil }
         trackingState = .lost
-        hands = .unknown
+        hands = .both
         let action = presentation.consume(path: committed, evidence: evidence, state: .lost, fresh: false, score: score)
         return publish(path: committed, evidence: evidence, action: action, score: score)
     }

@@ -47,8 +47,7 @@ struct EngravingPresentation {
     }
 
     private func anchor(_ path: EngravingPath, score: EngravingScoreIndex) -> Double {
-        guard path.hands == .both, path.leftAssignments >= 2, path.rightAssignments >= 2,
-              let previous = path.previous else { return score.moments[path.current.offset].beat }
+        guard let previous = path.previous else { return score.moments[path.current.offset].beat }
         let moment = score.moments[previous.offset]
         // Already attacked sustains do not hold the reading anchor behind the frontier.
         let missing = moment.pitches & ~previous.pitches
@@ -138,14 +137,17 @@ struct EngravingPresentation {
 
         let safeAnchor = anchor(path, score: score)
         func residualAgrees(_ residual: EngravingResidual, jump: Bool) -> Bool {
-            residual.episode == path.episode && residual.coherent && residual.fresh
+            (!jump || residual.episode == path.episode) && residual.coherent && residual.fresh
                 && score.moments[residual.range.lowerBound].line == line
                 && score.moments[residual.range.upperBound].line == line
                 && score.moments[residual.readingOffset(score: score)].line == line
                 && (!jump || residual.onsets >= 2 && residual.separation >= log(4))
         }
+        // Ordinary reading need is shared by histories that agree on this line and
+        // its anchors. A latent change-point age is not an opposing viewport action.
+        // Nonlocal relocation still needs the separate episode and jump certificates.
         let actionSupport = evidence.support(where: {
-            $0.episode == path.episode && score.moments[$0.current.offset].line == line && $0.matched
+            $0.fit >= 0.55 && score.moments[$0.current.offset].line == line && $0.matched
                 && self.anchor($0, score: score) >= score.lines[line].extent.lowerBound
         }, compatibleResidual: { residualAgrees($0, jump: false) })
         let ordinary: Bool

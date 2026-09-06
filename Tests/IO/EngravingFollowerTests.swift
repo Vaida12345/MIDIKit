@@ -150,7 +150,7 @@ struct EngravingMusicalTests {
         #expect(follower.consume(.controlChange(control: 64, value: 127), timestamp: ticks(2)) == nil)
     }
 
-    @Test func oneHandAndDelayedOtherHandDoNotDoubleAdvance() async throws {
+    @Test func delayedNotesDoNotDoubleAdvance() async throws {
         let notes: [[UInt8]] = [[48, 60], [50, 62], [52, 64], [53, 65], [55, 67]]
         let reference = try EngravingReference(measures: [.init(index: 0, onset: 0, duration: 5)],
             lines: [.init(index: 0, beatRange: 0...5, measureRange: 0...0)],
@@ -167,7 +167,7 @@ struct EngravingMusicalTests {
         #expect(next.last?.beat == 4)
     }
 
-    @Test func participationAdaptsWhenTheOtherLaneJoins() async throws {
+    @Test func omittedNotesDoNotSwitchToSingleHandMode() async throws {
         let reference = try EngravingReference(measures: [.init(index: 0, onset: 0, duration: 8)],
             lines: [.init(index: 0, beatRange: 0...8, measureRange: 0...0)],
             moments: (0..<8).map { i in .init(beat: Double(i), notes: [
@@ -177,7 +177,7 @@ struct EngravingMusicalTests {
         let follower = EngravingScoreFollower()
         await follower.update(reference: reference)
         let right = play([70, 71, 72, 73], follower: follower)
-        #expect(right.last?.activeHands == .right)
+        #expect(right.last?.activeHands == .both)
         var joined: [EngravingScoreFollower.Update] = []
         for i in 4..<8 {
             joined += play([UInt8(70 + i), UInt8(40 + i)], follower: follower, start: Double(i + 1), step: 0.04)
@@ -431,7 +431,7 @@ struct EngravingMusicalTests {
 
 private func path(_ offset: Int, episode: UInt64 = 1, onsets: Int = 4) -> EngravingPath {
     EngravingPath(current: EngravingAssignment(offset: offset, pitches: 1, firstTime: ticks(1), lastTime: ticks(2)),
-                  hands: .right, episode: episode, start: 0, onsets: onsets, onsetEvidence: 10,
+                  hands: .both, episode: episode, start: 0, onsets: onsets, onsetEvidence: 10,
                   lastObservation: UInt64(offset + 100), lastAttack: 60)
 }
 
@@ -442,6 +442,48 @@ private func certain(_ path: EngravingPath, support: Double = 1) -> EngravingEvi
 
 @Suite("Engraving presentation authority")
 struct EngravingPresentationTests {
+    @Test func agreeingReadingPositionsMarginalizeChangePointAge() throws {
+        let score = EngravingScoreIndex(try engraving([[60], [62], [64], [65]], perLine: 2))
+        var policy = EngravingPresentation()
+        policy.report(0...2, score: score)
+        let before = path(1), entry = path(2)
+        _ = policy.consume(path: before, evidence: certain(before), state: .tracking, fresh: true, score: score)
+        let alternateAge = path(2, episode: 9)
+        let evidence = EngravingEvidence(paths: [.init(path: entry, logMass: log(0.97)),
+                                                .init(path: alternateAge, logMass: log(0.03))],
+            residualLogMass: -.infinity, noiseLogMass: -.infinity, totalLogMass: 0, best: entry)
+        #expect(policy.consume(path: entry, evidence: evidence, state: .tracking, fresh: true, score: score) == .advance(toLine: 107))
+    }
+
+    @Test func agreeingResidualReadingRegionDoesNotVetoAnAdvance() throws {
+        let score = EngravingScoreIndex(try engraving([[60], [62], [64], [65]], perLine: 2))
+        var policy = EngravingPresentation()
+        policy.report(0...2, score: score)
+        let before = path(1), entry = path(2)
+        _ = policy.consume(path: before, evidence: certain(before), state: .tracking, fresh: true, score: score)
+        let residual = EngravingResidual(range: 2...3, logMass: log(0.04), coherent: true, fresh: true)
+        let evidence = EngravingEvidence(paths: [.init(path: entry, logMass: log(0.96))],
+            residualLogMass: residual.logMass, noiseLogMass: -.infinity, totalLogMass: 0, best: entry,
+            residuals: [residual])
+        #expect(policy.consume(path: entry, evidence: evidence, state: .tracking, fresh: true, score: score) == .advance(toLine: 107))
+    }
+
+    @Test func boundedTrailingNotesDoNotInventAnEarlierReadingLine() throws {
+        let score = EngravingScoreIndex(try engraving([[48, 60], [50, 62], [52, 64], [53, 65]], perLine: 2))
+        var policy = EngravingPresentation()
+        policy.report(0...2, score: score)
+        let before = path(1), entry = path(3)
+        _ = policy.consume(path: before, evidence: certain(before), state: .tracking, fresh: true, score: score)
+        let residual = EngravingResidual(range: 3...3, logMass: log(0.04), episode: entry.episode,
+            coherent: true, fresh: true, lagPitches: EngravingScoreIndex.mask(64), lagKnown: true,
+            lagCount: 1, lagOrigins: 1)
+        #expect(residual.readingOffset(score: score) == 2)
+        let evidence = EngravingEvidence(paths: [.init(path: entry, logMass: log(0.96))],
+            residualLogMass: residual.logMass, noiseLogMass: -.infinity, totalLogMass: 0, best: entry,
+            residuals: [residual])
+        #expect(policy.consume(path: entry, evidence: evidence, state: .tracking, fresh: true, score: score) == .advance(toLine: 107))
+    }
+
     @Test func largeOmissionWithinAdjacentLineStillUsesTheDirectGate() throws {
         let score = EngravingScoreIndex(try engraving((UInt8(60)...71).map { [$0] }, perLine: 6))
         var policy = EngravingPresentation()
@@ -465,8 +507,6 @@ struct EngravingPresentationTests {
         let before = path(1)
         var leading = path(2)
         leading.hands = .both
-        leading.leftAssignments = 2
-        leading.rightAssignments = 2
         leading.previous = EngravingAssignment(offset: 1, pitches: EngravingScoreIndex.mask(50), firstTime: ticks(1), lastTime: ticks(2))
         _ = policy.consume(path: before, evidence: certain(before), state: .tracking, fresh: true, score: score)
         #expect(policy.consume(path: leading, evidence: certain(leading), state: .tracking, fresh: true, score: score) == .unchanged)

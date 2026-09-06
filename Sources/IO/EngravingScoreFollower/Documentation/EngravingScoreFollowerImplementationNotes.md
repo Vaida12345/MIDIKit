@@ -18,8 +18,9 @@ releases are neutral; duration evidence is withheld for ambiguous reattacks or u
 pedals. Host ticks use `mach_timebase_info`; invalid comparisons never subtract unsigned times.
 
 `EngravingFilter` keeps weighted alternatives for onset coverage, insertion, restrike, relevant
-successors, omissions, trailing hands, participation changes, and change points. Hand modes
-have normalized priors, and pitch emissions are categorical distributions over the expected
+successors, omissions, trailing notes, and change points. Only the combined pitches of both
+scored staves are followed; no left-only/right-only alternatives or participation switches
+are evaluated. Pitch emissions are categorical distributions over the expected
 audible pitches. Timing modifies normalized transition rows, with a broad contamination floor.
 Each path has its own tempo; shared spread calibration learns only from supported local paths.
 
@@ -43,7 +44,9 @@ the denominator at their upper bound. A group known entirely to support that sam
 cannot lower its probability; the conservative minimum uses zero for that group's unknown
 nonnegative mass. This distinction allows exact position to become supported while earlier
 episode history remains ambiguous. It does not give an onset or jump certificate to a group
-whose corroboration is unknown.
+whose corroboration is unknown. Ordinary advance support marginalizes change-point age when
+all alternatives agree on the entered line and reading anchors. That agreement does not
+supply the separate episode corroboration required for a jump.
 
 The small-score oracle runs the same transition model without pruning, retrieval truncation,
 or work truncation and asserts zero residual mass. Monophonic and polyphonic tests compare
@@ -70,13 +73,12 @@ starting outside the usable range as requiring a direct reframe, even across adj
 Omitting just the next line's first attack remains eligible for ordinary confirmed-entry advance.
 
 The filter caps active paths at 128, detailed substates per destination at eight, new destination
-evaluations at 64, detailed expansions at 4,096, and event history at 256. Budget revision 2
-retains 128 residual groups for monophonic scores and permits 4,096 for polyphonic scores.
-The polyphonic bound keeps hand identity, chord coverage, preceding-tone counts, and timestamp
+evaluations at 64, detailed expansions at 4,096, and event history at 256. Budget revision 3
+retains 128 residual groups for monophonic scores and permits 2,048 for polyphonic scores.
+The polyphonic bound keeps chord coverage, preceding-tone counts, and timestamp
 intervals; collapsing these into the original 128 generic groups caused clean chord traces to freeze.
 Half the path slots reserve destination diversity across continuity and recovery; the remaining
-slots retain high-mass hand/onset alternatives. Polyphonic pruning reserves a credible state
-for each hand mode before filling a destination with variants of one mode. Unused capacity is
+slots retain high-mass onset alternatives. Unused capacity is
 redistributed. Normal repair
 examines up to eight score attacks; lost repair widens to sixteen within the same work budget.
 Private acquisition replay uses at most sixteen retained events and shares the current consume
@@ -85,7 +87,10 @@ retains at most one pending intent. Coarse residual-envelope arithmetic is separ
 these fixed capacities. Exact expansion buffers are capped by the event work budget; residual
 transition buffers are bounded by the residual cap and the local transition fan-out. A per-attack
 cache shares identical envelope rows across indexed equivalent score continuations, with at
-most one cache entry per residual-budget slot. It changes computation, not probability mass.
+most one cache entry per residual-budget slot. It changes computation, not probability mass. Residual sorting moves indices rather than
+large path records. Coverage groups are merged when the cap is exceeded; a redundant full-path
+hashing pass before that merge has been removed. Separate unmerged contributions still carry
+their original masses and remain in the evidence denominator.
 
 Bounds can remain loose in complicated repetitive/polyphonic material. The correct response is
 to retain uncertainty and withhold uncertified movement. The tests include both false-certainty
@@ -155,7 +160,7 @@ The Swift Testing suites cover the specification's scenario groups as follows:
 | Familiar one-finger melodies with repeated notes | `oneFingerMelody` (three melodies at three speeds), `missingClockStillAcquiresAndFinishes` |
 | Missing attacks, local recovery, remote-looking errors | omission/recovery tests, `oneRemoteLookingCohortCannotJump`, `separateRemoteErrorsCannotAccumulateAJump` |
 | Scored repetitions with/without releases | `scoredRepetitionsSurviveMissingReleases` |
-| Leading/trailing and changing hands | `oneHandAndDelayedOtherHandDoNotDoubleAdvance`, `participationAdaptsWhenTheOtherLaneJoins` |
+| Delayed notes and omissions under combined-staff following | `delayedNotesDoNotDoubleAdvance`, `omittedNotesDoNotSwitchToSingleHandMode` |
 | Shared audible pitch and reference normalization | `canonicalSharedPitchIsOneAudibleAttack` |
 | Legato, sustain, sostenuto | physical-state tests and `pedalOverlapDoesNotDelayProgress` |
 | Invalid clocks, missing anchors, pauses | `timestampComparisonsArePairLocal`, `invalidTimestampsPreserveSequenceFollowing`, `pauseResumesLocally` |
@@ -325,3 +330,41 @@ advances, so revision 2 retains 4,096 for polyphony. These timings are synthetic
 the development machine during a package run; allocation profiling and timestamped real-practice
 evaluation remain outstanding. No empirical confidence-calibration or production-readiness claim
 is made from these tests.
+
+
+## Both-hands and viewport revision — 6 September 2026
+
+The revised product follows the combined score notes only. Individual-hand inference and
+participation adaptation have been removed; the public enum retains its legacy cases for
+source compatibility, while updates publish `both`. Delayed notes, rolls, shared pitches,
+omissions, and scores with notation on a single staff remain supported by the combined model.
+
+Two presentation bounds were unnecessarily withholding ordinary advances: requiring agreement
+on a latent episode age even when the reading action agreed, and replacing retained predecessor
+bounds with a blanket sixteen-onset lag. Ordinary action support now marginalizes that age and
+uses the retained lag origins/coverage. The jump gates and genuinely unresolved occurrence
+ambiguity remain intact. Repeated identical passages can still withhold movement when they do
+not distinguish the occurrence; the line-length scrolling tests distinguish the opening first.
+
+The release verification passed all **69 engraving tests in seven suites**, including the
+small exhaustive comparisons of destination, mode, and reading-action support. Added regressions
+cover both viewport defects and public-API advances with two/eight-onset lines, missing attack
+clocks, and absent releases. The full package run executed **355 tests in 51 suites**, with the
+same **11 issues in the unchanged general-purpose ScoreFollower tests** and no engraving issues.
+
+Measured release event latency on this machine (synthetic input):
+
+| Trace | Median | p95 | p99 |
+|---|---:|---:|---:|
+| 72 four-tone chords / 288 attacks | 15.37 ms | 21.14 ms | 22.17 ms |
+| 12 two-tone chords | 1.47 ms | 5.08 ms | 8.32 ms |
+| 12 three-tone chords | 3.02 ms | 4.95 ms | 8.36 ms |
+| 12 six-tone chords | 6.48 ms | 10.05 ms | 10.77 ms |
+| 10,000-moment monophonic score / 200 attacks | 1.12 ms | 1.25 ms | 1.34 ms |
+
+The previous recorded 72-chord median/p99 was 70.08/106.64 ms, so the revised median is about
+78% lower on that trace. Polyphonic residual capacity is halved to 2,048. Lower experimental
+caps caused long-passage regressions and were rejected. No uncertainty mass is dropped to meet
+the budget. These results show a substantial reduction, not a hard real-time guarantee or a
+measurement of the host application's rendering latency. Real practice-trace evaluation and
+allocation profiling remain outstanding.
