@@ -24,7 +24,7 @@ extension MIDIContainer {
     /// File write is atomic.
     @inlinable
     public func write(to destination: FinderItem) throws {
-        try self.data().write(to: destination)
+        try self.data().write(to: destination, options: .atomic)
     }
     
     /// Obtain the MIDI data.
