@@ -27,8 +27,12 @@ extension MIDINotes {
                 self.note.description
             }
             
+            /// Calculates the capped timing difference from another matching note.
             func distance(to matching: Matching) -> Double {
-                clamp(abs(self.note.onset - matching.note.onset) + abs(self.note.duration - matching.note.duration) / 10, max: 10)
+                clamp(
+                    abs(self.note.onset - matching.note.onset) + abs(self.note.duration - matching.note.duration) / 10,
+                    max: self.missingPenalty
+                )
             }
             
             init(note: MIDINote, missingPenalty: Double) {
@@ -149,6 +153,22 @@ extension MIDINotes {
         }
         
         return sums.reduce(0, +) 
+    }
+    
+    /// A normalized, pitch-aware difference score to another collection of notes.
+    ///
+    /// The result is in the range `0...1`: `0` represents identical scores and `1` represents
+    /// scores with no notes of the same pitch. Matching notes contribute according to their onset
+    /// and duration differences, while each unmatched note contributes its full penalty.
+    ///
+    /// - Parameter missingPenalty: The maximum contribution of an unmatched note. Defaults to 10 seconds.
+    /// - Returns: A normalized difference score.
+    public func normalizedDistance(to rhs: MIDINotes, missingPenalty: Double = 10) -> Double {
+        guard !self.contents.isEmpty || !rhs.contents.isEmpty else { return 0 }
+        precondition(missingPenalty > 0, "missingPenalty must be greater than zero.")
+        
+        let maximumDistance = missingPenalty * Double(self.contents.count + rhs.contents.count)
+        return self.distance(to: rhs, missingPenalty: missingPenalty) / maximumDistance
     }
     
 }
