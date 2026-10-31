@@ -46,7 +46,7 @@ extension MIDIContainer {
     
     @inlinable
     public init(at source: FinderItem) throws {
-        guard source.exists else { throw FinderItem.FileError(code: .cannotRead(reason: .noSuchFile), source: source) }
+        guard source.exists else { throw FinderItem.FileError(.noSuchFile, source: source, intent: .reading) }
         
         var sequence: MusicSequence!
         try withErrorCaptured {
