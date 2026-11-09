@@ -24,12 +24,14 @@ extension IndexedContainer {
     /// - Parameters:
     ///   - beatsPerMeasure: Initial bar-length prior in beats when no reliable `prior` spacing exists.
     ///   - prior: Optional annotated downbeats in beats. Valid anchors are included exactly as prefix.
+    ///   - transcriptionAlgorithm: The algorithm that transcribed the container, when it is known. It decides which chord algorithm is used, see ``Chord/makeChords(from:spec:optimizeFor:)``.
     /// - Returns: Strictly increasing downbeat positions in beats.
     /// - Complexity: O(c log c + b * k * m), where `c` is chord count, `b` is beam width,
     ///   `k` is max inferred bars, and `m` is candidate options per expansion.
     public func downbeats(
         beatsPerMeasure: Double = 4,
-        prior: [Double]? = nil
+        prior: [Double]? = nil,
+        optimizeFor transcriptionAlgorithm: TranscriptionAlgorithm? = nil
     ) -> [Double] {
         let anchors = Self.sanitizePrior(prior)
         var downbeats = anchors.isEmpty ? [0.0] : anchors
@@ -45,7 +47,7 @@ extension IndexedContainer {
             return downbeats
         }
 
-        let chords = self.chords()
+        let chords = self.chords(optimizeFor: transcriptionAlgorithm)
         if chords.isEmpty {
             return downbeats
         }

@@ -38,7 +38,7 @@ struct ChordTests {
             MIDINote(onset: 0.04, offset: 1, note: 67, velocity: 90), // C major triad
         ])
         let chords = indexed.chords()
-        // All three should be in the same chord (within default 0.1 duration threshold)
+        // All three should be in the same chord: a triad rolled over 20 ms
         #expect(chords.count == 1)
         #expect(chords[0].count == 3)
     }

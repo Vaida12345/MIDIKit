@@ -80,12 +80,14 @@ extension IndexedContainer {
     }
     
     /// Use this to cache & infer velocity for a pitch & onset.
-    public func makeVelocityProvider() -> IndexedContainer.VelocityProvider {
+    ///
+    /// - Parameter transcriptionAlgorithm: The algorithm that transcribed the container, when it is known. It decides which chord algorithm is used, see ``Chord/makeChords(from:spec:optimizeFor:)``.
+    public func makeVelocityProvider(optimizeFor transcriptionAlgorithm: TranscriptionAlgorithm? = nil) -> IndexedContainer.VelocityProvider {
         let full = self.notes.mapValues { joints in
             joints.map({ VelocityProvider.VelocityDataPoint(onset: $0.onset, duration: $0.duration, velocity: $0.velocity) })
         }
         
-        let chords = self.chords()
+        let chords = self.chords(optimizeFor: transcriptionAlgorithm)
         var chroma: [UInt8 : [VelocityProvider.VelocityDataPoint]] = [:]
         chroma.reserveCapacity(12)
         

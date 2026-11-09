@@ -121,11 +121,12 @@ extension IndexedContainer {
     ///   best for tonal, reasonably long excerpts. Highly chromatic,
     ///   atonal, or very short passages may yield less meaningful results.
     ///
+    /// - Parameter transcriptionAlgorithm: The algorithm that transcribed the container, when it is known. It decides which chord algorithm is used, see ``Chord/makeChords(from:spec:optimizeFor:)``.
     /// - Returns: An `IndexedContainer.KeySignature` representing the inferred
     ///   key signature, or `.natural` if no informative semitone transitions
     ///   are found.
-    public func keySignature() -> IndexedContainer.KeySignature {
-        let chords = self.chords()
+    public func keySignature(optimizeFor transcriptionAlgorithm: TranscriptionAlgorithm? = nil) -> IndexedContainer.KeySignature {
+        let chords = self.chords(optimizeFor: transcriptionAlgorithm)
         guard chords.count >= 2 else {
             return .natural
         }

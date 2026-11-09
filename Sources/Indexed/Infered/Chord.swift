@@ -90,14 +90,41 @@ public struct Chord: RandomAccessCollection, Hashable {
         }
     }
     
-    /// Each returned chord is guaranteed to be non-empty.
+    /// Groups the notes of `container` into chords: keys that are pressed together.
     ///
-    /// - Complexity: O(n^2) worse case, O(n log n) practically.
+    /// Each returned chord is guaranteed to be non-empty, holds no key twice, and is sorted by onset. Chords are sorted by `leadingOnset`. A note that is part of a glissando is a chord of its own, with the ``Features/glissando`` feature.
     ///
-    /// Chords are sorted by `leadingOnset`.
+    /// By default, the library judges every two notes that are next to each other in time, and decides whether they were struck together from the gap between them, how the two keys relate (a run goes by steps, a doubling by octaves), how crowded the neighborhood is, and whether the pair stands apart from the notes around it. Notes played slightly apart are told from a fast sequence by that context, which a single window cannot do.
+    ///
+    /// If the algorithm that transcribed `container` is known, passing it lets the library also use what that algorithm is known to get right, for example how its timing is quantized, when it releases a note, or how loud it reports a note. It also tells what to leave out: ``TranscriptionAlgorithm/pianoTranscription`` reports offsets that cannot be relied on, so they are not looked at.
+    ///
+    /// Pass `Spec(duration:)` to opt out and use a constant window instead: consecutive notes whose onsets are at most `duration` apart are in the same chord. `Spec(duration: 0.1)` is what the library did by default before it judged pairs.
+    ///
+    /// - Parameters:
+    ///   - container: The notes to group.
+    ///   - spec: `Spec()` lets the library judge the pairs. `Spec(duration:)` selects the constant window.
+    ///   - transcriptionAlgorithm: The algorithm that transcribed `container`, or `nil` when it is not known. It has no effect when `spec` is `Spec(duration:)`: the explicit window wins.
+    ///
+    /// - Complexity: O(n log n) for the default. For a constant window, O(n^2) worse case, O(n log n) practically.
     public static func makeChords(
         from container: IndexedContainer,
-        spec: Spec = Spec()
+        spec: Spec = Spec(),
+        optimizeFor transcriptionAlgorithm: TranscriptionAlgorithm? = nil
+    ) -> [Chord] {
+        if let duration = spec.explicitDuration {
+            return makeConstantWindowChords(from: container, duration: duration)
+        }
+
+        return Arbiter(optimizingFor: transcriptionAlgorithm).makeChords(from: container)
+    }
+    
+    
+    /// The constant-window algorithm: consecutive notes whose onsets are at most `duration` apart are in the same chord, unless that would put one key in a chord twice, or the notes are part of a glissando.
+    ///
+    /// - Complexity: O(n^2) worse case, O(n log n) practically.
+    private static func makeConstantWindowChords(
+        from container: IndexedContainer,
+        duration: Double
     ) -> [Chord] {
         guard !container.isEmpty else { return [] }
         
@@ -119,7 +146,7 @@ public struct Chord: RandomAccessCollection, Hashable {
             guard lhs.maxOffset.isNil(or: { rhs.contents.last!.onset < $0 }) else { return false }
             
             // ensure minimum distance is smaller than threshold: O(1)
-            guard minDistance(lhs, rhs) <= spec.duration else { return false }
+            guard minDistance(lhs, rhs) <= duration else { return false }
             
             return true
         }
@@ -142,34 +169,10 @@ public struct Chord: RandomAccessCollection, Hashable {
         }
         clusters.sort(by: { $0.first!.onset < $1.first!.onset })
         
-        let order: [(UInt8, UInt8) -> Bool] = [{ $0 <= $1 }, {$0 >= $1}]
-        
         // extract features
-        for order in order {
-            var clusterIndex = 0
-            outer: while clusterIndex < clusters.count {
-                defer { clusterIndex &+= 1 }
-                let cluster = clusters[clusterIndex]
-                guard container.sustains[at: cluster.first!.onset] == container.sustains[at: cluster.first!.offset] else { continue } // within the sustain
-                guard clusterIndex + 1 < clusters.count else { break }
-                
-                var prev = cluster.first!
-                var next = clusterIndex + 1
-                while next < clusters.count {
-                    let _next = clusters[next].first!
-                    guard _next.offset < _next.onset + 0.2,
-                          order(_next.note, prev.note),
-                          _next.onset - prev.onset <= 0.2
-                    else { break }
-                    prev = _next
-                    next += 1
-                }
-                guard next - clusterIndex > 10 else { continue }
-                
-                for i in clusterIndex ..< Swift.min(next, clusters.count) {
-                    clusters[i].features.insert(.glissando)
-                }
-                clusterIndex = next
+        for run in glissandoRuns(in: clusters.map { $0.first! }, sustains: container.sustains) {
+            for index in run {
+                clusters[index].features.insert(.glissando)
             }
         }
         
@@ -207,12 +210,54 @@ public struct Chord: RandomAccessCollection, Hashable {
     }
     
     
+    /// The runs of notes that are a glissando: 11 or more consecutive notes that all move in one direction, each shorter than 0.2 beat and at most 0.2 beat after the one before.
+    ///
+    /// A run only counts when the first note starts and ends within the same sustain state. Every run is returned once; a note that follows a run directly is not tried as the start of the next, which is how the detection has always behaved.
+    ///
+    /// - Parameter notes: Single notes, sorted by onset.
+    ///
+    /// - Complexity: O(n)
+    static func glissandoRuns(in notes: [ReferenceNote], sustains: MIDISustainEvents) -> [Range<Int>] {
+        var runs: [Range<Int>] = []
+        let order: [(UInt8, UInt8) -> Bool] = [{ $0 <= $1 }, {$0 >= $1}]
+        
+        for order in order {
+            var index = 0
+            while index < notes.count {
+                defer { index &+= 1 }
+                let first = notes[index]
+                guard sustains[at: first.onset] == sustains[at: first.offset] else { continue } // within the sustain
+                guard index + 1 < notes.count else { break }
+                
+                var previous = first
+                var next = index + 1
+                while next < notes.count {
+                    let candidate = notes[next]
+                    guard candidate.offset < candidate.onset + 0.2,
+                          order(candidate.note, previous.note),
+                          candidate.onset - previous.onset <= 0.2
+                    else { break }
+                    previous = candidate
+                    next += 1
+                }
+                guard next - index > 10 else { continue }
+                
+                runs.append(index ..< Swift.min(next, notes.count))
+                index = next
+            }
+        }
+        
+        return runs
+    }
+    
+
     /// Chords are split making sure that notes within the same chord should be played by the same hand, while notes in different chord could be played by the same hand.
     public static func makeSingleHandedChords(
         from container: IndexedContainer,
-        spec: Spec = Spec()
+        spec: Spec = Spec(),
+        optimizeFor transcriptionAlgorithm: TranscriptionAlgorithm? = nil
     ) -> [Chord] {
-        var chords = Chord.makeChords(from: container, spec: spec)
+        var chords = Chord.makeChords(from: container, spec: spec, optimizeFor: transcriptionAlgorithm)
         let reachLimit: UInt8 = 9
         let octaveTolerance = 1
         let gapWeight = 1.5
@@ -284,16 +329,34 @@ public struct Chord: RandomAccessCollection, Hashable {
     }
     
     
-    /// Spec durations are in beats, in 120BPM.
-    public struct Spec {
+    /// Selects the algorithm that forms the chords, and for the constant window, its window.
+    ///
+    /// Durations are in beats, in 120BPM.
+    public struct Spec: Sendable, Hashable {
+        
+        /// The window of the constant-window algorithm, or `nil` when the library chooses the algorithm.
+        let explicitDuration: Double?
         
         /// The maximum distance apart of the least apart elements to be considered in the same chord.
         ///
-        /// This effectively is the min duration of a note.
-        let duration: Double
-
-        public init(duration: Double = 0.1) {
-            self.duration = duration
+        /// This effectively is the min duration of a note. It is 0.1 beat (50 ms) unless set on creation.
+        var duration: Double {
+            explicitDuration ?? Spec.defaultDuration
+        }
+        
+        static let defaultDuration = 0.1
+        
+        
+        /// Lets ``Chord/makeChords(from:spec:optimizeFor:)`` choose the algorithm.
+        public init() {
+            self.explicitDuration = nil
+        }
+        
+        /// A constant window: notes are in the same chord when consecutive onsets are at most `duration` beats apart.
+        ///
+        /// ``Chord/makeChords(from:spec:optimizeFor:)`` then ignores its `optimizeFor` argument. `Spec(duration: 0.1)` is what `Spec()` was before the library chose the algorithm.
+        public init(duration: Double) {
+            self.explicitDuration = duration
         }
         
     }
@@ -371,8 +434,9 @@ extension Array<Chord> {
 
 extension IndexedContainer {
     
-    public borrowing func chords() -> [Chord] {
-        Chord.makeChords(from: self)
+    /// - Parameter transcriptionAlgorithm: The algorithm that transcribed the container, when it is known. See ``Chord/makeChords(from:spec:optimizeFor:)``.
+    public borrowing func chords(optimizeFor transcriptionAlgorithm: TranscriptionAlgorithm? = nil) -> [Chord] {
+        Chord.makeChords(from: self, optimizeFor: transcriptionAlgorithm)
     }
     
 }

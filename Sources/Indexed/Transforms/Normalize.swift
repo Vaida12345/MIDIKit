@@ -20,14 +20,16 @@ extension IndexedContainer {
     ///
     /// - Complexity: O(*n log n*), `makeChords`
     ///
+    /// - Parameter transcriptionAlgorithm: The algorithm that transcribed the container, when it is known. It decides which chord algorithm is used, see ``Chord/makeChords(from:spec:optimizeFor:)``. For the MIDIs this method is written for, pass ``TranscriptionAlgorithm/pianoTranscription``.
+    ///
     /// ## User-facing Description:
     /// Automatically adjusts note durations using the sustain pedal and nearby notes, fixing overly long notes and overlaps for more natural playback and clearer chords.
     ///
     /// - Adjusts note lengths to fix overlaps for clearer chords.
-    public func normalize(preserve: PreserveSettings) {
+    public func normalize(preserve: PreserveSettings, optimizeFor transcriptionAlgorithm: TranscriptionAlgorithm? = nil) {
         guard !self.isEmpty else { return }
         
-        let chords = Chord.makeChords(from: self)
+        let chords = Chord.makeChords(from: self, optimizeFor: transcriptionAlgorithm)
         let margin: Double = 1/4 // the padding after sustain
         let minimumLength: Double = Chord.Spec().duration
         
