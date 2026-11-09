@@ -109,7 +109,7 @@ struct ChordConstantWindowTests {
         ])
         let chords = Chord.makeChords(from: indexed, spec: .init(duration: 0.1))
         #expect(ChordFigures.partition(chords, of: indexed) == [[0, 1], [2]])
-        #expect(chords.map(\.maxOffset) == [0.05, nil])
+        #expect(chords.map(\._offsetUpperBound) == [0.05, nil])
         withExtendedLifetime(indexed) {}
     }
 
@@ -118,8 +118,8 @@ struct ChordConstantWindowTests {
             let indexed = ChordFigures.indexed(ChordFigures.notes(seed: seed))
             for duration in Self.durations {
                 for chord in Chord.makeChords(from: indexed, spec: .init(duration: duration)) {
-                    #expect(chord.maxOffset == ChordFigures.expectedMaxOffset(of: chord, in: indexed), "\(seed)@\(duration)")
-                    #expect(chord.maxOffset.map { limit in chord.allSatisfy { $0.onset < limit } } ?? true, "\(seed)@\(duration)")
+                    #expect(chord._offsetUpperBound == ChordFigures.expectedMaxOffset(of: chord, in: indexed), "\(seed)@\(duration)")
+                    #expect(chord._offsetUpperBound.map { limit in chord.allSatisfy { $0.onset < limit } } ?? true, "\(seed)@\(duration)")
                 }
             }
             withExtendedLifetime(indexed) {}

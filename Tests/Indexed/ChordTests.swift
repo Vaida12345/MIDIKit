@@ -67,7 +67,7 @@ struct ChordTests {
             MIDINote(onset: 1, offset: 2.0, note: 64, velocity: 80),
         ])
         let chords = indexed.chords()
-        #expect(chords[0].trailingOffset == 2.5)
+        #expect(chords[0].maxOffset == 2.5)
     }
 
     @Test func chordDuration() {

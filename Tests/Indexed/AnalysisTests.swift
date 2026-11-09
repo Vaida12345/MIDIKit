@@ -26,7 +26,7 @@ struct AnalysisTests {
         let indexed = makeIndexed([
             MIDINote(onset: 0, offset: 2, note: 60, velocity: 100),
         ])
-        // No sustains → cumulative = 0 / maxOffset
+        // No sustains → cumulative = 0 / _offsetUpperBound
         #expect(indexed.sustainCoverage == 0.0)
     }
 

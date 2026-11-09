@@ -32,8 +32,8 @@ public struct Chord: RandomAccessCollection, Hashable {
     /// contents are disjoint.
     var contents: [ReferenceNote]
     
-    /// The max offset in beats. This is determined by the onset of next consecutive note.
-    var maxOffset: Double?
+    /// The max offset in beats. This is determined by the onset of next consecutive note. Internal use only.
+    internal var _offsetUpperBound: Double?
     
     public var features: Features
     
@@ -46,13 +46,14 @@ public struct Chord: RandomAccessCollection, Hashable {
         self.contents.first!.onset
     }
     
-    public var trailingOffset: Double {
+    /// The max offset.
+    public var maxOffset: Double {
         self.contents.max(of: \.offset)!
     }
     
     /// The max offset `-` min onset.
     public var duration: Double {
-        trailingOffset - self.leadingOnset
+        maxOffset - self.leadingOnset
     }
     
     public var pitchSpan: UInt8 {
@@ -62,7 +63,7 @@ public struct Chord: RandomAccessCollection, Hashable {
     
     public init(contents: [ReferenceNote], maxOffset: Double?, features: Features = []) {
         self.contents = contents
-        self.maxOffset = maxOffset
+        self._offsetUpperBound = maxOffset
         self.features = features
     }
     
@@ -79,12 +80,12 @@ public struct Chord: RandomAccessCollection, Hashable {
     private mutating func prepend(contentsOf other: Chord) {
         self.contents = self.contents + other.contents
         
-        self.maxOffset = if self.maxOffset != nil && other.maxOffset != nil {
-            Swift.min(self.maxOffset!, other.maxOffset!)
-        } else if self.maxOffset != nil {
-            self.maxOffset
-        } else if other.maxOffset != nil {
-            other.maxOffset
+        self._offsetUpperBound = if self._offsetUpperBound != nil && other._offsetUpperBound != nil {
+            Swift.min(self._offsetUpperBound!, other._offsetUpperBound!)
+        } else if self._offsetUpperBound != nil {
+            self._offsetUpperBound
+        } else if other._offsetUpperBound != nil {
+            other._offsetUpperBound
         } else {
             nil
         }
@@ -143,7 +144,7 @@ public struct Chord: RandomAccessCollection, Hashable {
             guard !lhs.features.contains(.glissando) && !rhs.features.contains(.glissando) else { return false }
             
             // no duplicated notes, ensured by the max offset
-            guard lhs.maxOffset.isNil(or: { rhs.contents.last!.onset < $0 }) else { return false }
+            guard lhs._offsetUpperBound.isNil(or: { rhs.contents.last!.onset < $0 }) else { return false }
             
             // ensure minimum distance is smaller than threshold: O(1)
             guard minDistance(lhs, rhs) <= duration else { return false }
@@ -311,7 +312,7 @@ public struct Chord: RandomAccessCollection, Hashable {
             let rightNotes = rightSlice.sorted(on: \.onset, by: <)
             
             chords[index].contents = leftNotes
-            chords[index].maxOffset = chord.maxOffset
+            chords[index]._offsetUpperBound = chord._offsetUpperBound
             chords[index].features = chord.features
             chords[index].features.insert(.preferLeftHand)
             
@@ -319,7 +320,7 @@ public struct Chord: RandomAccessCollection, Hashable {
             rightFeatures.insert(.preferRightHand)
             let rightChord = Chord(
                 contents: rightNotes,
-                maxOffset: chord.maxOffset,
+                maxOffset: chord._offsetUpperBound,
                 features: rightFeatures
             )
             chords.append(rightChord)
@@ -385,7 +386,7 @@ extension Chord: DetailedStringConvertible {
     public func detailedDescription(using descriptor: DetailedDescription.Descriptor<Chord>) -> any DescriptionBlockProtocol {
         descriptor.container {
             descriptor.sequence(for: \.contents)
-            descriptor.optional(for: \.maxOffset)
+            descriptor.optional(for: \._offsetUpperBound)
         }
     }
     

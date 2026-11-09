@@ -148,7 +148,7 @@ struct ChordArbiterTests {
         let chords = Chord.makeChords(from: single, optimizeFor: algorithm)
         #expect(chords.count == 1)
         #expect(chords.first?.count == 1)
-        #expect(chords.first?.maxOffset == nil)
+        #expect(chords.first?._offsetUpperBound == nil)
         #expect(chords.first?.features.isEmpty == true)
         withExtendedLifetime(single) {}
 
@@ -156,7 +156,7 @@ struct ChordArbiterTests {
         #expect(Figures.sizes([Figures.note(1, 60, duration: 1), Figures.note(1, 64, duration: 1)], optimizeFor: algorithm) == [2])
         // one key twice, a beat apart
         let repeated = Figures.indexed([Figures.note(0, 60, duration: 0.5), Figures.note(1, 60, duration: 0.5)])
-        #expect(Chord.makeChords(from: repeated, optimizeFor: algorithm).map(\.maxOffset) == [1, nil])
+        #expect(Chord.makeChords(from: repeated, optimizeFor: algorithm).map(\._offsetUpperBound) == [1, nil])
         withExtendedLifetime(repeated) {}
     }
 
@@ -211,7 +211,7 @@ struct ChordArbiterTests {
         let chords = Chord.makeChords(from: indexed, optimizeFor: algorithm)
         // cut at the weakest pair between the two strikes: the second pair has the longer silence after it, so it is the stronger
         #expect(Figures.partition(chords, of: indexed) == [[0, 1], [2]])
-        #expect(chords.map(\.maxOffset) == [1.04, nil])
+        #expect(chords.map(\._offsetUpperBound) == [1.04, nil])
         withExtendedLifetime(indexed) {}
     }
 
@@ -408,8 +408,8 @@ struct ChordArbiterTests {
             if let sizeLimit { #expect(chord.count <= sizeLimit, "\(label): \(chord.count) notes") }
 
             // the earliest next onset of the members' keys comes after all members
-            #expect(chord.maxOffset == Figures.expectedMaxOffset(of: chord, in: indexed), "\(label)")
-            #expect(chord.maxOffset.map { limit in chord.allSatisfy { $0.onset < limit } } ?? true, "\(label)")
+            #expect(chord._offsetUpperBound == Figures.expectedMaxOffset(of: chord, in: indexed), "\(label)")
+            #expect(chord._offsetUpperBound.map { limit in chord.allSatisfy { $0.onset < limit } } ?? true, "\(label)")
 
             // a note of a glissando is alone
             if chord.features.contains(.glissando) { #expect(chord.count == 1, "\(label)") }

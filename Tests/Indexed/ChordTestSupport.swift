@@ -216,7 +216,7 @@ enum ChordFigures {
         return hash
     }
 
-    /// The oracle for `Chord.maxOffset`: the earliest onset of the next note on the same key among the members.
+    /// The oracle for `Chord._offsetUpperBound`: the earliest onset of the next note on the same key among the members.
     static func expectedMaxOffset(of chord: Chord, in indexed: IndexedContainer) -> Double? {
         var result: Double?
         for member in chord.contents {
