@@ -20,6 +20,12 @@ extension MIDINote {
         ["C", "D", "E", "F", "G", "A", "B"]
     }
     
+    /// Returns whether the note is sharp (black).
+    @inlinable
+    public static func isBlack(_ note: some BinaryInteger) -> Bool {
+        (0x54A & (1 << (note % 12))) != 0
+    }
+    
     /// - Parameters:
     ///   - note: 0-based indexed note
     ///
