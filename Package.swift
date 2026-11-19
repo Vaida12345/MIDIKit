@@ -33,6 +33,10 @@ let package = Package(
             dependencies: ["DetailedDescription", "FinderItem", "ConcurrentStream", "NativeImage", "Optimization", "Essentials", "ColorComponents"],
             path: "Sources"
         ),
+        .target(
+            name: "Intervals",
+            path: "Intervals"
+        ),
         .executableTarget(
             name: "Client",
             dependencies: ["MIDIKit"],
@@ -42,6 +46,7 @@ let package = Package(
             ]
         ),
         .testTarget(name: "Tests", dependencies: ["MIDIKit"], path: "Tests"),
+        .testTarget(name: "IntervalsTests", dependencies: ["Intervals"], path: "IntervalsTests"),
     ],
     
 )
