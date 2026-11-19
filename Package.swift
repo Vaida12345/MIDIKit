@@ -1,4 +1,4 @@
-// swift-tools-version: 6.1
+// swift-tools-version: 6.4
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -30,8 +30,13 @@ let package = Package(
     targets: [
         .target(
             name: "MIDIKit",
-            dependencies: ["DetailedDescription", "FinderItem", "ConcurrentStream", "NativeImage", "Optimization", "Essentials", "ColorComponents"],
+            dependencies: ["DetailedDescription", "FinderItem", "ConcurrentStream", "NativeImage", "Optimization", "Essentials", "ColorComponents", "Intervals"],
             path: "Sources"
+        ),
+        .target(
+            name: "IndexedTrack",
+            dependencies: ["DetailedDescription", "Optimization", "Essentials", "MIDIKit", "Intervals"],
+            path: "IndexedTrack"
         ),
         .target(
             name: "Intervals",
