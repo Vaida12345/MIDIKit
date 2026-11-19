@@ -50,8 +50,7 @@ let package = Package(
                 .unsafeFlags(["-Onone", "-Xfrontend", "-disable-llvm-optzns"])
             ]
         ),
-        .testTarget(name: "Tests", dependencies: ["MIDIKit"], path: "Tests"),
-        .testTarget(name: "IntervalsTests", dependencies: ["Intervals"], path: "IntervalsTests"),
+        .testTarget(name: "Tests", dependencies: ["MIDIKit", "Intervals"], path: "Tests"),
     ],
     
 )

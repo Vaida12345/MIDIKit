@@ -1,5 +1,5 @@
 //
-//  DisjointIntervalsTests.swift
+//  DisjointIntervalsQueryTests.swift
 //  MIDIKit
 //
 //  Created by Vaida on 2026-11-20.
@@ -129,8 +129,9 @@ private enum Oracle {
 
 // MARK: - Tests
 
+/// Tests of the `Intervals` module's `DisjointIntervals`, named apart from the suite that tests the one in `MIDIKit`.
 @Suite
-struct DisjointIntervalsTests {
+struct DisjointIntervalsQueryTests {
 
     private static let tolerances: [Double] = [0, 0.125, 1]
 
