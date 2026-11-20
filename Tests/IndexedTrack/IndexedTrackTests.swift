@@ -87,7 +87,7 @@ struct IndexedTrackTests {
             MIDISustainEvent(onset: 0, offset: 1),
             MIDISustainEvent(onset: 6, offset: 5), // ends before it starts
         ])
-        #expect(indexed.sustains == [MIDISustainEvent(onset: 0, offset: 2), MIDISustainEvent(onset: 3, offset: 4)])
+        #expect(indexed.sustains.contents == [MIDISustainEvent(onset: 0, offset: 2), MIDISustainEvent(onset: 3, offset: 4)])
     }
     
     /// At 60 BPM, a beat lasts twice as long as at 120 BPM, so every time doubles.
@@ -103,7 +103,7 @@ struct IndexedTrackTests {
         let indexed = IndexedTrack(container)
         
         #expect(indexed.notes == [note(2, 4, 60)])
-        #expect(indexed.sustains == [MIDISustainEvent(onset: 2, offset: 6)])
+        #expect(indexed.sustains.contents == [MIDISustainEvent(onset: 2, offset: 6)])
         #expect(indexed.metaEvents.map(\.timestamp) == [3])
         #expect(indexed.controlEvents.map(\.onset) == [5])
     }

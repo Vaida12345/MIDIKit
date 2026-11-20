@@ -137,21 +137,9 @@ extension IndexedTrack {
         }
         
         // MARK: Sustains, merged when they overlap or touch.
-        
-        var sortedSustains = tracks.flatMap(\.sustains).filter { sustain in
-            sustain.onset.isFinite && sustain.offset.isFinite && sustain.onset <= sustain.offset
-        }
-        sortedSustains.sort { $0.onset < $1.onset }
-        var sustains: [MIDISustainEvent] = []
-        sustains.reserveCapacity(sortedSustains.count)
-        for sustain in sortedSustains {
-            if let last = sustains.last, sustain.onset <= last.offset {
-                sustains[sustains.count &- 1].offset = Swift.max(last.offset, sustain.offset)
-            } else {
-                sustains.append(sustain)
-            }
-        }
-        
+
+        let sustains = Sustains(tracks.lazy.flatMap(\.sustains))
+
         // MARK: Control and meta events, in time order.
         
         var controlEvents = tracks.flatMap(\.controlEvents.contents)
@@ -168,7 +156,7 @@ extension IndexedTrack {
         let lanes = Lanes(members: members, starts: cleanedStarts, notes: notes)
         self.cache.lanes.withLock { $0 = lanes }
         
-        assert(Self.isValid(notes: notes, lanes: lanes, sustains: sustains), "The cleaned-up track breaks its invariants.")
+        assert(Self.isValid(notes: notes, lanes: lanes), "The cleaned-up track breaks its invariants.")
     }
     
     /// Creates an indexed track from notes and events that already meet its invariants, without cleaning them up.
@@ -178,16 +166,15 @@ extension IndexedTrack {
     /// - Precondition: The arguments meet the invariants of ``IndexedTrack``, checked with an `assert`:
     ///   - `notes` are sorted by (onset, pitch), with pitches in `21...108`;
     ///   - the notes on each key are disjoint: each ends before the next one starts;
-    ///   - `sustains` are sorted and disjoint;
     ///   - `controlEvents` are sorted by onset, and `metaEvents` by timestamp.
     ///
     /// - Parameters:
     ///   - notes: The cleaned-up notes.
-    ///   - sustains: The merged sustains.
+    ///   - sustains: The merged sustains, which are valid by construction.
     ///   - controlEvents: The control events.
     ///   - metaEvents: The meta events.
     ///   - profile: The choices the analyses of this track make.
-    package init(validated notes: [MIDINote], sustains: [MIDISustainEvent], controlEvents: [MIDIControlEvent], metaEvents: [MIDIMetaEvent], profile: any AnalysisProfile) {
+    package init(validated notes: [MIDINote], sustains: Sustains, controlEvents: [MIDIControlEvent], metaEvents: [MIDIMetaEvent], profile: any AnalysisProfile) {
         self.notes = notes
         self.sustains = sustains
         self.controlEvents = controlEvents
@@ -202,7 +189,7 @@ extension IndexedTrack {
     /// Transforms that only change times without reordering notes or changing their keys, such as ``applyingGap(ideal:minimumNoteLength:)``, use this to keep the layout of the lanes: the new ``lanes`` share `lanes`' layout and refer to the new notes, so the first access to them costs nothing.
     ///
     /// - Precondition: The arguments meet the invariants listed in ``init(validated:sustains:controlEvents:metaEvents:profile:)``, and `notes[i]` has the same key and (onset, pitch) rank as the note `lanes` was built for at index `i`. Both are checked with an `assert`.
-    init(validated notes: [MIDINote], sustains: [MIDISustainEvent], controlEvents: [MIDIControlEvent], metaEvents: [MIDIMetaEvent], profile: any AnalysisProfile, reusingLayoutOf lanes: Lanes) {
+    init(validated notes: [MIDINote], sustains: Sustains, controlEvents: [MIDIControlEvent], metaEvents: [MIDIMetaEvent], profile: any AnalysisProfile, reusingLayoutOf lanes: Lanes) {
         assert(notes.count == lanes.notes.count && zip(notes, lanes.notes).allSatisfy { $0.pitch == $1.pitch }, "The notes must have the same keys as the notes the lanes were built for.")
 
         self.notes = notes
@@ -219,7 +206,7 @@ extension IndexedTrack {
 
     /// Asserts the invariants of ``IndexedTrack``, in debug builds only.
     private func assertInvariants() {
-        assert(Self.isValid(notes: notes, lanes: self.lanes, sustains: sustains), "The notes or sustains break the invariants of an indexed track.")
+        assert(Self.isValid(notes: notes, lanes: self.lanes), "The notes break the invariants of an indexed track.")
         assert(controlEvents.indices.dropFirst().allSatisfy { controlEvents[$0 &- 1].onset <= controlEvents[$0].onset }, "The control events must be sorted by onset.")
         assert(metaEvents.indices.dropFirst().allSatisfy { metaEvents[$0 &- 1].timestamp <= metaEvents[$0].timestamp }, "The meta events must be sorted by timestamp.")
     }
@@ -230,17 +217,19 @@ extension IndexedTrack {
     public func makeContainer() -> MIDIContainer {
         let track = MIDITrack(
             notes: MIDINotes(self.notes),
-            sustains: MIDISustainEvents(self.sustains),
+            sustains: MIDISustainEvents(self.sustains.contents),
             metaEvents: self.metaEvents,
             controlEvents: MIDIControlEvents(self.controlEvents)
         )
         return MIDIContainer(tracks: [track], tempo: MIDITempoTrack(tempos: [MIDITempoTrack.Tempo(timestamp: 0, tempo: 120)]))
     }
     
-    /// Returns whether the notes are sorted by (onset, pitch), every lane is valid disjoint intervals, and so are the sustains.
+    /// Returns whether the notes are sorted by (onset, pitch), and every lane is valid disjoint intervals.
+    ///
+    /// The sustains need no check, as ``Sustains`` is valid by construction.
     ///
     /// For debug-only `assert`s.
-    static func isValid(notes: [MIDINote], lanes: Lanes, sustains: [MIDISustainEvent]) -> Bool {
+    static func isValid(notes: [MIDINote], lanes: Lanes) -> Bool {
         var index = 1
         while index < notes.count {
             let previous = notes[index &- 1]
@@ -251,13 +240,6 @@ extension IndexedTrack {
         
         for pitch in 21...108 as ClosedRange<UInt8> {
             guard lanes[lane: pitch].isValidDisjointIntervals() else { return false }
-        }
-        
-        index = 0
-        while index < sustains.count {
-            guard sustains[index].onset <= sustains[index].offset else { return false }
-            if index &+ 1 < sustains.count && !(sustains[index].offset < sustains[index &+ 1].onset) { return false }
-            index &+= 1
         }
         return true
     }

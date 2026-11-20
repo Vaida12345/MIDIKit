@@ -16,10 +16,10 @@ extension IndexedTrack {
     ///
     /// - Parameters:
     ///   - notes: Notes sorted by onset.
-    ///   - sustains: Sorted, disjoint sustains.
+    ///   - sustains: The sustains of the track.
     ///
     /// - Complexity: O(*n* log *m*), where *n* is the number of notes and *m* the number of sustains.
-    static func glissandoRuns(in notes: [MIDINote], sustains: [MIDISustainEvent]) -> [Range<Int>] {
+    static func glissandoRuns(in notes: [MIDINote], sustains: Sustains) -> [Range<Int>] {
         var runs: [Range<Int>] = []
 
         for isDescending in [true, false] {
@@ -27,7 +27,7 @@ extension IndexedTrack {
             while index < notes.count {
                 defer { index &+= 1 }
                 let first = notes[index]
-                guard sustainIndex(at: first.onset, in: sustains) == sustainIndex(at: first.offset, in: sustains) else { continue } // within the sustain
+                guard sustains.index(at: first.onset) == sustains.index(at: first.offset) else { continue } // within the same sustain state
                 guard index &+ 1 < notes.count else { break }
 
                 var previous = first
@@ -50,24 +50,5 @@ extension IndexedTrack {
 
         return runs
     }
-
-    /// Returns the index of the sustain that contains `t`, bounds inclusive, or `nil` when no sustain does.
-    ///
-    /// - Complexity: O(log *m*), where *m* is the number of sustains.
-    private static func sustainIndex(at t: Double, in sustains: [MIDISustainEvent]) -> Int? {
-        // the number of sustains whose onset is at most `t`
-        var low = 0
-        var high = sustains.count
-        while low < high {
-            let middle = Int(UInt(bitPattern: low &+ high) >> 1)
-            if sustains[middle].onset <= t {
-                low = middle &+ 1
-            } else {
-                high = middle
-            }
-        }
-        guard low > 0, sustains[low &- 1].offset >= t else { return nil }
-        return low &- 1
-    }
-
+    
 }
