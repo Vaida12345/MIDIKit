@@ -95,7 +95,12 @@ public extension MIDIContainer {
                 track.metaEvents[index].timestamp = scaledTime(at: track.metaEvents[index].timestamp, tempoEvents: effectiveTempoEvents, constantTempo: constantTempo)
             }
         }
-        
+
+        // The tempo track's own meta events, such as time and key signatures.
+        for index in self.tempo.events.indices {
+            self.tempo.events[index].timestamp = scaledTime(at: self.tempo.events[index].timestamp, tempoEvents: effectiveTempoEvents, constantTempo: constantTempo)
+        }
+
         self.tempo.contents = [MIDITempoTrack.Tempo(timestamp: 0, tempo: constantTempo)]
     }
     

@@ -19,6 +19,7 @@ extension IndexedTrack {
     /// - Two notes on the same key whose onsets are closer than `minimumConsecutiveNotesGap` are merged into one, with the earlier onset, the later offset and the louder velocity: the later one is usually a second trigger of the same strike.
     /// - Every note ends at least `minimumConsecutiveNotesGap` before the next note on its key starts. A note that this leaves shorter than `minimumConsecutiveNotesGap` is dropped.
     /// - Sustains that overlap or touch are merged, and invalid ones are dropped.
+    /// - Meta events are collected from every track and from the tempo track, which holds the time and key signatures of format-1 files.
     ///
     /// The ``lanes`` are built along the way, so the first access to them costs nothing.
     ///
@@ -144,7 +145,7 @@ extension IndexedTrack {
         
         var controlEvents = tracks.flatMap(\.controlEvents.contents)
         controlEvents.sort { $0.onset < $1.onset }
-        var metaEvents = tracks.flatMap(\.metaEvents)
+        var metaEvents = tracks.flatMap(\.metaEvents) + source.tempo.events // the tempo track holds the time and key signatures of format-1 files
         metaEvents.sort { $0.timestamp < $1.timestamp }
         
         self.notes = notes

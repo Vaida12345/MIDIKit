@@ -7,6 +7,7 @@
 
 import MIDIKit
 import Testing
+import Foundation
 
 
 @Suite("Tempo")
@@ -55,7 +56,20 @@ struct TempoTests {
         #expect(sustain.offset == 10)
         #expect(container.tempo.contents == [MIDITempoTrack.Tempo(timestamp: 0, tempo: 120)])
     }
-    
+
+    @Test
+    func normalizeToConstantTempoScalesTempoTrackMetaEvents() {
+        let keySignature = MIDIMetaEvent(timestamp: 2, type: 0x59, data: Data([2, 0]))
+        var container = MIDIContainer(
+            tracks: [MIDITrack(notes: [MIDINote(onset: 0, offset: 1, note: 60, velocity: 100)])],
+            tempo: MIDITempoTrack(events: [keySignature], tempos: [MIDITempoTrack.Tempo(timestamp: 0, tempo: 60)])
+        )
+
+        container.normalizeToConstantTempo(120)
+
+        #expect(container.tempo.events.map(\.timestamp) == [4])
+    }
+
     @Test
     func normalizeToConstantTempoUsesDefaultTempoBeforeFirstEvent() {
         var container = MIDIContainer(
