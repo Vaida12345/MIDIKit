@@ -26,12 +26,12 @@ private func randomSustains(seed: UInt64, end: Double) -> [MIDISustainEvent] {
 }
 
 /// Runs the old `IndexedContainer.normalize` on the notes and sustains of `track`, and returns its notes in the order of `track.notes`.
-private func oldNormalized(_ track: IndexedTrack, preserve: IndexedContainer.PreserveSettings) -> [MIDINote] {
+private func oldNormalized(_ track: IndexedTrack, preserve: IndexedTrack.PreserveSettings) -> [MIDINote] {
     let old = IndexedContainer(container: track.makeContainer())
     defer { withExtendedLifetime(old) {} }
     #expect(ChordFigures.orderedNotes(of: old).map(\.pointee) == track.notes, "The old container must hold the same notes in the same order.")
 
-    old.normalize(preserve: preserve, optimizeFor: nil)
+    old.normalize(preserve: IndexedContainer.PreserveSettings(rawValue: preserve.rawValue)!, optimizeFor: nil)
     return ChordFigures.orderedNotes(of: old).map(\.pointee)
 }
 
@@ -53,7 +53,7 @@ private func pair(offset: Double, next: Double, sustains: [MIDISustainEvent]) ->
     track([note(0, offset, 60), note(next, next + 0.1, 72)], sustains: sustains)
 }
 
-private func normalizedOffset(_ track: IndexedTrack, _ preserve: IndexedContainer.PreserveSettings) -> Double {
+private func normalizedOffset(_ track: IndexedTrack, _ preserve: IndexedTrack.PreserveSettings) -> Double {
     track.normalizing(preserve: preserve).notes[0].offset
 }
 
@@ -71,7 +71,7 @@ struct NormalizingTests {
         let indexed = track(notes, sustains: randomSustains(seed: UInt64(seed), end: end))
         let nextOnsets = nextOnsetsOnKey(indexed)
 
-        for preserve in IndexedContainer.PreserveSettings.allCases {
+        for preserve in IndexedTrack.PreserveSettings.allCases {
             let new = indexed.normalizing(preserve: preserve).notes
             let old = oldNormalized(indexed, preserve: preserve)
             #expect(new.map(\.onset) == old.map(\.onset))
@@ -174,6 +174,12 @@ struct NormalizingTests {
         let fresh = IndexedTrack(validated: result.notes, sustains: result.sustains, controlEvents: result.controlEvents, metaEvents: result.metaEvents, profile: result.profile)
         #expect(result.lanes.members == fresh.lanes.members)
         #expect(result.lanes.starts == fresh.lanes.starts)
+    }
+
+    /// The new enum must decode the raw values of the old one, in the same order, until the old one is removed.
+    @Test
+    func preserveSettingsMatchTheOldOnes() {
+        #expect(IndexedTrack.PreserveSettings.allCases.map(\.rawValue) == IndexedContainer.PreserveSettings.allCases.map(\.rawValue))
     }
 
     @Test

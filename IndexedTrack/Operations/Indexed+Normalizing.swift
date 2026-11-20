@@ -31,7 +31,7 @@ extension IndexedTrack {
     /// Automatically adjusts note durations using the sustain pedal and nearby notes, fixing overly long notes and overlaps for more natural playback and clearer chords.
     ///
     /// - Adjusts note lengths to fix overlaps for clearer chords.
-    public func normalizing(preserve: IndexedContainer.PreserveSettings) -> IndexedTrack {
+    public func normalizing(preserve: PreserveSettings) -> IndexedTrack {
         guard !self.notes.isEmpty else { return self }
 
         let chords = self.chords
@@ -85,7 +85,7 @@ extension IndexedTrack {
     ///   - nextOnset: The leading onset of the next chord.
     ///   - sustains: The sustains of the track.
     ///   - preserve: What to favor where the sustains do not decide.
-    private static func normalizedOffset(onset: Double, offset: Double, nextOnset: Double, sustains: Sustains, preserve: IndexedContainer.PreserveSettings) -> Double {
+    private static func normalizedOffset(onset: Double, offset: Double, nextOnset: Double, sustains: Sustains, preserve: PreserveSettings) -> Double {
         let minimumLength = normalizingMinimumLength
         let margin = normalizingMargin
 
