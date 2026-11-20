@@ -10,11 +10,48 @@ import MIDIKit
 
 /// The profile for notes that PianoTranscription transcribed.
 ///
-/// **Note offsets cannot be relied on.** They include the ring of the sound and the sustain pedal, in a way that follows neither the release of the key nor the pedal events the model writes: a median note lasts about 300 ms. Chord formation therefore never looks at them. (The glissando check, which every arbiter shares, does look at how long notes last, and so finds a glissando in such output only when the model cut its notes short.)
+/// Chords are formed with ``ChordArbiter/pianoTranscription`` and downbeats found with ``DownbeatTracker/pianoTranscription``, which both leave the offsets out; the arbiter weighs the velocities instead. (The glissando check, which every arbiter shares, does look at how long notes last, and so finds a glissando in such output only when the model cut its notes short.) Artifacts are removed with ``GenericProfile/removingArtifacts(from:threshold:proximityThreshold:)``, written for the ghost repetitions described under Errors.
 ///
-/// Onset times sit on a weak grid of 10 ms, too blurred to use, so the gap between two close notes is used as it is. Velocities are meaningful, and chord formation uses them.
+/// ## Shape of the Output
 ///
-/// Artifacts are removed with ``GenericProfile/removingArtifacts(from:threshold:proximityThreshold:)``, which was written for the stray quiet notes this transcriber produces.
+/// These figures were measured on the 1,276 performances of MAESTRO v3, against the MIDI that the piano recorded. A played note counts as found when the transcription has a note on its key whose onset is within 50 ms of it. Accuracy figures come from the 177 performances of the test split, as the model was trained on the others; the other figures come from all of them.
+///
+/// ### Timing
+///
+/// - Notes are decoded on frames of 10 ms, 100 a second from audio at 16 kHz, and each onset is moved by at most half a frame, towards the peak of the model's onset curve. The move leans towards half a frame either way, which makes a weak grid of 10 ms, too blurred to use.
+/// - Onsets are 3 ms late on average, in every register and at every velocity, and 90% are from 8 ms early to 13.5 ms late; the median error is 4.6 ms. The time between two successive onsets is off by 7 ms (standard deviation).
+///
+/// ### Chords
+///
+/// - Of two notes struck together, within 1 ms, 6% get exactly the same onset, and 59% onsets less than 2 ms apart. 2% end up more than 10 ms apart.
+/// - Two notes played 5 to 10 ms apart keep their order 86% of the time and swap 13% of the time, and keep it 95% of the time when played 10 to 15 ms apart.
+///
+/// ### Offsets and Durations
+///
+/// - **Offsets follow the sound, not the key**: a note ends where the model hears it fade, one frame before its key is struck again, or after 6 s. The median note lasts 300 ms where the played one lasts 90 ms, and only a third of the offsets are within 50 ms of the release of the key, which therefore cannot be read from them.
+/// - An offset rather tells how long the note rings: against the release of the key, held for as long as the model's own pedal stays down, the median error is 0 and 65% of the offsets are within 50 ms. 18% end more than 200 ms early, where the sound faded while the pedal was down.
+/// - A note still sounding when its key is struck again ends one frame before the new onset, 5 to 14 ms before it from the 10th to the 90th percentile. 28% of the gaps between successive notes on a key are under 20 ms, against 0.2% in the performances; such a note was cut, not released.
+/// - No note lasts more than 6 s, and 0.1% are cut there. About a third of the offsets fall exactly on a frame: those of the notes that faded or were cut.
+///
+/// ### Velocity
+///
+/// - A transcribed velocity is about 0.94 times the played one plus 6: 2.4 too high on average, and 7 too high for the notes played under 30. The mean absolute error is 3.8, and the correlation 0.97. Accents survive: against the mean of the notes within a second on either side, a velocity correlates at 0.93 with the played one, and a difference of more than 10 has the right sign 99.5% of the time.
+/// - Velocities range from 3 to 121, and 98% lie in 28...104.
+///
+/// ### Pedals
+///
+/// - Only the sustain pedal is written, as fully down or fully up, CC 64 at 127 or 0, so half-pedaling is lost. 87% of the presses are real, 87% of the real ones are found within 100 ms, and the pedal is in the right state 94% of the time.
+/// - A press is placed where the model's pedal curve first rises over its threshold, so presses are about 12 ms late in the median, and from 30 ms early to 67 ms late from the 10th to the 90th percentile. Releases are from 16 ms early to 22 ms late, and always fall exactly on a frame. A press, or a gap between two presses, can be as short as 5 ms.
+///
+/// ### Errors
+///
+/// - 98.7% of the notes were played. The others are quieter, with a median velocity of 56 against 69: a fifth of the notes under velocity 20 were not played, 9% of those at 20...29 and 4% of those at 30...39. A fifth of them are the octave above a played note.
+/// - Half of them are ghost repetitions. A ghost starts within 20 ms after a played note on its key ends, which it cut short, at about 82% of that note's velocity in the median; at a median velocity of 57, it is not always quiet. The pattern alone does not mark a ghost, though: 97% of the notes that start right after a note on their key ends are real re-strikes, at about the velocity of the note they cut (a median ratio of 1.0).
+/// - 93% of the played notes are found. The ones missed are quiet, with 25% of the notes played under velocity 20 found, 64% at 20...29 and 84% at 30...39; in the outer octaves, with 78% found under C2 and 80% from C7 on; in dense chords, with about 85% of the notes found in chords of seven or eight; or fast repetitions, with 57% of the strikes 50 to 80 ms after the previous one on their key found, and 19% of those sooner.
+///
+/// ### Tempo and Meter
+///
+/// - The file is written at 120 BPM in 4/4, whatever the music: a beat is half a second of the recording, and neither the tempo nor the time signature says anything about the meter.
 public struct PianoTranscriptionProfile: AnalysisProfile {
 
     /// Creates the PianoTranscription profile.
