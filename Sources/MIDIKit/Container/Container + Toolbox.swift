@@ -11,15 +11,27 @@ import OSLog
 
 extension MIDIContainer {
     
+    /// Returns a music sequence with the contents of the container, at their exact times.
+    ///
+    /// The caller is responsible for disposing the sequence.
     public func makeSequence() throws -> MusicSequence {
+        try self.makeSequence(resolution: nil)
+    }
+    
+    /// Returns a music sequence with the contents of the container.
+    ///
+    /// - Parameter resolution: The ticks per beat of the file the sequence will be written to, or `nil` to keep exact times. With a resolution, every time is rounded to a whole tick, and every note and sustain lasts at least one tick. CoreMIDI converts each gap between consecutive events to ticks on its own, so times off the tick grid would otherwise accumulate rounding errors along the file.
+    @usableFromInline
+    func makeSequence(resolution: Int16?) throws -> MusicSequence {
         var sequence: MusicSequence!
         try withErrorCaptured {
             NewMusicSequence(&sequence)
         }
+        let grid = TickGrid(resolution: resolution)
         
         // tracks
         for track in tracks {
-            track.makeTrack(sequence: sequence)
+            track.makeTrack(sequence: sequence, grid: grid)
         }
         
         // tempos
@@ -30,11 +42,11 @@ extension MIDIContainer {
         
         tempo.events.forEach { _, event in
             event.withUnsafePointer { pointer in
-                _ = MusicTrackNewMetaEvent(tempoTrack, event.timestamp, pointer)
+                _ = MusicTrackNewMetaEvent(tempoTrack, grid.snap(event.timestamp), pointer)
             }
         }
         tempo.contents.forEach { _, tempo in
-            MusicTrackNewExtendedTempoEvent(tempoTrack, tempo.timestamp, tempo.tempo)
+            MusicTrackNewExtendedTempoEvent(tempoTrack, grid.snap(tempo.timestamp), tempo.tempo)
         }
         
         return sequence

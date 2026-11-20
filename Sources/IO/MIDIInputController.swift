@@ -346,7 +346,7 @@ public final class MIDIInputController {
 
 
 /// A timestamped Universal MIDI Packet received from a MIDI input source.
-public struct MIDIInputEvent: @unchecked Sendable {
+public struct MIDIInputEvent: Sendable {
     
     /// The Core MIDI host-time timestamp for the message.
     public let timestamp: MIDITimeStamp

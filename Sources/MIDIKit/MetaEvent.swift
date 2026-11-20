@@ -59,18 +59,16 @@ public struct MIDIMetaEvent: Sendable, Equatable {
     }
     
     
+    /// Calls `body` with a pointer to an `AudioToolbox.MIDIMetaEvent` that holds this event.
+    ///
+    /// `MIDIMetaEvent` ends in a C flexible array member, like `MIDIRawData`; see ``MIDIRawData`` for why the buffer is built as raw memory. Its header is the type, 3 unused bytes, and the `UInt32` length.
     func withUnsafePointer<T>(body: (UnsafePointer<AudioToolbox.MIDIMetaEvent>) throws -> T) rethrows -> T {
-        let data = Swift.withUnsafePointer(to: type) { pointer in
-            Data(bytes: pointer, count: 1)
-        } + Data(repeating: 0, count: 3) + Swift.withUnsafePointer(to: UInt32(data.count)) { pointer in
-            Data(bytes: pointer, count: 4)
-        } + data
-
-        return try data.withUnsafeBytes { pointer in
-            try pointer.withMemoryRebound(to: AudioToolbox.MIDIMetaEvent.self) { buffer in
-                try body(buffer.baseAddress!)
-            }
-        }
+        let type = self.type
+        let length = UInt32(self.data.count)
+        return try withFlexibleBuffer(header: { header in
+            header.storeBytes(of: type, as: UInt8.self)
+            header.storeBytes(of: length, toByteOffset: 4, as: UInt32.self)
+        }, headerSize: 8, data: self.data, as: AudioToolbox.MIDIMetaEvent.self, body: body)
     }
     
 }
