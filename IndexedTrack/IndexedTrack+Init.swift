@@ -193,7 +193,32 @@ extension IndexedTrack {
         self.controlEvents = controlEvents
         self.metaEvents = metaEvents
         self.profile = profile
-        
+
+        self.assertInvariants()
+    }
+
+    /// Creates an indexed track from validated input whose notes have the same order and keys as the notes `lanes` was built for, without cleaning them up.
+    ///
+    /// Transforms that only change times without reordering notes or changing their keys, such as ``applyingGap(ideal:minimumNoteLength:)``, use this to keep the layout of the lanes: the new ``lanes`` share `lanes`' layout and refer to the new notes, so the first access to them costs nothing.
+    ///
+    /// - Precondition: The arguments meet the invariants listed in ``init(validated:sustains:controlEvents:metaEvents:profile:)``, and `notes[i]` has the same key and (onset, pitch) rank as the note `lanes` was built for at index `i`. Both are checked with an `assert`.
+    init(validated notes: [MIDINote], sustains: [MIDISustainEvent], controlEvents: [MIDIControlEvent], metaEvents: [MIDIMetaEvent], profile: any AnalysisProfile, reusingLayoutOf lanes: Lanes) {
+        assert(notes.count == lanes.notes.count && zip(notes, lanes.notes).allSatisfy { $0.pitch == $1.pitch }, "The notes must have the same keys as the notes the lanes were built for.")
+
+        self.notes = notes
+        self.sustains = sustains
+        self.controlEvents = controlEvents
+        self.metaEvents = metaEvents
+        self.profile = profile
+
+        let lanes = Lanes(members: lanes.members, starts: lanes.starts, notes: notes)
+        self.cache.lanes.withLock { $0 = lanes }
+
+        self.assertInvariants()
+    }
+
+    /// Asserts the invariants of ``IndexedTrack``, in debug builds only.
+    private func assertInvariants() {
         assert(Self.isValid(notes: notes, lanes: self.lanes, sustains: sustains), "The notes or sustains break the invariants of an indexed track.")
         assert(controlEvents.indices.dropFirst().allSatisfy { controlEvents[$0 &- 1].onset <= controlEvents[$0].onset }, "The control events must be sorted by onset.")
         assert(metaEvents.indices.dropFirst().allSatisfy { metaEvents[$0 &- 1].timestamp <= metaEvents[$0].timestamp }, "The meta events must be sorted by timestamp.")
