@@ -11,3 +11,6 @@ References
 
 # Local benchmark harness and experiments, never committed
 /Benchmarks/
+
+# Resolved versions belong to the packages that use this one
+/Package.resolved
