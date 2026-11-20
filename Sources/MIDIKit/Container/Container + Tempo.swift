@@ -11,14 +11,14 @@ import Essentials
 
 public extension MIDIContainer {
     
-    /// Rewrites all note and sustain timestamps so playback is represented in a single tempo domain.
+    /// Rewrites all note, sustain, control event and meta event timestamps so playback is represented in a single tempo domain.
     ///
     /// This preserves real-time musical timing while converting beat positions to a timeline where
     /// `constantTempo` is the only tempo. After conversion, ``tempo`` is replaced with exactly one
     /// event at timestamp `0`.
     ///
     /// Fast path: if ``tempo`` is already constant and equal to `constantTempo`, this method returns
-    /// without changing notes, sustains, or tempo events.
+    /// without changing notes, sustains, control events, meta events, or tempo events.
     ///
     /// - Parameter constantTempo: The target tempo in BPM. Must be greater than `0`.
     mutating func normalizeToConstantTempo(_ constantTempo: Double) {
@@ -85,6 +85,14 @@ public extension MIDIContainer {
             track.sustains.mutatingForEach { _, sustain in
                 sustain.onset = scaledTime(at: sustain.onset, tempoEvents: effectiveTempoEvents, constantTempo: constantTempo)
                 sustain.offset = scaledTime(at: sustain.offset, tempoEvents: effectiveTempoEvents, constantTempo: constantTempo)
+            }
+
+            for index in track.controlEvents.contents.indices {
+                track.controlEvents.contents[index].onset = scaledTime(at: track.controlEvents.contents[index].onset, tempoEvents: effectiveTempoEvents, constantTempo: constantTempo)
+            }
+
+            for index in track.metaEvents.indices {
+                track.metaEvents[index].timestamp = scaledTime(at: track.metaEvents[index].timestamp, tempoEvents: effectiveTempoEvents, constantTempo: constantTempo)
             }
         }
         

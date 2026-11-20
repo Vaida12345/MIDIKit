@@ -22,8 +22,8 @@ public struct IndexedTrack: Sendable {
     /// The meta events of every source track.
     public let metaEvents: [MIDIMetaEvent]
     
-    /// The transcription profile used for the operations.
-    public let profile: TranscriptionProfile
+    /// The choices the analyses of this track make, such as how chords are formed.
+    public let profile: any AnalysisProfile
     
     /// The structures derived from the notes, computed on first use and shared by every copy of this track.
     internal let cache = Cache()
