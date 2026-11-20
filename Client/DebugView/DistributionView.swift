@@ -10,6 +10,7 @@ import Charts
 import Accelerate
 import MIDIKit
 import FinderItem
+import NativeImage
 
 
 public struct DistributionView: View {

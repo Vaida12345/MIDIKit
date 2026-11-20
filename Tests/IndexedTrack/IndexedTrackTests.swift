@@ -1,0 +1,251 @@
+//
+//  IndexedTrackTests.swift
+//  MIDIKit
+//
+//  Created by Vaida on 2026-11-20.
+//
+
+import Testing
+import Foundation
+import MIDIKit
+import Intervals
+@testable
+import IndexedTrack
+
+
+// MARK: - Tests
+
+@Suite(.timeLimit(.minutes(1)))
+struct IndexedTrackTests {
+    
+    @Test
+    func dropsInvalidNotes() {
+        let indexed = track([
+            note(0, 1, 20), // below the keyboard
+            note(0, 1, 109), // above the keyboard
+            note(1, 0.5, 60), // ends before it starts
+            note(.nan, 1, 61),
+            note(0, .infinity, 62),
+            note(2, 3, 64),
+        ])
+        #expect(indexed.notes == [note(2, 3, 64)])
+    }
+    
+    @Test
+    func mergesDoubleTriggers() {
+        let indexed = track([
+            note(0, 0.5, 60, velocity: 40),
+            note(0.005, 0.8, 60, velocity: 90), // closer than the gap
+        ])
+        #expect(indexed.notes == [note(0, 0.8, 60, velocity: 90)])
+    }
+    
+    @Test
+    func trimsBeforeTheNextNote() {
+        let indexed = track([
+            note(0, 1, 60),
+            note(0.5, 1, 60),
+        ])
+        #expect(indexed.notes == [note(0, 0.5 - gap, 60), note(0.5, 1, 60)])
+    }
+    
+    @Test
+    func dropsNotesTooShortAfterTrimming() {
+        let indexed = track([
+            note(0, 1, 60),
+            note(0.01, 1, 60), // farther than the gap, but leaves the first note shorter than it
+        ])
+        #expect(indexed.notes == [note(0.01, 1, 60)])
+    }
+    
+    @Test
+    func sortsByOnsetThenPitch() {
+        let indexed = track([
+            note(1, 2, 64),
+            note(1, 2, 60),
+            note(0, 2, 72),
+        ])
+        #expect(indexed.notes.map(\.pitch) == [72, 60, 64])
+    }
+    
+    @Test
+    func mergesTracksKeepingChannels() {
+        let container = MIDIContainer(tracks: [
+            MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 80, channel: 3), note(0, 1, 62)]),
+            MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 64, velocity: 80, channel: 5)]),
+        ])
+        let indexed = IndexedTrack(container)
+        #expect(indexed.notes.map(\.pitch) == [60, 62, 64])
+        #expect(indexed.notes.map(\.channel) == [3, 0, 5])
+    }
+    
+    @Test
+    func cleansUpSustains() {
+        let indexed = track([], sustains: [
+            MIDISustainEvent(onset: 3, offset: 4),
+            MIDISustainEvent(onset: 1, offset: 2), // touches the first: a pedal change
+            MIDISustainEvent(onset: 0, offset: 1),
+            MIDISustainEvent(onset: 6, offset: 5), // ends before it starts
+        ])
+        #expect(indexed.sustains.contents == [MIDISustainEvent(onset: 0, offset: 1 - 1.0 / 128), MIDISustainEvent(onset: 1, offset: 2), MIDISustainEvent(onset: 3, offset: 4)])
+    }
+    
+    /// At 60 BPM, a beat lasts twice as long as at 120 BPM, so every time doubles.
+    @Test
+    func convertsTempo() {
+        let source = MIDITrack(
+            notes: [note(1, 2, 60)],
+            sustains: [MIDISustainEvent(onset: 1, offset: 3)],
+            metaEvents: [MIDIMetaEvent(timestamp: 1.5, type: 1, data: Data([1]))],
+            channelEvents: MIDIChannelEvents([MIDIChannelEvent(onset: 2.5, message: .controlChange(controller: 0, value: 64))])
+        )
+        let container = MIDIContainer(tracks: [source], tempo: MIDITempoTrack(tempos: [MIDITempoTrack.Tempo(timestamp: 0, beatsPerMinute: 60)]))
+        let indexed = IndexedTrack(container)
+        
+        #expect(indexed.notes == [note(2, 4, 60)])
+        #expect(indexed.sustains.contents == [MIDISustainEvent(onset: 2, offset: 6)])
+        #expect(indexed.metaEvents.map(\.timestamp) == [3])
+        #expect(indexed.channelEvents.map(\.onset) == [5])
+    }
+    
+    @Test
+    func roundTrip() {
+        let indexed = track(cleanInput(seed: 1, count: 300))
+        let again = IndexedTrack(indexed.makeContainer())
+        #expect(again.notes == indexed.notes)
+        #expect(again.sustains == indexed.sustains)
+    }
+
+    /// The time signature of a format-1 file goes back to the tempo track, as CoreMIDI accepts it nowhere else, and survives a file round trip.
+    @Test
+    func timeSignatureSurvivesAFile() throws {
+        var tempo = MIDITempoTrack(tempos: [MIDITempoTrack.Tempo(timestamp: 0, beatsPerMinute: 120)])
+        tempo.timeSignature = MIDITimeSignature(3, 4)
+        let container = MIDIContainer(tracks: [MIDITrack(notes: [note(0, 1, 60)])], tempo: tempo)
+
+        let made = container.indexed().makeContainer()
+        #expect(made.tempo.timeSignature == MIDITimeSignature(3, 4))
+        #expect(made.tracks[0].metaEvents.allSatisfy { $0.type != 0x58 })
+        #expect(try MIDIContainer(data: made.data()).tempo.timeSignature == MIDITimeSignature(3, 4))
+    }
+
+    /// The initializer for validated input keeps everything as given, and builds the lanes on first use.
+    @Test
+    func validatedInitializer() {
+        let source = MIDITrack(
+            notes: cleanInput(seed: 2, count: 100),
+            sustains: [MIDISustainEvent(onset: 0, offset: 2), MIDISustainEvent(onset: 3, offset: 5)],
+            metaEvents: [MIDIMetaEvent(timestamp: 1, type: 1, data: Data([1]))],
+            channelEvents: MIDIChannelEvents([MIDIChannelEvent(onset: 0.5, message: .controlChange(controller: 0, value: 64))])
+        )
+        let indexed = IndexedTrack(MIDIContainer(tracks: [source]))
+        let validated = IndexedTrack(validated: indexed.notes, sustains: indexed.sustains, channelEvents: indexed.channelEvents, metaEvents: indexed.metaEvents, rawData: indexed.rawData, profile: indexed.profile)
+        
+        #expect(validated.notes == indexed.notes)
+        #expect(validated.sustains == indexed.sustains)
+        #expect(validated.channelEvents == indexed.channelEvents)
+        #expect(validated.metaEvents == indexed.metaEvents)
+        #expect(validated.lanes.members == indexed.lanes.members)
+        #expect(validated.lanes.starts == indexed.lanes.starts)
+    }
+    
+    /// `MIDIContainer.indexed(profile:minimumConsecutiveNotesGap:)` is the initializer.
+    @Test
+    func indexedIsTheInitializer() {
+        let container = MIDIContainer(tracks: [MIDITrack(notes: cleanInput(seed: 3, count: 200), sustains: [MIDISustainEvent(onset: 0, offset: 2), MIDISustainEvent(onset: 3, offset: 5)])])
+
+        let indexed = container.indexed()
+        let initialized = IndexedTrack(container)
+        #expect(indexed.notes == initialized.notes)
+        #expect(indexed.sustains == initialized.sustains)
+        #expect(indexed.profile is GenericProfile)
+
+        let tuned = container.indexed(profile: .transkun, minimumConsecutiveNotesGap: 1/16)
+        #expect(tuned.notes == IndexedTrack(container, profile: .transkun, minimumConsecutiveNotesGap: 1/16).notes)
+        #expect(tuned.profile is TranskunProfile)
+    }
+
+    @Test
+    func indexedRoundTrip() {
+        let container = MIDIContainer(notes: MIDINotes([MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100), MIDINote(onset: 2, offset: 3, pitch: 64, velocity: 80)]))
+        let result = container.indexed().makeContainer()
+        #expect(result.tracks.count == 1)
+        #expect(result.tracks[0].notes.contents == container.tracks[0].notes.contents)
+    }
+
+    @Test
+    func indexedEmpty() {
+        let indexed = MIDIContainer().indexed()
+        #expect(indexed.notes.isEmpty)
+        #expect(indexed.sustains.isEmpty)
+        let result = indexed.makeContainer()
+        #expect(result.tracks.count == 1)
+        #expect(result.tracks[0].notes.isEmpty)
+    }
+
+    @Test
+    func indexedMergesTracks() {
+        let first = MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
+        let second = MIDITrack(notes: [MIDINote(onset: 2, offset: 3, pitch: 64, velocity: 80)])
+        let result = MIDIContainer(tracks: [first, second]).indexed().makeContainer()
+        #expect(result.tracks.count == 1)
+        #expect(result.tracks[0].notes.count == 2)
+    }
+
+    @Test(arguments: 0..<10)
+    func lanes(seed: Int) {
+        let indexed = track(cleanInput(seed: UInt64(seed) &+ 100, count: 300))
+        let lanes = indexed.lanes
+        
+        var seen = Set<Int>()
+        for pitch in 21...108 as ClosedRange<UInt8> {
+            let lane = lanes[pitch]
+            #expect(lane.allSatisfy { $0.pitch == pitch })
+            #expect(lane.isValidDisjointIntervals())
+            for position in lane.indices {
+                let index = lane.noteIndex(at: position)
+                #expect(indexed.notes[index] == lane[position])
+                seen.insert(index)
+            }
+        }
+        #expect(seen == Set(indexed.notes.indices))
+        
+        // The lanes stored by the initializer equal the ones the lazy path builds.
+        let fresh = IndexedTrack(validated: indexed.notes, sustains: indexed.sustains, channelEvents: indexed.channelEvents, metaEvents: indexed.metaEvents, rawData: indexed.rawData, profile: indexed.profile)
+        let lazy = fresh.lanes
+        #expect(lazy.members == lanes.members)
+        #expect(lazy.starts == lanes.starts)
+    }
+    
+    @Test
+    func intervalTree() {
+        let indexed = track(cleanInput(seed: 7, count: 300))
+        let tree = indexed.intervalTree
+        let end = Int((indexed.notes.map(\.offset).max() ?? 0) * 16) + 16
+        for step in -16...end {
+            let time = Double(step) / 16
+            let expected = indexed.notes.indices.filter { indexed.notes[$0].onset <= time && indexed.notes[$0].offset >= time }
+            #expect(tree.indices(containing: time) == expected, "time: \(time)")
+        }
+    }
+    
+
+    /// Raw messages, such as SysEx, are kept from every track, survive transforms, and are written back.
+    @Test
+    func rawDataIsCarried() {
+        let gmOn = MIDIRawData(timestamp: 3, data: Data([0xF0, 0x7E, 0x7F, 0x09, 0x01, 0xF7]))
+        let yamaha = MIDIRawData(timestamp: 1, data: Data([0xF0, 0x43, 0x10, 0x4C, 0x00, 0x00, 0x7E, 0x00, 0xF7]))
+        var first = MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
+        first.rawData = [gmOn]
+        var second = MIDITrack(notes: [MIDINote(onset: 1, offset: 2, pitch: 62, velocity: 100)])
+        second.rawData = [yamaha]
+        let indexed = IndexedTrack(MIDIContainer(tracks: [first, second], tempo: MIDITempoTrack(tempos: [MIDITempoTrack.Tempo(timestamp: 0, beatsPerMinute: 120)])))
+
+        #expect(indexed.rawData == [yamaha, gmOn]) // sorted by timestamp
+        #expect(indexed.applyingGap().rawData == indexed.rawData)
+        #expect(indexed.normalizing(preserve: .acousticResult).rawData == indexed.rawData)
+        #expect(indexed.removingArtifacts(threshold: 40).rawData == indexed.rawData)
+        #expect(indexed.makeContainer().tracks[0].rawData == [yamaha, gmOn])
+    }
+
+}

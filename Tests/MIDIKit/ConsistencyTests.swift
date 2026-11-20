@@ -1,0 +1,107 @@
+//
+//  ConsistencyTests.swift
+//  MIDIKit
+//
+//  Created by Vaida on 2025-08-29.
+//
+
+import Testing
+import FinderItem
+import MIDIKit
+
+
+@Suite
+struct ConsistencyTests {
+    
+    @Test
+    func checkPitch() {
+        do {
+            let notes = [
+                MIDINote(onset: 10, offset: 11, pitch: 20, velocity: 10)
+            ]
+            let container = MIDIContainer(tracks: [MIDITrack(notes: notes)])
+            #expect(!container._checkConsistency())
+        }
+        do {
+            let notes = [
+                MIDINote(onset: 10, offset: 11, pitch: 110, velocity: 10)
+            ]
+            let container = MIDIContainer(tracks: [MIDITrack(notes: notes)])
+            #expect(!container._checkConsistency())
+        }
+        do {
+            let notes = [
+                MIDINote(onset: 10, offset: 11, pitch: 50, velocity: 10)
+            ]
+            let container = MIDIContainer(tracks: [MIDITrack(notes: notes)])
+            #expect(container._checkConsistency())
+        }
+    }
+    
+    @Test
+    func checkVelocity() {
+        do {
+            let notes = [
+                MIDINote(onset: 10, offset: 11, pitch: 50, velocity: 0)
+            ]
+            let container = MIDIContainer(tracks: [MIDITrack(notes: notes)])
+            #expect(!container._checkConsistency())
+        }
+    }
+    
+    @Test
+    func checkDuration() {
+        do {
+            let notes = [
+                MIDINote(onset: 10, offset: 9, pitch: 50, velocity: 0)
+            ]
+            let container = MIDIContainer(tracks: [MIDITrack(notes: notes)])
+            #expect(!container._checkConsistency())
+        }
+    }
+    
+    /// Overlapping sustains are split when the track is created, so they always pass.
+    @Test
+    func checkSustains() {
+        do {
+            let sustains: [MIDITrack.SustainEvent] = [
+                MIDISustainEvent(onset: 0, offset: 10),
+                MIDISustainEvent(onset: 5, offset: 15),
+            ]
+            let container = MIDIContainer(tracks: [MIDITrack(sustains: sustains)])
+            #expect(container.tracks[0].sustains.contents == [MIDISustainEvent(onset: 0, offset: 5 - 1.0 / 128), MIDISustainEvent(onset: 5, offset: 15)])
+            #expect(container._checkConsistency())
+        }
+        
+        do {
+            let sustains: [MIDITrack.SustainEvent] = [
+                MIDISustainEvent(onset: 0, offset: 4.9),
+                MIDISustainEvent(onset: 5, offset: 15),
+            ]
+            let container = MIDIContainer(tracks: [MIDITrack(sustains: sustains)])
+            #expect(container._checkConsistency())
+        }
+    }
+    
+    @Test
+    func checkOverlaps() {
+        do {
+            let notes = [
+                MIDINote(onset: 0, offset: 10, pitch: 50, velocity: 50),
+                MIDINote(onset: 5, offset: 15, pitch: 50, velocity: 50),
+            ]
+            let container = MIDIContainer(tracks: [MIDITrack(notes: notes)])
+            #expect(!container._checkConsistency())
+        }
+        
+        do {
+            let notes = [
+                MIDINote(onset: 0, offset: 4.9, pitch: 50, velocity: 50),
+                MIDINote(onset: 5, offset: 15, pitch: 50, velocity: 50),
+            ]
+            let container = MIDIContainer(tracks: [MIDITrack(notes: notes)])
+            #expect(container._checkConsistency())
+        }
+    }
+    
+}

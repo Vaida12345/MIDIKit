@@ -1,0 +1,205 @@
+//
+//  Container + MusicSequence.swift
+//  MIDIKit
+//
+//  Created by Vaida on 2025-06-10.
+//
+
+import AudioToolbox
+import OSLog
+
+
+extension MIDIContainer {
+    
+    /// Returns a music sequence with the contents of the container, at their exact times.
+    ///
+    /// The caller is responsible for disposing the sequence.
+    public func makeSequence() throws -> MusicSequence {
+        try self.makeSequence(resolution: nil)
+    }
+    
+    /// Returns a music sequence with the contents of the container.
+    ///
+    /// - Parameter resolution: The ticks per beat of the file the sequence will be written to, or `nil` to keep exact times. With a resolution, every time is rounded to a whole tick, and every note and sustain lasts at least one tick. CoreMIDI converts each gap between consecutive events to ticks on its own, so times off the tick grid would otherwise accumulate rounding errors along the file.
+    @usableFromInline
+    func makeSequence(resolution: Int16?) throws -> MusicSequence {
+        var sequence: MusicSequence!
+        try withErrorCaptured {
+            NewMusicSequence(&sequence)
+        }
+        let grid = TickGrid(resolution: resolution)
+        
+        // tracks
+        for track in tracks {
+            track.makeTrack(sequence: sequence, grid: grid)
+        }
+        
+        // tempos
+        var tempoTrack: MusicTrack!
+        try withErrorCaptured {
+            MusicSequenceGetTempoTrack(sequence, &tempoTrack)
+        }
+        
+        tempo.metaEvents.forEach { _, event in
+            event.withUnsafePointer { pointer in
+                _ = MusicTrackNewMetaEvent(tempoTrack, grid.snap(event.timestamp), pointer)
+            }
+        }
+        tempo.tempos.forEach { _, tempo in
+            MusicTrackNewExtendedTempoEvent(tempoTrack, grid.snap(tempo.timestamp), tempo.beatsPerMinute)
+        }
+        
+        return sequence
+    }
+    
+    
+    /// - Note: This initializer does not dispose `sequence`.
+    public init(sequence: MusicSequence) throws {
+        var count: UInt32 = 0
+        try withErrorCaptured {
+            MusicSequenceGetTrackCount(sequence, &count)
+        }
+        
+        var midiTracks: [MIDITrack] = []
+        
+        struct AdditionalInfo {
+            var tempos: [MIDITempoTrack.Tempo]
+        }
+        
+        func processTrack(track: MusicTrack, additionalInfo: inout AdditionalInfo) throws -> MIDITrack? {
+            var midiTrack = MIDITrack()
+            
+            var iterator: MusicEventIterator!
+            try withErrorCaptured {
+                NewMusicEventIterator(track, &iterator)
+            }
+            defer { DisposeMusicEventIterator(iterator) }
+            
+            var iteratorHasNextEvent: Bool {
+                var bool = DarwinBoolean(false)
+                MusicEventIteratorHasCurrentEvent(iterator, &bool)
+                return bool.boolValue
+            }
+            
+            var sustainOpen: Bool = false
+            var sustainStart: MusicTimeStamp = 0
+            var sustains: [MIDISustainEvent] = []
+            var lastTimeStamp: MusicTimeStamp = 0
+            var channelEvents: [MIDIChannelEvent] = []
+            
+            while iteratorHasNextEvent {
+                var dataPointer: UnsafeRawPointer?
+                var dataSize: UInt32 = 0
+                var timeStamp: MusicTimeStamp = 0
+                var eventType: MusicEventType = kMusicEventType_NULL
+                
+                try withErrorCaptured {
+                    MusicEventIteratorGetEventInfo(iterator, &timeStamp, &eventType, &dataPointer, &dataSize)
+                }
+                defer { MusicEventIteratorNextEvent(iterator) }
+                lastTimeStamp = Swift.max(lastTimeStamp, timeStamp)
+                guard let dataPointer else { continue }
+                
+                // The raw values, 0-10
+                // kMusicEventType_NULL
+                // kMusicEventType_ExtendedNote
+                // ???
+                // kMusicEventType_ExtendedTempo
+                // kMusicEventType_User
+                // kMusicEventType_Meta
+                // kMusicEventType_MIDINoteMessage
+                // kMusicEventType_MIDIChannelMessage
+                // kMusicEventType_MIDIRawData
+                // kMusicEventType_Parameter
+                // kMusicEventType_AUPreset
+                
+                switch eventType {
+                case kMusicEventType_MIDINoteMessage:
+                    let event = dataPointer.load(as: MIDINoteMessage.self)
+                    guard event.duration > 0 else { continue }
+                    midiTrack.notes.append(MIDINote(onset: timeStamp, message: event))
+
+                case kMusicEventType_MIDIChannelMessage:
+                    let event = dataPointer.load(as: MIDIChannelMessage.self)
+                    // The sustain pedal, control change 64 on any channel, becomes sustains; 0...63 is up, and 64...127 is down.
+                    if (event.status & 0xF0) == 0xB0 && event.data1 == 64 {
+                        // sustain
+                        if event.data2 >= 64 {
+                            if !sustainOpen { // update sustainOpen only if it is not open.
+                                sustainOpen = true
+                                sustainStart = timeStamp
+                            }
+                        } else if sustainOpen {
+                            sustainOpen = false
+                            sustains.append(MIDITrack.SustainEvent(onset: sustainStart, offset: timeStamp))
+                        }
+                    } else if let channelEvent = MIDIChannelEvent(onset: timeStamp, event) {
+                        channelEvents.append(channelEvent)
+                    } else {
+                        let logger = Logger(subsystem: "MIDIKit", category: "MIDIContainer.init")
+                        logger.warning("Unhandled MIDI channel message with status \(event.status)")
+                    }
+
+                case kMusicEventType_Meta:
+                    let event = dataPointer.load(as: AudioToolbox.MIDIMetaEvent.self)
+                    let data = Data(bytes: dataPointer + 8, count: Int(event.dataLength))
+
+                    midiTrack.metaEvents.append(.init(timestamp: timeStamp, type: event.metaEventType, data: data))
+
+                case kMusicEventType_ExtendedTempo:
+                    let tempo = dataPointer.load(as: Double.self)
+                    additionalInfo.tempos.append(MIDITempoTrack.Tempo(timestamp: timeStamp, beatsPerMinute: tempo))
+
+                case kMusicEventType_MIDIRawData:
+                    let event = dataPointer.load(as: AudioToolbox.MIDIRawData.self)
+                    let data = Data(bytes: dataPointer + 4, count: Int(event.length))
+                    midiTrack.rawData.append(MIDIRawData(timestamp: timeStamp, data: data))
+                    
+                default:
+                    let logger = Logger(subsystem: "MIDIKit", category: "MIDIContainer.init")
+                    logger.warning("Unhandled MIDIEventType: \(eventType)")
+                    continue
+                }
+            }
+            // A pedal still down when the track ends is released at the end of the track.
+            if sustainOpen {
+                var trackLength: MusicTimeStamp = 0
+                var size = UInt32(MemoryLayout<MusicTimeStamp>.size)
+                MusicTrackGetProperty(track, kSequenceTrackProperty_TrackLength, &trackLength, &size)
+                let end = Swift.max(trackLength, lastTimeStamp)
+                if end > sustainStart {
+                    sustains.append(MIDITrack.SustainEvent(onset: sustainStart, offset: end))
+                }
+            }
+            midiTrack.sustains = MIDISustainEvents(sustains)
+            midiTrack.channelEvents = MIDIChannelEvents(channelEvents)
+            
+            return midiTrack
+        }
+        
+        for i in 0..<count {
+            var track: MusicTrack?
+            try withErrorCaptured {
+                MusicSequenceGetIndTrack(sequence, i, &track)
+            }
+            guard let track else { continue }
+            
+            var additionInfo = AdditionalInfo(tempos: [])
+            guard let midiTrack = try processTrack(track: track, additionalInfo: &additionInfo) else { continue }
+            midiTracks.append(midiTrack)
+        }
+        
+        var tempoTrack: MusicTrack?
+        try withErrorCaptured {
+            MusicSequenceGetTempoTrack(sequence, &tempoTrack)
+        }
+        var additionInfo = AdditionalInfo(tempos: [])
+        guard let tempoTrack else { throw OSStatusError(code: -1) }
+        guard let midiTempoTrack = try processTrack(track: tempoTrack, additionalInfo: &additionInfo) else {
+            throw OSStatusError(code: -1)
+        }
+        
+        self.init(tracks: midiTracks, tempo: .init(metaEvents: midiTempoTrack.metaEvents, tempos: additionInfo.tempos))
+    }
+    
+}

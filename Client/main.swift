@@ -44,7 +44,7 @@ import MusicUnderstanding
 //        print(result.rhythm!.bars.map({ $0.seconds * 2 }))
 //        print(result.rhythm!.beats.map({ $0.seconds * 2 }))
 //        
-//        let view = DebugView(container: container.indexed(), downbeats: result.rhythm!.bars.map({ $0.seconds * 2 }), beats: result.rhythm!.beats.map({ $0.seconds * 2 }))
+//        let view = DebugView(track: container.indexed(), downbeats: result.rhythm!.bars.map({ $0.seconds * 2 }), beats: result.rhythm!.beats.map({ $0.seconds * 2 }))
 //        try view.render(to: resultFolder/"\(target).pdf", format: .pdf)
 //    }
 //}
