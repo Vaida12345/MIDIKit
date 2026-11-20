@@ -22,6 +22,11 @@ public struct TranskunProfile: AnalysisProfile {
     public func formChords(in track: IndexedTrack) -> IndexedTrack.Chords {
         ChordArbiter.transkun.formChords(in: track)
     }
+    
+    /// Finds the downbeats of `track` with ``DownbeatTracker/transkun``.
+    public func downbeats(in track: IndexedTrack, prior: [Double]) -> [Double] {
+        DownbeatTracker.transkun.downbeats(in: track, prior: prior)
+    }
 
 }
 
@@ -64,4 +69,32 @@ extension ChordArbiter {
         maximumSize: 24
     )
 
+}
+
+
+extension DownbeatTracker {
+    
+    /// [Transkun](https://github.com/Yujia-Yan/Transkun): its offsets follow the keys, so the duration cue weighs more.
+    ///
+    /// Tuned on the transkun transcriptions of the MAESTRO audio.
+    public static let transkun = DownbeatTracker(
+        bassWeight: 1.2,
+        massWeight: 0.1,
+        durationWeight: 1.5,
+        chromaWeight: 0.6,
+        wideChromaWeight: 1,
+        pedalWeight: 0.7,
+        gapWeight: 0.3,
+        readsOffsets: true,
+        tempoChangeCost: 30,
+        beatFloor: 0.02,
+        offBeatWeight: 0.6,
+        downbeatGain: 1.6,
+        downbeatCost: 0.7,
+        meterChangeCost: 8,
+        beatRegionDivisor: 20,
+        tripleMeterBonus: 0.4,
+        quadrupleMeterBonus: 0.6
+    )
+    
 }

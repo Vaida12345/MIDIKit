@@ -26,6 +26,11 @@ public struct PianoTranscriptionProfile: AnalysisProfile {
     public func formChords(in track: IndexedTrack) -> IndexedTrack.Chords {
         ChordArbiter.pianoTranscription.formChords(in: track)
     }
+    
+    /// Finds the downbeats of `track` with ``DownbeatTracker/pianoTranscription``.
+    public func downbeats(in track: IndexedTrack, prior: [Double]) -> [Double] {
+        DownbeatTracker.pianoTranscription.downbeats(in: track, prior: prior)
+    }
 
 }
 
@@ -68,4 +73,32 @@ extension ChordArbiter {
         maximumSize: 24
     )
 
+}
+
+
+extension DownbeatTracker {
+    
+    /// PianoTranscription: the offsets cannot be relied on (they include the ring of the sound), so they are never read.
+    ///
+    /// Tuned on the PianoTranscription transcriptions of the MAESTRO audio. The duration weight is the one it was tuned with, and has no effect.
+    public static let pianoTranscription = DownbeatTracker(
+        bassWeight: 1.4,
+        massWeight: 0.3,
+        durationWeight: 0.7,
+        chromaWeight: 0.6,
+        wideChromaWeight: 0.6,
+        pedalWeight: 0.3,
+        gapWeight: 0.3,
+        readsOffsets: false,
+        tempoChangeCost: 30,
+        beatFloor: 0.028,
+        offBeatWeight: 0.6,
+        downbeatGain: 1.6,
+        downbeatCost: 0.7,
+        meterChangeCost: 11.2,
+        beatRegionDivisor: 14,
+        tripleMeterBonus: 0.2,
+        quadrupleMeterBonus: 0.4
+    )
+    
 }

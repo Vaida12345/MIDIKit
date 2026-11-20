@@ -209,6 +209,8 @@ struct IndexedTrackDownbeatsTests {
         #expect(figure.makeTrack(profile: FixedDownbeats(values: [1, 2, 3])).downbeats() == [1, 2, 3])
         #expect(figure.makeTrack(profile: ChordsOnly()).downbeats() == DownbeatTracker.generic.downbeats(in: figure.makeTrack(profile: ChordsOnly())))
         #expect(figure.makeTrack(profile: ChordsOnly()).downbeats(prior: [7]) == DownbeatTracker.generic.downbeats(in: figure.makeTrack(profile: ChordsOnly()), prior: [7]))
+        #expect(figure.makeTrack(profile: .transkun).downbeats() == DownbeatTracker.transkun.downbeats(in: figure.makeTrack(profile: .transkun)))
+        #expect(figure.makeTrack(profile: .pianoTranscription).downbeats(prior: [7]) == DownbeatTracker.pianoTranscription.downbeats(in: figure.makeTrack(profile: .pianoTranscription), prior: [7]))
     }
 
     @Test func isDeterministic() {

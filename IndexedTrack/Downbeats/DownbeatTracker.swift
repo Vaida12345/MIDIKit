@@ -21,7 +21,7 @@ import MIDIKit
 ///
 /// Decoding the tempo and the bar together lets each correct the other: a beat that the notes place badly is put right by the bar it belongs to. A tracker that commits to beats first, or to a bar length first, cannot do that.
 ///
-/// The constants of ``generic``, ``transkun`` and ``pianoTranscription`` were tuned on the performances of the ASAP dataset, as captured by the Disklavier and as transcribed from the MAESTRO audio, against ASAP's downbeat annotations, maximizing the downbeat F-measure within ±70 ms. On held-out pieces, ``generic`` found 0.44 of the downbeats of transkun transcriptions and ``transkun`` 0.45 (F-measure), against 0.28 for `IndexedContainer.downbeats`.
+/// The constants of ``generic``, ``transkun`` and ``pianoTranscription`` were tuned on the performances of the ASAP dataset, as captured by the Disklavier and as transcribed from the MAESTRO audio, against ASAP's downbeat annotations, maximizing the downbeat F-measure within ±70 ms. On held-out pieces, ``generic`` found 0.44 of the downbeats of transkun transcriptions and ``transkun`` 0.45 (F-measure), against 0.28 for the downbeat finder of earlier versions of MIDIKit.
 public struct DownbeatTracker: Sendable, Hashable {
 
     /// The weight of how low the lowest note of a chord is.
@@ -48,6 +48,8 @@ public struct DownbeatTracker: Sendable, Hashable {
     /// Whether the offsets of the notes are reliable enough to read.
     ///
     /// When `false`, the tracker never reads a note offset: every note counts as half a beat long, the duration cue is `0`, and the end of the piece is taken from the onsets and the sustains.
+    ///
+    /// The tracker also reads the onsets of ``IndexedTrack/chords``, which the profile forms. The glissando check that every ``ChordArbiter`` shares looks at how long notes last, so a chord can still depend on the offsets.
     public var readsOffsets: Bool
 
     /// The cost of changing the length of a beat, per unit of the absolute log ratio of the two lengths.
@@ -99,52 +101,6 @@ public struct DownbeatTracker: Sendable, Hashable {
         beatRegionDivisor: 20,
         tripleMeterBonus: 0.4,
         quadrupleMeterBonus: 0.8
-    )
-
-    /// [Transkun](https://github.com/Yujia-Yan/Transkun): its offsets follow the keys, so the duration cue weighs more.
-    ///
-    /// Tuned on the transkun transcriptions of the MAESTRO audio.
-    public static let transkun = DownbeatTracker(
-        bassWeight: 1.2,
-        massWeight: 0.1,
-        durationWeight: 1.5,
-        chromaWeight: 0.6,
-        wideChromaWeight: 1,
-        pedalWeight: 0.7,
-        gapWeight: 0.3,
-        readsOffsets: true,
-        tempoChangeCost: 30,
-        beatFloor: 0.02,
-        offBeatWeight: 0.6,
-        downbeatGain: 1.6,
-        downbeatCost: 0.7,
-        meterChangeCost: 8,
-        beatRegionDivisor: 20,
-        tripleMeterBonus: 0.4,
-        quadrupleMeterBonus: 0.6
-    )
-
-    /// PianoTranscription: the offsets cannot be relied on (they include the ring of the sound), so they are never read.
-    ///
-    /// Tuned on the PianoTranscription transcriptions of the MAESTRO audio. The duration weight is the one it was tuned with, and has no effect.
-    public static let pianoTranscription = DownbeatTracker(
-        bassWeight: 1.4,
-        massWeight: 0.3,
-        durationWeight: 0.7,
-        chromaWeight: 0.6,
-        wideChromaWeight: 0.6,
-        pedalWeight: 0.3,
-        gapWeight: 0.3,
-        readsOffsets: false,
-        tempoChangeCost: 30,
-        beatFloor: 0.028,
-        offBeatWeight: 0.6,
-        downbeatGain: 1.6,
-        downbeatCost: 0.7,
-        meterChangeCost: 11.2,
-        beatRegionDivisor: 14,
-        tripleMeterBonus: 0.2,
-        quadrupleMeterBonus: 0.4
     )
 
 
@@ -221,7 +177,7 @@ public struct DownbeatTracker: Sendable, Hashable {
     ///
     /// - Returns: Strictly increasing downbeats, in beats at 120 BPM. Empty, apart from `prior`, when `track` has no notes.
     ///
-    /// - Complexity: O(*f* · *s*) time and O(*f*) memory, where *f* is the number of frames (25 per beat) and *s* the number of states (about 9,300), in addition to forming the ``IndexedTrack/chords`` on first use.
+    /// - Complexity: O(*f* · *s*) time and O(*f* · *b*) memory, where *f* is the number of frames (25 per beat), *s* the number of states (about 9,300) and *b* the number of states where a beat starts (about 280), in addition to forming the ``IndexedTrack/chords`` on first use. A piece of 20 minutes at 120 BPM takes about 70 MB.
     public func downbeats(in track: IndexedTrack, prior: [Double] = []) -> [Double] {
         let anchors = Self.sanitized(prior)
         let notes = track.notes
