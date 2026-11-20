@@ -65,8 +65,8 @@ struct DownbeatsTests {
         notes += Self.metricPattern(start: 16, bars: 4, barLength: 3)
 
         // Add a strong sectional boundary around the switch.
-        notes.append(MIDINote(onset: 15.9, offset: 16.8, note: 36, velocity: 122))
-        notes.append(MIDINote(onset: 16.0, offset: 17.4, note: 48, velocity: 118))
+        notes.append(MIDINote(onset: 15.9, offset: 16.8, pitch: 36, velocity: 122))
+        notes.append(MIDINote(onset: 16.0, offset: 17.4, pitch: 48, velocity: 118))
 
         let indexed = Self.makeIndexed(notes: notes)
         let downbeats = indexed.downbeats()
@@ -97,11 +97,11 @@ private extension DownbeatsTests {
             let isBarStart = beatIndex % Int(barLength) == 0
 
             if isBarStart {
-                notes.append(MIDINote(onset: onset, offset: onset + 0.95, note: 40, velocity: 112))
-                notes.append(MIDINote(onset: onset, offset: onset + 0.75, note: 52, velocity: 96))
-                notes.append(MIDINote(onset: onset + 0.03, offset: onset + 0.7, note: 64, velocity: 88))
+                notes.append(MIDINote(onset: onset, offset: onset + 0.95, pitch: 40, velocity: 112))
+                notes.append(MIDINote(onset: onset, offset: onset + 0.75, pitch: 52, velocity: 96))
+                notes.append(MIDINote(onset: onset + 0.03, offset: onset + 0.7, pitch: 64, velocity: 88))
             } else {
-                notes.append(MIDINote(onset: onset + 0.02, offset: onset + 0.32, note: 70, velocity: 48))
+                notes.append(MIDINote(onset: onset + 0.02, offset: onset + 0.32, pitch: 70, velocity: 48))
             }
         }
 

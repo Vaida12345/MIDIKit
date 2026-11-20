@@ -16,19 +16,19 @@ struct TrimLeadingSilenceTests {
     @Test
     func notesAcrossTracks() {
         let container = MIDIContainer(tracks: [
-            MIDITrack(notes: [MIDINote(onset: 3, offset: 4, note: 60, velocity: 80), MIDINote(onset: 5, offset: 5.5, note: 62, velocity: 80)]),
-            MIDITrack(notes: [MIDINote(onset: 2, offset: 2.5, note: 48, velocity: 70)]),
+            MIDITrack(notes: [MIDINote(onset: 3, offset: 4, pitch: 60, velocity: 80), MIDINote(onset: 5, offset: 5.5, pitch: 62, velocity: 80)]),
+            MIDITrack(notes: [MIDINote(onset: 2, offset: 2.5, pitch: 48, velocity: 70)]),
         ])
         let result = container.trimmingLeadingSilence()
 
-        #expect(result.tracks[0].notes.contents == [MIDINote(onset: 1, offset: 2, note: 60, velocity: 80), MIDINote(onset: 3, offset: 3.5, note: 62, velocity: 80)])
-        #expect(result.tracks[1].notes.contents == [MIDINote(onset: 0, offset: 0.5, note: 48, velocity: 70)])
+        #expect(result.tracks[0].notes.contents == [MIDINote(onset: 1, offset: 2, pitch: 60, velocity: 80), MIDINote(onset: 3, offset: 3.5, pitch: 62, velocity: 80)])
+        #expect(result.tracks[1].notes.contents == [MIDINote(onset: 0, offset: 0.5, pitch: 48, velocity: 70)])
     }
 
     @Test
     func sustains() {
         let container = MIDIContainer(tracks: [MIDITrack(
-            notes: [MIDINote(onset: 2, offset: 3, note: 60, velocity: 80)],
+            notes: [MIDINote(onset: 2, offset: 3, pitch: 60, velocity: 80)],
             sustains: [MIDISustainEvent(onset: 0, offset: 1), MIDISustainEvent(onset: 1.5, offset: 2), MIDISustainEvent(onset: 1.8, offset: 2.5), MIDISustainEvent(onset: 3, offset: 4)]
         )])
         let result = container.trimmingLeadingSilence()
@@ -41,19 +41,19 @@ struct TrimLeadingSilenceTests {
     func controlAndMetaEvents() {
         let name = MIDIMetaEvent(timestamp: 0, type: .trackName, data: Data("Piano".utf8))
         let container = MIDIContainer(tracks: [MIDITrack(
-            notes: [MIDINote(onset: 2, offset: 3, note: 60, velocity: 80)],
+            notes: [MIDINote(onset: 2, offset: 3, pitch: 60, velocity: 80)],
             metaEvents: [name, MIDIMetaEvent(timestamp: 2.5, type: 1, data: Data([1]))],
-            controlEvents: MIDIControlEvents([MIDIControlEvent(onset: 0.5, channel: 7, velocity: 90), MIDIControlEvent(onset: 1, channel: 7, velocity: 100), MIDIControlEvent(onset: 2.25, channel: 7, velocity: 110)])
+            channelEvents: MIDIChannelEvents([MIDIChannelEvent(onset: 0.5, message: .controlChange(controller: 7, value: 90)), MIDIChannelEvent(onset: 1, message: .controlChange(controller: 7, value: 100)), MIDIChannelEvent(onset: 2.25, message: .controlChange(controller: 7, value: 110))])
         )])
         let result = container.trimmingLeadingSilence()
 
         #expect(result.tracks[0].metaEvents == [MIDIMetaEvent(timestamp: 0, type: .trackName, data: Data("Piano".utf8)), MIDIMetaEvent(timestamp: 0.5, type: 1, data: Data([1]))])
-        #expect(result.tracks[0].controlEvents.contents == [MIDIControlEvent(onset: 0, channel: 7, velocity: 90), MIDIControlEvent(onset: 0, channel: 7, velocity: 100), MIDIControlEvent(onset: 0.25, channel: 7, velocity: 110)])
+        #expect(result.tracks[0].channelEvents.contents == [MIDIChannelEvent(onset: 0, message: .controlChange(controller: 7, value: 90)), MIDIChannelEvent(onset: 0, message: .controlChange(controller: 7, value: 100)), MIDIChannelEvent(onset: 0.25, message: .controlChange(controller: 7, value: 110))])
     }
 
     @Test
     func tempos() {
-        let notes = MIDITrack(notes: [MIDINote(onset: 4, offset: 5, note: 60, velocity: 80)])
+        let notes = MIDITrack(notes: [MIDINote(onset: 4, offset: 5, pitch: 60, velocity: 80)])
         let container = MIDIContainer(
             tracks: [notes],
             tempo: MIDITempoTrack(
@@ -69,7 +69,7 @@ struct TrimLeadingSilenceTests {
 
     @Test
     func tempoAtTheCut() {
-        let notes = MIDITrack(notes: [MIDINote(onset: 2, offset: 3, note: 60, velocity: 80)])
+        let notes = MIDITrack(notes: [MIDINote(onset: 2, offset: 3, pitch: 60, velocity: 80)])
         let container = MIDIContainer(tracks: [notes], tempo: MIDITempoTrack([MIDITempoTrack.Tempo(timestamp: 0, tempo: 100), MIDITempoTrack.Tempo(timestamp: 2, tempo: 90)]))
         #expect(container.trimmingLeadingSilence().tempo.contents == [MIDITempoTrack.Tempo(timestamp: 0, tempo: 90)])
     }
@@ -77,7 +77,7 @@ struct TrimLeadingSilenceTests {
     /// A file whose only tempo comes after the cut gets no tempo added at 0: the default applied before the cut, and still applies.
     @Test
     func noTempoAddedAtZero() {
-        let notes = MIDITrack(notes: [MIDINote(onset: 2, offset: 3, note: 60, velocity: 80)])
+        let notes = MIDITrack(notes: [MIDINote(onset: 2, offset: 3, pitch: 60, velocity: 80)])
         let container = MIDIContainer(tracks: [notes], tempo: MIDITempoTrack([MIDITempoTrack.Tempo(timestamp: 3, tempo: 90)]))
         #expect(container.trimmingLeadingSilence().tempo.contents == [MIDITempoTrack.Tempo(timestamp: 1, tempo: 90)])
     }
@@ -87,22 +87,22 @@ struct TrimLeadingSilenceTests {
         let empty = MIDIContainer(tracks: [MIDITrack(sustains: [MIDISustainEvent(onset: 1, offset: 2)])])
         #expect(empty.trimmingLeadingSilence() == empty)
 
-        let atZero = MIDIContainer(tracks: [MIDITrack(notes: [MIDINote(onset: 0, offset: 1, note: 60, velocity: 80)], sustains: [MIDISustainEvent(onset: 0.5, offset: 2)])], tempo: MIDITempoTrack([MIDITempoTrack.Tempo(timestamp: 0, tempo: 100)]))
+        let atZero = MIDIContainer(tracks: [MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 80)], sustains: [MIDISustainEvent(onset: 0.5, offset: 2)])], tempo: MIDITempoTrack([MIDITempoTrack.Tempo(timestamp: 0, tempo: 100)]))
         #expect(atZero.trimmingLeadingSilence() == atZero)
     }
 
     @Test
     func negativeOnsetsMoveLater() {
-        let container = MIDIContainer(tracks: [MIDITrack(notes: [MIDINote(onset: -1, offset: 0.5, note: 60, velocity: 80)], sustains: [MIDISustainEvent(onset: 0, offset: 1)])])
+        let container = MIDIContainer(tracks: [MIDITrack(notes: [MIDINote(onset: -1, offset: 0.5, pitch: 60, velocity: 80)], sustains: [MIDISustainEvent(onset: 0, offset: 1)])])
         let result = container.trimmingLeadingSilence()
-        #expect(result.tracks[0].notes.contents == [MIDINote(onset: 0, offset: 1.5, note: 60, velocity: 80)])
+        #expect(result.tracks[0].notes.contents == [MIDINote(onset: 0, offset: 1.5, pitch: 60, velocity: 80)])
         #expect(result.tracks[0].sustains.contents == [MIDISustainEvent(onset: 1, offset: 2)])
     }
 
     @Test
     func mutatingAndReturningAgree() {
         let container = MIDIContainer(tracks: [MIDITrack(
-            notes: [MIDINote(onset: 1.5, offset: 3, note: 60, velocity: 80)],
+            notes: [MIDINote(onset: 1.5, offset: 3, pitch: 60, velocity: 80)],
             sustains: [MIDISustainEvent(onset: 1, offset: 2)]
         )], tempo: MIDITempoTrack([MIDITempoTrack.Tempo(timestamp: 1, tempo: 80)]))
         var mutated = container
@@ -113,7 +113,7 @@ struct TrimLeadingSilenceTests {
     @Test
     func roundTrip() throws {
         let container = MIDIContainer(
-            tracks: [MIDITrack(notes: [MIDINote(onset: 2, offset: 3, note: 60, velocity: 80), MIDINote(onset: 4, offset: 4.5, note: 64, velocity: 80)])],
+            tracks: [MIDITrack(notes: [MIDINote(onset: 2, offset: 3, pitch: 60, velocity: 80), MIDINote(onset: 4, offset: 4.5, pitch: 64, velocity: 80)])],
             tempo: MIDITempoTrack(events: [.defaultTimeSignature], tempos: [MIDITempoTrack.Tempo(timestamp: 0, tempo: 100), MIDITempoTrack.Tempo(timestamp: 1, tempo: 90)])
         )
         let trimmed = container.trimmingLeadingSilence()

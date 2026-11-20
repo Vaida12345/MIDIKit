@@ -44,7 +44,7 @@ struct IOTests {
             let duration = Double.random(in: 0...10, using: &generator) + 1/128 // never zero
             let pitch = UInt8.random(in: 21...108, using: &generator)
             let velocity = UInt8.random(in: 1...127, using: &generator)
-            let note = MIDINote(onset: onset, offset: onset + duration, note: pitch, velocity: velocity)
+            let note = MIDINote(onset: onset, offset: onset + duration, pitch: pitch, velocity: velocity)
             let indexed = MIDIContainer(tracks: [track]).indexed()
             try withExtendedLifetime(indexed) { indexed in
                 guard indexed.notes[pitch].isNil(or: { !$0.overlaps(with: note) }) else { return }
@@ -74,7 +74,7 @@ struct IOTests {
         /// Orders notes by losslessly serialized identity, then by onset within matching identities.
         func ordered(_ notes: [MIDINote]) -> [MIDINote] {
             notes.sorted { lhs, rhs in
-                if lhs.note != rhs.note { return lhs.note < rhs.note }
+                if lhs.pitch != rhs.pitch { return lhs.pitch < rhs.pitch }
                 if lhs.velocity != rhs.velocity { return lhs.velocity < rhs.velocity }
                 if lhs.channel != rhs.channel { return lhs.channel < rhs.channel }
                 if lhs.releaseVelocity != rhs.releaseVelocity { return lhs.releaseVelocity < rhs.releaseVelocity }
@@ -87,7 +87,7 @@ struct IOTests {
             try #require(rhs.duration > 0)
             #expect(abs(lhs.duration - rhs.duration) < tolerance, "\(lhs), \(rhs)")
             #expect(abs(lhs.offset - rhs.offset) < tolerance, "\(lhs), \(rhs)")
-            #expect(lhs.note == rhs.note)
+            #expect(lhs.pitch == rhs.pitch)
             #expect(lhs.velocity == rhs.velocity)
             #expect(lhs.channel == rhs.channel)
             #expect(lhs.releaseVelocity == rhs.releaseVelocity)

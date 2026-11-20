@@ -184,7 +184,7 @@ struct ChordArbiterTests {
         let keys = [60, 62, 64, 65, 67, 69, 71, 72]
         let scale = keys.enumerated().map { Figures.note(1 + Double($0.offset) * 0.12, $0.element, duration: 0.08) }
         #expect(Figures.sizes(Figures.framed(scale), optimizeFor: algorithm) == Array(repeating: 1, count: 10))
-        #expect(Figures.sizes(Figures.framed(scale.reversed().enumerated().map { Figures.note(1 + Double($0.offset) * 0.12, Int($0.element.note), duration: 0.08) }), optimizeFor: algorithm) == Array(repeating: 1, count: 10))
+        #expect(Figures.sizes(Figures.framed(scale.reversed().enumerated().map { Figures.note(1 + Double($0.offset) * 0.12, Int($0.element.pitch), duration: 0.08) }), optimizeFor: algorithm) == Array(repeating: 1, count: 10))
     }
 
     @Test(arguments: algorithms)
@@ -195,7 +195,7 @@ struct ChordArbiterTests {
 
         // the same distance between all the notes of a stream
         let stream = Figures.stream(count: 40, spacingMs: 48)
-        let sizes = Figures.sizes(Figures.framed(stream.map { Figures.note($0.onset + 1, Int($0.note), duration: $0.duration) }), optimizeFor: algorithm)
+        let sizes = Figures.sizes(Figures.framed(stream.map { Figures.note($0.onset + 1, Int($0.pitch), duration: $0.duration) }), optimizeFor: algorithm)
         // the notes at the two ends of a stream have silence on one side, and are judged like a pair standing apart
         #expect(sizes.dropFirst(4).dropLast(4).allSatisfy { $0 == 1 }, "\(sizes)")
         #expect(sizes.reduce(0, +) == 42)
@@ -328,7 +328,7 @@ struct ChordArbiterTests {
             // exactly equal gaps would tie, and a rounding error in a shifted onset would decide
             let notes = Figures.jittered(Figures.notes(seed: seed), seed: seed)
             for shift in [4.0, 1.7, 123.456] {
-                let shifted = notes.map { MIDINote(onset: $0.onset + shift, offset: $0.offset + shift, note: $0.note, velocity: $0.velocity) }
+                let shifted = notes.map { MIDINote(onset: $0.onset + shift, offset: $0.offset + shift, pitch: $0.pitch, velocity: $0.velocity) }
                 let before = Figures.indexed(notes)
                 let after = Figures.indexed(shifted)
                 #expect(

@@ -159,7 +159,7 @@ struct NormalizingTests {
             notes: notes,
             sustains: randomSustains(seed: UInt64(seed), end: 20),
             metaEvents: [MIDIMetaEvent(timestamp: 1, type: 1, data: Data([1]))],
-            controlEvents: MIDIControlEvents([MIDIControlEvent(onset: 0.5, channel: 0, velocity: 64)])
+            channelEvents: MIDIChannelEvents([MIDIChannelEvent(onset: 0.5, message: .controlChange(controller: 0, value: 64))])
         )
         let indexed = IndexedTrack(MIDIContainer(tracks: [source]))
         let result = indexed.normalizing(preserve: .notesDisplay)
@@ -167,11 +167,11 @@ struct NormalizingTests {
         #expect(result.notes.map(\.onset) == indexed.notes.map(\.onset))
         #expect(result.notes.map(\.pitch) == indexed.notes.map(\.pitch))
         #expect(result.sustains == indexed.sustains)
-        #expect(result.controlEvents == indexed.controlEvents)
+        #expect(result.channelEvents == indexed.channelEvents)
         #expect(result.metaEvents == indexed.metaEvents)
         #expect(result.profile is GenericProfile)
 
-        let fresh = IndexedTrack(validated: result.notes, sustains: result.sustains, controlEvents: result.controlEvents, metaEvents: result.metaEvents, profile: result.profile)
+        let fresh = IndexedTrack(validated: result.notes, sustains: result.sustains, channelEvents: result.channelEvents, metaEvents: result.metaEvents, profile: result.profile)
         #expect(result.lanes.members == fresh.lanes.members)
         #expect(result.lanes.starts == fresh.lanes.starts)
     }

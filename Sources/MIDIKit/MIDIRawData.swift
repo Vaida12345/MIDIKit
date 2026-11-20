@@ -14,9 +14,9 @@ import AudioToolbox
 /// - Important: MIDIKit does not write raw data when saving a MIDI. This structure is read-only.
 public struct MIDIRawData: Sendable, Equatable {
     
-    public let timestamp: MusicTimeStamp
+    public var timestamp: MusicTimeStamp
     
-    public let data: Data
+    public var data: Data
     
     
     @inlinable

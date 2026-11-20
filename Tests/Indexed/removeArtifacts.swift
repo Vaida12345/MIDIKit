@@ -15,42 +15,42 @@ struct RemoveArtifactsTests {
     
     @Test func mockAllUnder() async throws {
         let container = MIDIContainer(notes: [
-            MIDINote(onset: 0, offset: 1, note: 50, velocity: 20),
-            MIDINote(onset: 1, offset: 1.1, note: 50, velocity: 20),
-            MIDINote(onset: 1.1, offset: 1.3, note: 50, velocity: 20)
+            MIDINote(onset: 0, offset: 1, pitch: 50, velocity: 20),
+            MIDINote(onset: 1, offset: 1.1, pitch: 50, velocity: 20),
+            MIDINote(onset: 1.1, offset: 1.3, pitch: 50, velocity: 20)
         ])
         let reduced = container.indexed().removingArtifacts(threshold: 30).makeContainer()
         try #require(reduced._checkConsistency())
         
         #expect(reduced.tracks[0].notes.count == 1)
-        #expect(reduced.tracks[0].notes == [MIDINote(onset: 0, offset: 1.3, note: 50, velocity: 20)])
+        #expect(reduced.tracks[0].notes == [MIDINote(onset: 0, offset: 1.3, pitch: 50, velocity: 20)])
     }
     
     @Test func mockAllUnderExceptFirst() async throws {
         let container = MIDIContainer(notes: [
-            MIDINote(onset: 0, offset: 1, note: 50, velocity: 50),
-            MIDINote(onset: 1, offset: 1.1, note: 50, velocity: 20),
-            MIDINote(onset: 1.1, offset: 1.3, note: 50, velocity: 20)
+            MIDINote(onset: 0, offset: 1, pitch: 50, velocity: 50),
+            MIDINote(onset: 1, offset: 1.1, pitch: 50, velocity: 20),
+            MIDINote(onset: 1.1, offset: 1.3, pitch: 50, velocity: 20)
         ])
         let reduced = container.indexed().removingArtifacts(threshold: 30).makeContainer()
         try #require(reduced._checkConsistency())
         
         #expect(reduced.tracks[0].notes.count == 1)
-        #expect(reduced.tracks[0].notes == [MIDINote(onset: 0, offset: 1.3, note: 50, velocity: 50)])
+        #expect(reduced.tracks[0].notes == [MIDINote(onset: 0, offset: 1.3, pitch: 50, velocity: 50)])
     }
     
     @Test func mockAllButSecond() async throws {
         let container = MIDIContainer(notes: [
-            MIDINote(onset: 0, offset: 1, note: 50, velocity: 20),
-            MIDINote(onset: 1.01, offset: 1.1, note: 50, velocity: 50),
-            MIDINote(onset: 1.1, offset: 1.3, note: 50, velocity: 20),
-            MIDINote(onset: 1.3, offset: 1.5, note: 50, velocity: 20)
+            MIDINote(onset: 0, offset: 1, pitch: 50, velocity: 20),
+            MIDINote(onset: 1.01, offset: 1.1, pitch: 50, velocity: 50),
+            MIDINote(onset: 1.1, offset: 1.3, pitch: 50, velocity: 20),
+            MIDINote(onset: 1.3, offset: 1.5, pitch: 50, velocity: 20)
         ])
         let reduced = container.indexed().removingArtifacts(threshold: 30).makeContainer()
         try #require(reduced._checkConsistency())
         
         #expect(reduced.tracks[0].notes.count == 2)
-        #expect(reduced.tracks[0].notes == [MIDINote(onset: 0, offset: 1, note: 50, velocity: 20), MIDINote(onset: 1.01, offset: 1.5, note: 50, velocity: 50)])
+        #expect(reduced.tracks[0].notes == [MIDINote(onset: 0, offset: 1, pitch: 50, velocity: 20), MIDINote(onset: 1.01, offset: 1.5, pitch: 50, velocity: 50)])
     }
     
     @Test func consistencyChecks() async throws {

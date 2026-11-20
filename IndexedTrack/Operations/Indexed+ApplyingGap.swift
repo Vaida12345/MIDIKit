@@ -18,7 +18,7 @@ extension IndexedTrack {
     /// - Otherwise, the note ends `ideal` before the next one starts, but never shortened to less than `minimumNoteLength`.
     /// - If the next note starts within `minimumNoteLength` of this one, the note is unchanged.
     ///
-    /// Notes are never lengthened, and the last note on each key is unchanged. Sustains, control events, meta events and the ``profile`` are kept as they are. Applying the same gap again changes nothing.
+    /// Notes are never lengthened, and the last note on each key is unchanged. Sustains, channel events, meta events and the ``profile`` are kept as they are. Applying the same gap again changes nothing.
     ///
     /// - Parameters:
     ///   - ideal: The ideal gap between consecutive notes on the same key, in beats at 120 BPM. It must be finite and not negative. The default value is `1/8`, a 32nd note.
@@ -50,7 +50,7 @@ extension IndexedTrack {
             }
         }
 
-        return IndexedTrack(validated: notes, sustains: self.sustains, controlEvents: self.controlEvents, metaEvents: self.metaEvents, profile: self.profile, reusingLayoutOf: lanes)
+        return IndexedTrack(validated: notes, sustains: self.sustains, channelEvents: self.channelEvents, metaEvents: self.metaEvents, profile: self.profile, reusingLayoutOf: lanes)
     }
 
 }

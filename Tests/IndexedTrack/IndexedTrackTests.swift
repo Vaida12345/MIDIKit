@@ -71,8 +71,8 @@ struct IndexedTrackTests {
     @Test
     func mergesTracksKeepingChannels() {
         let container = MIDIContainer(tracks: [
-            MIDITrack(notes: [MIDINote(onset: 0, offset: 1, note: 60, velocity: 80, channel: 3), note(0, 1, 62)]),
-            MIDITrack(notes: [MIDINote(onset: 0, offset: 1, note: 64, velocity: 80, channel: 5)]),
+            MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 80, channel: 3), note(0, 1, 62)]),
+            MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 64, velocity: 80, channel: 5)]),
         ])
         let indexed = IndexedTrack(container)
         #expect(indexed.notes.map(\.pitch) == [60, 62, 64])
@@ -97,7 +97,7 @@ struct IndexedTrackTests {
             notes: [note(1, 2, 60)],
             sustains: [MIDISustainEvent(onset: 1, offset: 3)],
             metaEvents: [MIDIMetaEvent(timestamp: 1.5, type: 1, data: Data([1]))],
-            controlEvents: MIDIControlEvents([MIDIControlEvent(onset: 2.5, channel: 0, velocity: 64)])
+            channelEvents: MIDIChannelEvents([MIDIChannelEvent(onset: 2.5, message: .controlChange(controller: 0, value: 64))])
         )
         let container = MIDIContainer(tracks: [source], tempo: MIDITempoTrack(tempos: [MIDITempoTrack.Tempo(timestamp: 0, tempo: 60)]))
         let indexed = IndexedTrack(container)
@@ -105,7 +105,7 @@ struct IndexedTrackTests {
         #expect(indexed.notes == [note(2, 4, 60)])
         #expect(indexed.sustains.contents == [MIDISustainEvent(onset: 2, offset: 6)])
         #expect(indexed.metaEvents.map(\.timestamp) == [3])
-        #expect(indexed.controlEvents.map(\.onset) == [5])
+        #expect(indexed.channelEvents.map(\.onset) == [5])
     }
     
     @Test
@@ -123,14 +123,14 @@ struct IndexedTrackTests {
             notes: cleanInput(seed: 2, count: 100),
             sustains: [MIDISustainEvent(onset: 0, offset: 2), MIDISustainEvent(onset: 3, offset: 5)],
             metaEvents: [MIDIMetaEvent(timestamp: 1, type: 1, data: Data([1]))],
-            controlEvents: MIDIControlEvents([MIDIControlEvent(onset: 0.5, channel: 0, velocity: 64)])
+            channelEvents: MIDIChannelEvents([MIDIChannelEvent(onset: 0.5, message: .controlChange(controller: 0, value: 64))])
         )
         let indexed = IndexedTrack(MIDIContainer(tracks: [source]))
-        let validated = IndexedTrack(validated: indexed.notes, sustains: indexed.sustains, controlEvents: indexed.controlEvents, metaEvents: indexed.metaEvents, profile: indexed.profile)
+        let validated = IndexedTrack(validated: indexed.notes, sustains: indexed.sustains, channelEvents: indexed.channelEvents, metaEvents: indexed.metaEvents, profile: indexed.profile)
         
         #expect(validated.notes == indexed.notes)
         #expect(validated.sustains == indexed.sustains)
-        #expect(validated.controlEvents == indexed.controlEvents)
+        #expect(validated.channelEvents == indexed.channelEvents)
         #expect(validated.metaEvents == indexed.metaEvents)
         #expect(validated.lanes.members == indexed.lanes.members)
         #expect(validated.lanes.starts == indexed.lanes.starts)
@@ -166,7 +166,7 @@ struct IndexedTrackTests {
         #expect(seen == Set(indexed.notes.indices))
         
         // The lanes stored by the initializer equal the ones the lazy path builds.
-        let fresh = IndexedTrack(validated: indexed.notes, sustains: indexed.sustains, controlEvents: indexed.controlEvents, metaEvents: indexed.metaEvents, profile: indexed.profile)
+        let fresh = IndexedTrack(validated: indexed.notes, sustains: indexed.sustains, channelEvents: indexed.channelEvents, metaEvents: indexed.metaEvents, profile: indexed.profile)
         let lazy = fresh.lanes
         #expect(lazy.members == lanes.members)
         #expect(lazy.starts == lanes.starts)

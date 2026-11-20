@@ -12,7 +12,7 @@ extension IndexedTrack {
     ///
     /// The ``profile`` decides what an artifact is, through ``AnalysisProfile/removingArtifacts(from:threshold:proximityThreshold:)``. The generic one removes runs of quiet notes on a key that closely follow a louder note, and extends that note over them; see ``GenericProfile/removingArtifacts(from:threshold:proximityThreshold:)``.
     ///
-    /// Sustains, control events, meta events and the ``profile`` are kept.
+    /// Sustains, channel events, meta events and the ``profile`` are kept.
     ///
     /// - Parameters:
     ///   - threshold: The velocity at or under which a note may be an artifact.

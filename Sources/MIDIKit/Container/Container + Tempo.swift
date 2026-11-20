@@ -18,7 +18,7 @@ public extension MIDIContainer {
     /// event at timestamp `0`.
     ///
     /// Fast path: if ``tempo`` is already constant and equal to `constantTempo`, this method returns
-    /// without changing notes, sustains, control events, meta events, or tempo events.
+    /// without changing notes, sustains, channel events, meta events, or tempo events.
     ///
     /// - Parameter constantTempo: The target tempo in BPM. Must be greater than `0`.
     mutating func normalizeToConstantTempo(_ constantTempo: Double) {
@@ -87,8 +87,8 @@ public extension MIDIContainer {
                 sustain.offset = scaledTime(at: sustain.offset, tempoEvents: effectiveTempoEvents, constantTempo: constantTempo)
             }
 
-            for index in track.controlEvents.contents.indices {
-                track.controlEvents.contents[index].onset = scaledTime(at: track.controlEvents.contents[index].onset, tempoEvents: effectiveTempoEvents, constantTempo: constantTempo)
+            for index in track.channelEvents.contents.indices {
+                track.channelEvents.contents[index].onset = scaledTime(at: track.channelEvents.contents[index].onset, tempoEvents: effectiveTempoEvents, constantTempo: constantTempo)
             }
 
             for index in track.metaEvents.indices {

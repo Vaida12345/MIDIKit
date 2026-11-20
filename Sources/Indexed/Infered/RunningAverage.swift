@@ -23,12 +23,12 @@ public struct RunningAverage {
     ) {
         var contents: [Element] = []
         combinedNotes.forEach { index, note in
-            var notesMin = note.note
-            var notesMax = note.note
+            var notesMin = note.pitch
+            var notesMax = note.pitch
             var j = combinedNotes.lastIndex(before: note.onset - runningLength) ?? 0
             while j < combinedNotes.endIndex, combinedNotes[j].onset < note.onset + runningLength {
                 if combinedNotes[j].offset > note.onset - runningLength {
-                    let new = combinedNotes[j].note
+                    let new = combinedNotes[j].pitch
                     
                     if notesMin > new {
                         notesMin = new

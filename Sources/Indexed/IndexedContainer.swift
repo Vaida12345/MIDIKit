@@ -36,7 +36,7 @@ public final class IndexedContainer {
     /// The sustain events.
     public var sustains: MIDISustainEvents
     
-    public var controlEvents: MIDIControlEvents
+    public var channelEvents: MIDIChannelEvents
     public var metaEvents: [MIDIMetaEvent]
     
     
@@ -61,7 +61,7 @@ public final class IndexedContainer {
             $1 = self.count
         }
         
-        let track = MIDITrack(notes: MIDINotes(consume notes), sustains: self.sustains, metaEvents: metaEvents, controlEvents: self.controlEvents)
+        let track = MIDITrack(notes: MIDINotes(consume notes), sustains: self.sustains, metaEvents: metaEvents, channelEvents: self.channelEvents)
         return MIDIContainer(tracks: [track])
     }
     
@@ -81,7 +81,7 @@ public final class IndexedContainer {
         self.notes = [:]
         self.contents = .allocate(capacity: 0)
         self.sustains = []
-        self.controlEvents = []
+        self.channelEvents = []
         self.metaEvents = []
         
         self._init(container: container, minimumConsecutiveNotesGap: minimumConsecutiveNotesGap)
@@ -120,7 +120,7 @@ extension IndexedContainer {
         notes.reserveCapacity(copy.tracks.map(\.notes.count).sum)
         for (trackIndex, track) in copy.tracks.enumerated() {
             for var note in track.notes {
-                note.note = clamp(note.note, min: 21, max: 108)
+                note.pitch = clamp(note.pitch, min: 21, max: 108)
                 if copy.tracks.count > 1 {
                     note.channel = UInt8(trackIndex % 16)
                 }
@@ -151,7 +151,7 @@ extension IndexedContainer {
         do {
             var grouped: [UInt8 : [MIDINote]] = [:]
             notes.forEach { _, element in
-                grouped[element.note, default: []].append(element)
+                grouped[element.pitch, default: []].append(element)
             }
             
             for pitch in 21...108 as ClosedRange<UInt8> {
@@ -188,14 +188,14 @@ extension IndexedContainer {
         self.contents = contents
         self.sustains = sustains
         
-        self.controlEvents = MIDIControlEvents(container.tracks.flatMap(\.controlEvents))
+        self.channelEvents = MIDIChannelEvents(container.tracks.flatMap(\.channelEvents))
         self.metaEvents = container.tracks.flatMap(\.metaEvents)
         // tempo track is ignored as IndexedContainer is 120BPM.
         
         // construct grouped
         var grouped: [UInt8 : [ReferenceNote]] = [:]
         contents.forEach { index, element in
-            grouped[element.note, default: []].append(ReferenceNote(contents.baseAddress! + index))
+            grouped[element.pitch, default: []].append(ReferenceNote(contents.baseAddress! + index))
         }
         
         

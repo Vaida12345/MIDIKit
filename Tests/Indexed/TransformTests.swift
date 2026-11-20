@@ -15,11 +15,11 @@ struct TransformTests {
     @Test
     func mergeNotesInSameInterval() async {
         let lhs = MIDIContainer(notes: [
-            MIDINote(onset: 0, offset: 1, note: 60, velocity: 10),
-            MIDINote(onset: 2, offset: 3, note: 60, velocity: 10),
+            MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 10),
+            MIDINote(onset: 2, offset: 3, pitch: 60, velocity: 10),
         ])
         let rhs = MIDIContainer(notes: [
-            MIDINote(onset: 0, offset: 3, note: 60, velocity: 10),
+            MIDINote(onset: 0, offset: 3, pitch: 60, velocity: 10),
         ])
         let indexed = lhs.indexed()
         indexed.mergeNotesInSameInterval(in: rhs.indexed(), threshold: 70, difference: 0)

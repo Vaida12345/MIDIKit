@@ -24,7 +24,7 @@ struct RunningAverageTests {
 
     @Test func singleNote() {
         let indexed = makeIndexed([
-            MIDINote(onset: 1, offset: 2, note: 60, velocity: 100),
+            MIDINote(onset: 1, offset: 2, pitch: 60, velocity: 100),
         ])
         let avg = indexed.runningAverage()
         let element = avg[at: 1]
@@ -34,8 +34,8 @@ struct RunningAverageTests {
 
     @Test func twoNotesSamePitch() {
         let indexed = makeIndexed([
-            MIDINote(onset: 1, offset: 2, note: 60, velocity: 100),
-            MIDINote(onset: 3, offset: 4, note: 60, velocity: 80),
+            MIDINote(onset: 1, offset: 2, pitch: 60, velocity: 100),
+            MIDINote(onset: 3, offset: 4, pitch: 60, velocity: 80),
         ])
         let avg = indexed.runningAverage()
         // At time 1, average should include the first note
@@ -48,8 +48,8 @@ struct RunningAverageTests {
 
     @Test func wideSpanNotes() {
         let indexed = makeIndexed([
-            MIDINote(onset: 1, offset: 2, note: 40, velocity: 100),
-            MIDINote(onset: 1, offset: 2, note: 80, velocity: 100),
+            MIDINote(onset: 1, offset: 2, pitch: 40, velocity: 100),
+            MIDINote(onset: 1, offset: 2, pitch: 80, velocity: 100),
         ])
         let avg = indexed.runningAverage()
         let element = avg[at: 1]
@@ -61,7 +61,7 @@ struct RunningAverageTests {
 
     @Test func binarySearchBeforeFirst() {
         let indexed = makeIndexed([
-            MIDINote(onset: 5, offset: 6, note: 60, velocity: 100),
+            MIDINote(onset: 5, offset: 6, pitch: 60, velocity: 100),
         ])
         let avg = indexed.runningAverage()
         // Query before first element
@@ -72,7 +72,7 @@ struct RunningAverageTests {
 
     @Test func binarySearchAfterLast() {
         let indexed = makeIndexed([
-            MIDINote(onset: 1, offset: 2, note: 60, velocity: 100),
+            MIDINote(onset: 1, offset: 2, pitch: 60, velocity: 100),
         ])
         let avg = indexed.runningAverage()
         let element = avg[at: 100]
@@ -82,8 +82,8 @@ struct RunningAverageTests {
 
     @Test func exactMatch() {
         let indexed = makeIndexed([
-            MIDINote(onset: 1.0, offset: 2.0, note: 60, velocity: 100),
-            MIDINote(onset: 3.0, offset: 4.0, note: 64, velocity: 80),
+            MIDINote(onset: 1.0, offset: 2.0, pitch: 60, velocity: 100),
+            MIDINote(onset: 3.0, offset: 4.0, pitch: 64, velocity: 80),
         ])
         let avg = indexed.runningAverage()
         let element = avg[at: 1.0]
@@ -92,8 +92,8 @@ struct RunningAverageTests {
 
     @Test func runningLengthLimitsWindow() {
         let indexed = makeIndexed([
-            MIDINote(onset: 0, offset: 1, note: 30, velocity: 100),
-            MIDINote(onset: 10, offset: 11, note: 80, velocity: 100),
+            MIDINote(onset: 0, offset: 1, pitch: 30, velocity: 100),
+            MIDINote(onset: 10, offset: 11, pitch: 80, velocity: 100),
         ])
         // With running length 1, the notes shouldn't affect each other (too far apart)
         let avg = indexed.runningAverage(runningLength: 1)

@@ -18,8 +18,8 @@ struct AlignFirstNoteTests {
 
     @Test func alignShiftsNotesToZero() {
         let indexed = makeIndexed([
-            MIDINote(onset: 5, offset: 6, note: 60, velocity: 100),
-            MIDINote(onset: 7, offset: 8, note: 64, velocity: 80),
+            MIDINote(onset: 5, offset: 6, pitch: 60, velocity: 100),
+            MIDINote(onset: 7, offset: 8, pitch: 64, velocity: 80),
         ])
         indexed.alignFirstNoteToZero()
         #expect(indexed.contents[0].onset == 0)
@@ -28,7 +28,7 @@ struct AlignFirstNoteTests {
 
     @Test func alignShiftsSustains() {
         let indexed = makeIndexed([
-            MIDINote(onset: 5, offset: 10, note: 60, velocity: 100),
+            MIDINote(onset: 5, offset: 10, pitch: 60, velocity: 100),
         ], sustains: [
             MIDISustainEvent(onset: 5, offset: 6),
             MIDISustainEvent(onset: 7, offset: 10),
@@ -42,7 +42,7 @@ struct AlignFirstNoteTests {
 
     @Test func alignRemovesNegativeSustains() {
         let indexed = makeIndexed([
-            MIDINote(onset: 5, offset: 10, note: 60, velocity: 100),
+            MIDINote(onset: 5, offset: 10, pitch: 60, velocity: 100),
         ], sustains: [
             MIDISustainEvent(onset: 3, offset: 4), // before first note — will become negative
             MIDISustainEvent(onset: 7, offset: 10),
@@ -79,7 +79,7 @@ struct NormalizeTests {
 
     @Test func normalizeSingleNote() {
         let indexed = makeIndexed([
-            MIDINote(onset: 0, offset: 1, note: 60, velocity: 100),
+            MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100),
         ])
         indexed.normalize(preserve: .acousticResult)
         #expect(!indexed.isEmpty)
@@ -87,8 +87,8 @@ struct NormalizeTests {
 
     @Test func normalizeWithSustains() {
         let indexed = makeIndexed([
-            MIDINote(onset: 0, offset: 2, note: 60, velocity: 100),
-            MIDINote(onset: 3, offset: 5, note: 64, velocity: 80),
+            MIDINote(onset: 0, offset: 2, pitch: 60, velocity: 100),
+            MIDINote(onset: 3, offset: 5, pitch: 64, velocity: 80),
         ], sustains: [
             MIDISustainEvent(onset: 0, offset: 2),
             MIDISustainEvent(onset: 3, offset: 5),
@@ -100,8 +100,8 @@ struct NormalizeTests {
 
     @Test func normalizePreserveAcoustic() {
         let indexed = makeIndexed([
-            MIDINote(onset: 0, offset: 3, note: 60, velocity: 100),
-            MIDINote(onset: 2, offset: 5, note: 64, velocity: 80),
+            MIDINote(onset: 0, offset: 3, pitch: 60, velocity: 100),
+            MIDINote(onset: 2, offset: 5, pitch: 64, velocity: 80),
         ])
         indexed.normalize(preserve: .acousticResult)
         // Should complete without error
@@ -109,8 +109,8 @@ struct NormalizeTests {
 
     @Test func normalizePreserveNotesDisplay() {
         let indexed = makeIndexed([
-            MIDINote(onset: 0, offset: 3, note: 60, velocity: 100),
-            MIDINote(onset: 2, offset: 5, note: 64, velocity: 80),
+            MIDINote(onset: 0, offset: 3, pitch: 60, velocity: 100),
+            MIDINote(onset: 2, offset: 5, pitch: 64, velocity: 80),
         ])
         indexed.normalize(preserve: .notesDisplay)
         // Should complete without error

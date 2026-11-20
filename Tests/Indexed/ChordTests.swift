@@ -24,7 +24,7 @@ struct ChordTests {
 
     @Test func singleNoteSingleChord() {
         let indexed = makeIndexed([
-            MIDINote(onset: 0, offset: 1, note: 60, velocity: 100),
+            MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100),
         ])
         let chords = indexed.chords()
         #expect(chords.count == 1)
@@ -33,9 +33,9 @@ struct ChordTests {
 
     @Test func chordGroupsSimultaneousNotes() {
         let indexed = makeIndexed([
-            MIDINote(onset: 0, offset: 1, note: 60, velocity: 100),
-            MIDINote(onset: 0.02, offset: 1, note: 64, velocity: 80),
-            MIDINote(onset: 0.04, offset: 1, note: 67, velocity: 90), // C major triad
+            MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100),
+            MIDINote(onset: 0.02, offset: 1, pitch: 64, velocity: 80),
+            MIDINote(onset: 0.04, offset: 1, pitch: 67, velocity: 90), // C major triad
         ])
         let chords = indexed.chords()
         // All three should be in the same chord: a triad rolled over 20 ms
@@ -45,8 +45,8 @@ struct ChordTests {
 
     @Test func separateChordsByGap() {
         let indexed = makeIndexed([
-            MIDINote(onset: 0, offset: 0.5, note: 60, velocity: 100),
-            MIDINote(onset: 2, offset: 2.5, note: 64, velocity: 80),
+            MIDINote(onset: 0, offset: 0.5, pitch: 60, velocity: 100),
+            MIDINote(onset: 2, offset: 2.5, pitch: 64, velocity: 80),
         ])
         let chords = indexed.chords()
         #expect(chords.count == 2)
@@ -54,8 +54,8 @@ struct ChordTests {
 
     @Test func chordLeadingOnset() {
         let indexed = makeIndexed([
-            MIDINote(onset: 1, offset: 2, note: 60, velocity: 100),
-            MIDINote(onset: 1.05, offset: 2, note: 64, velocity: 80),
+            MIDINote(onset: 1, offset: 2, pitch: 60, velocity: 100),
+            MIDINote(onset: 1.05, offset: 2, pitch: 64, velocity: 80),
         ])
         let chords = indexed.chords()
         #expect(chords[0].leadingOnset == 1.0)
@@ -63,8 +63,8 @@ struct ChordTests {
 
     @Test func chordTrailingOffset() {
         let indexed = makeIndexed([
-            MIDINote(onset: 1, offset: 2.5, note: 60, velocity: 100),
-            MIDINote(onset: 1, offset: 2.0, note: 64, velocity: 80),
+            MIDINote(onset: 1, offset: 2.5, pitch: 60, velocity: 100),
+            MIDINote(onset: 1, offset: 2.0, pitch: 64, velocity: 80),
         ])
         let chords = indexed.chords()
         #expect(chords[0].maxOffset == 2.5)
@@ -72,7 +72,7 @@ struct ChordTests {
 
     @Test func chordDuration() {
         let indexed = makeIndexed([
-            MIDINote(onset: 1, offset: 3, note: 60, velocity: 100),
+            MIDINote(onset: 1, offset: 3, pitch: 60, velocity: 100),
         ])
         let chords = indexed.chords()
         #expect(chords[0].duration == 2.0)
@@ -80,8 +80,8 @@ struct ChordTests {
 
     @Test func chordPitchSpan() {
         let indexed = makeIndexed([
-            MIDINote(onset: 0, offset: 1, note: 60, velocity: 100),
-            MIDINote(onset: 0, offset: 1, note: 67, velocity: 80),
+            MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100),
+            MIDINote(onset: 0, offset: 1, pitch: 67, velocity: 80),
         ])
         let chords = indexed.chords()
         #expect(chords[0].pitchSpan == 7) // C4 to G4 = 7 semitones
@@ -89,9 +89,9 @@ struct ChordTests {
 
     @Test func chordsSortedByOnset() {
         let indexed = makeIndexed([
-            MIDINote(onset: 3, offset: 4, note: 60, velocity: 100),
-            MIDINote(onset: 0, offset: 1, note: 64, velocity: 80),
-            MIDINote(onset: 1.5, offset: 2, note: 67, velocity: 90),
+            MIDINote(onset: 3, offset: 4, pitch: 60, velocity: 100),
+            MIDINote(onset: 0, offset: 1, pitch: 64, velocity: 80),
+            MIDINote(onset: 1.5, offset: 2, pitch: 67, velocity: 90),
         ])
         let chords = indexed.chords()
         for i in 1..<chords.count {
@@ -101,9 +101,9 @@ struct ChordTests {
 
     @Test func firstIndexAfterBinarySearch() {
         let indexed = makeIndexed([
-            MIDINote(onset: 0, offset: 1, note: 60, velocity: 100),
-            MIDINote(onset: 2, offset: 3, note: 64, velocity: 80),
-            MIDINote(onset: 4, offset: 5, note: 67, velocity: 90),
+            MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100),
+            MIDINote(onset: 2, offset: 3, pitch: 64, velocity: 80),
+            MIDINote(onset: 4, offset: 5, pitch: 67, velocity: 90),
         ])
         let chords = indexed.chords()
         #expect(chords.firstIndex(after: 1) == 1)
@@ -114,9 +114,9 @@ struct ChordTests {
     @Test func makeSingleHandedChords() {
         // Wide chord that spans > 12 semitones should be split
         let indexed = makeIndexed([
-            MIDINote(onset: 0, offset: 1, note: 36, velocity: 100),  // C2
-            MIDINote(onset: 0, offset: 1, note: 48, velocity: 100),  // C3
-            MIDINote(onset: 0, offset: 1, note: 72, velocity: 100),  // C5
+            MIDINote(onset: 0, offset: 1, pitch: 36, velocity: 100),  // C2
+            MIDINote(onset: 0, offset: 1, pitch: 48, velocity: 100),  // C3
+            MIDINote(onset: 0, offset: 1, pitch: 72, velocity: 100),  // C5
         ])
         let singleHanded = Chord.makeSingleHandedChords(from: indexed)
         #expect(!singleHanded.isEmpty)

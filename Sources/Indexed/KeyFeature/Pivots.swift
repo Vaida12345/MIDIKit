@@ -14,7 +14,7 @@ extension KeyFeatures {
         
         public func append(to track: inout MIDITrack) {
             for content in contents {
-                track.notes.append(MIDINotes.Note(onset: content.onset, offset: content.onset + content.duration, note: 59, velocity: 127))
+                track.notes.append(MIDINotes.Note(onset: content.onset, offset: content.onset + content.duration, pitch: 59, velocity: 127))
             }
             track.notes.contents.sort { $0.onset < $1.onset }
         }

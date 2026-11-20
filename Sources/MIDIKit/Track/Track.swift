@@ -33,7 +33,7 @@ public struct MIDITrack: CustomStringConvertible, DetailedStringConvertible, Sen
     
     public var rawData: [MIDIRawData]
     
-    public var controlEvents: MIDIControlEvents
+    public var channelEvents: MIDIChannelEvents
     
     /// The range of the notes in the track.
     @inlinable
@@ -47,30 +47,30 @@ public struct MIDITrack: CustomStringConvertible, DetailedStringConvertible, Sen
     }
     
     @inlinable
-    public init(notes: [Note] = [], sustains: [SustainEvent] = [], metaEvents: [MetaEvent] = [], controlEvents: MIDIControlEvents = []) {
+    public init(notes: [Note] = [], sustains: [SustainEvent] = [], metaEvents: [MetaEvent] = [], channelEvents: MIDIChannelEvents = []) {
         self.notes = Notes(notes)
         self.sustains = MIDISustainEvents(sustains)
         self.metaEvents = metaEvents
         self.rawData = []
-        self.controlEvents = controlEvents
+        self.channelEvents = channelEvents
     }
     
     @inlinable
-    public init(notes: [Note], sustains: MIDISustainEvents, metaEvents: [MetaEvent] = [], controlEvents: MIDIControlEvents = []) {
+    public init(notes: [Note], sustains: MIDISustainEvents, metaEvents: [MetaEvent] = [], channelEvents: MIDIChannelEvents = []) {
         self.notes = Notes(notes)
         self.sustains = sustains
         self.metaEvents = metaEvents
         self.rawData = []
-        self.controlEvents = controlEvents
+        self.channelEvents = channelEvents
     }
     
     @inlinable
-    public init(notes: Notes, sustains: MIDISustainEvents, metaEvents: [MetaEvent] = [], controlEvents: MIDIControlEvents = []) {
+    public init(notes: Notes, sustains: MIDISustainEvents, metaEvents: [MetaEvent] = [], channelEvents: MIDIChannelEvents = []) {
         self.notes = notes
         self.sustains = sustains
         self.metaEvents = metaEvents
         self.rawData = []
-        self.controlEvents = controlEvents
+        self.channelEvents = channelEvents
     }
     
     public typealias Note = MIDINote

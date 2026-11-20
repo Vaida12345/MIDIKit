@@ -23,7 +23,7 @@ public struct KeyFeatures {
                             MIDINote(
                                 onset: content.onset,
                                 offset: content.onset + content.duration,
-                                note: 60 + key,
+                                pitch: 60 + key,
                                 velocity: UInt8(value * 127)
                             )
                         }
@@ -97,7 +97,7 @@ public struct KeyFeatures {
                 
                 while onset <= offset {
                     let note = _notes[onset]
-                    let normal = MIDINote(onset: clamp(note.onset, min: beat), offset: clamp(note.offset, max: beat + interval), note: note.note, velocity: note.velocity)
+                    let normal = MIDINote(onset: clamp(note.onset, min: beat), offset: clamp(note.offset, max: beat + interval), pitch: note.note, velocity: note.velocity)
                     value += Double(normal.velocity) * Swift.max(normal.duration, 0)
                     
                     onset &+= 1

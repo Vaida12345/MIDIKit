@@ -32,8 +32,8 @@ struct LocalBarRegionsTests {
         notes += Self.metricPattern(start: 20, bars: 6, barLength: 3)
 
         // Strong boundary emphasis around the structural change.
-        notes.append(MIDINote(onset: 19.9, offset: 20.9, note: 36, velocity: 122))
-        notes.append(MIDINote(onset: 20.0, offset: 21.6, note: 48, velocity: 116))
+        notes.append(MIDINote(onset: 19.9, offset: 20.9, pitch: 36, velocity: 122))
+        notes.append(MIDINote(onset: 20.0, offset: 21.6, pitch: 48, velocity: 116))
 
         let indexed = Self.makeIndexed(notes: notes)
         let regions = indexed.localBarRegions(windowDuration: 6, overlapRatio: 0.5, barTolerance: 0.16)
@@ -71,13 +71,13 @@ private extension LocalBarRegionsTests {
             let isBarStart = beatIndex % Int(barLength) == 0
 
             if isBarStart {
-                notes.append(MIDINote(onset: onset, offset: onset + 0.95, note: 36, velocity: 118))
-                notes.append(MIDINote(onset: onset + 0.02, offset: onset + 0.74, note: 52, velocity: 96))
-                notes.append(MIDINote(onset: onset + 0.04, offset: onset + 0.58, note: 64, velocity: 88))
+                notes.append(MIDINote(onset: onset, offset: onset + 0.95, pitch: 36, velocity: 118))
+                notes.append(MIDINote(onset: onset + 0.02, offset: onset + 0.74, pitch: 52, velocity: 96))
+                notes.append(MIDINote(onset: onset + 0.04, offset: onset + 0.58, pitch: 64, velocity: 88))
             } else {
-                notes.append(MIDINote(onset: onset + 0.03, offset: onset + 0.34, note: 72, velocity: 54))
+                notes.append(MIDINote(onset: onset + 0.03, offset: onset + 0.34, pitch: 72, velocity: 54))
                 if beatIndex % 2 == 0 {
-                    notes.append(MIDINote(onset: onset + 0.5, offset: onset + 0.72, note: 79, velocity: 42))
+                    notes.append(MIDINote(onset: onset + 0.5, offset: onset + 0.72, pitch: 79, velocity: 42))
                 }
             }
         }

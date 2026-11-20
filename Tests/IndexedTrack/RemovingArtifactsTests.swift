@@ -126,14 +126,14 @@ struct RemovingArtifactsTests {
             notes: cleanInput(seed: UInt64(seed) &+ 1_700, count: 150),
             sustains: [MIDISustainEvent(onset: 1, offset: 3), MIDISustainEvent(onset: 4, offset: 6)],
             metaEvents: [MIDIMetaEvent(timestamp: 1, type: 1, data: Data([1]))],
-            controlEvents: MIDIControlEvents([MIDIControlEvent(onset: 0.5, channel: 0, velocity: 64)])
+            channelEvents: MIDIChannelEvents([MIDIChannelEvent(onset: 0.5, message: .controlChange(controller: 0, value: 64))])
         )
         let indexed = IndexedTrack(MIDIContainer(tracks: [source]))
         let result = indexed.removingArtifacts(threshold: 64)
 
         #expect(result.notes.count < indexed.notes.count)
         #expect(result.sustains == indexed.sustains)
-        #expect(result.controlEvents == indexed.controlEvents)
+        #expect(result.channelEvents == indexed.channelEvents)
         #expect(result.metaEvents == indexed.metaEvents)
         #expect(result.profile is GenericProfile)
     }

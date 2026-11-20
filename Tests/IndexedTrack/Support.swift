@@ -13,7 +13,7 @@ import IndexedTrack
 let gap = 1.0 / 128
 
 func note(_ onset: Double, _ offset: Double, _ pitch: UInt8, velocity: UInt8 = 80) -> MIDINote {
-    MIDINote(onset: onset, offset: offset, note: pitch, velocity: velocity)
+    MIDINote(onset: onset, offset: offset, pitch: pitch, velocity: velocity)
 }
 
 func track(_ notes: [MIDINote], sustains: [MIDISustainEvent] = []) -> IndexedTrack {

@@ -55,7 +55,7 @@ public struct MIDIMetaEvent: Sendable, Equatable {
     /// The default meta event specifies a 4/4 time signature, one metronome click per quarter note, and the default 32nd-note division.
     @inlinable
     public static var defaultTimeSignature: MIDIMetaEvent {
-        MIDIMetaEvent(timestamp: 0.0, type: .timeSignature, data: Data([4, 2, 24, 8]))
+        MIDITimeSignature.default.event()
     }
     
     

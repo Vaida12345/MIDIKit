@@ -11,70 +11,100 @@ import MIDIKit
 struct MIDINoteTests {
 
     @Test func basicInit() {
-        let note = MIDINote(onset: 1.0, offset: 2.0, note: 60, velocity: 100)
+        let note = MIDINote(onset: 1.0, offset: 2.0, pitch: 60, velocity: 100)
         #expect(note.onset == 1.0)
         #expect(note.offset == 2.0)
-        #expect(note.note == 60)
+        #expect(note.pitch == 60)
         #expect(note.velocity == 100)
     }
 
     @Test func defaultChannelIsZero() {
-        let note = MIDINote(onset: 0, offset: 1, note: 60, velocity: 100)
+        let note = MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)
         #expect(note.channel == 0)
     }
 
     @Test func defaultReleaseVelocityIsZero() {
-        let note = MIDINote(onset: 0, offset: 1, note: 60, velocity: 100)
+        let note = MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)
         #expect(note.releaseVelocity == 0)
     }
 
     @Test func explicitChannel() {
-        let note = MIDINote(onset: 0, offset: 1, note: 60, velocity: 100, channel: 5)
+        let note = MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100, channel: 5)
         #expect(note.channel == 5)
     }
 
     @Test func explicitReleaseVelocity() {
-        let note = MIDINote(onset: 0, offset: 1, note: 60, velocity: 100, releaseVelocity: 64)
+        let note = MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100, releaseVelocity: 64)
         #expect(note.releaseVelocity == 64)
     }
 
     @Test func durationGetter() {
-        let note = MIDINote(onset: 1.0, offset: 3.5, note: 60, velocity: 100)
+        let note = MIDINote(onset: 1.0, offset: 3.5, pitch: 60, velocity: 100)
         #expect(note.duration == 2.5)
     }
 
     @Test func durationSetterChangesOffset() {
-        var note = MIDINote(onset: 1.0, offset: 2.0, note: 60, velocity: 100)
+        var note = MIDINote(onset: 1.0, offset: 2.0, pitch: 60, velocity: 100)
         note.duration = 3.0
         #expect(note.offset == 4.0)
         #expect(note.onset == 1.0) // onset unchanged
     }
 
     @Test func pitchIsAliasForNote() {
-        var note = MIDINote(onset: 0, offset: 1, note: 60, velocity: 100)
+        var note = MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)
         #expect(note.pitch == 60)
         note.pitch = 72
-        #expect(note.note == 72)
+        #expect(note.pitch == 72)
         #expect(note.pitch == 72)
     }
 
     @Test func comparisonByOnset() {
-        let early = MIDINote(onset: 0.0, offset: 1.0, note: 60, velocity: 100)
-        let late  = MIDINote(onset: 1.0, offset: 2.0, note: 60, velocity: 100)
+        let early = MIDINote(onset: 0.0, offset: 1.0, pitch: 60, velocity: 100)
+        let late  = MIDINote(onset: 1.0, offset: 2.0, pitch: 60, velocity: 100)
         #expect(early < late)
         #expect(!(late < early))
     }
 
-    @Test func equalOnsetNotLessThan() {
-        let a = MIDINote(onset: 1.0, offset: 2.0, note: 60, velocity: 100)
-        let b = MIDINote(onset: 1.0, offset: 3.0, note: 72, velocity: 50)
-        #expect(!(a < b))
+    /// At the same onset, the lower pitch comes first.
+    @Test func equalOnsetOrdersByPitch() {
+        let a = MIDINote(onset: 1.0, offset: 2.0, pitch: 60, velocity: 100)
+        let b = MIDINote(onset: 1.0, offset: 3.0, pitch: 72, velocity: 50)
+        #expect(a < b)
         #expect(!(b < a))
     }
 
+    /// For any two notes, exactly one of `a < b`, `a == b` and `b < a` holds.
+    @Test func orderIsTotal() {
+        var generator = SystemRandomNumberGenerator()
+        func random() -> MIDINote {
+            MIDINote(
+                onset: Double(Int.random(in: 0...2, using: &generator)),
+                offset: Double(Int.random(in: 3...4, using: &generator)),
+                pitch: UInt8.random(in: 60...61, using: &generator),
+                velocity: UInt8.random(in: 1...2, using: &generator),
+                channel: UInt8.random(in: 0...1, using: &generator),
+                releaseVelocity: UInt8.random(in: 0...1, using: &generator)
+            )
+        }
+        for _ in 0..<2_000 {
+            let a = random()
+            let b = random()
+            let holds = [a < b, a == b, b < a].filter { $0 }.count
+            #expect(holds == 1, "\(a), \(b)")
+        }
+    }
+
+    @available(*, deprecated)
+    @Test func deprecatedNoteIsPitch() {
+        var note = MIDINote(onset: 0, offset: 1, note: 64, velocity: 100)
+        #expect(note.pitch == 64)
+        note.note = 65
+        #expect(note.pitch == 65 && note.note == 65)
+    }
+
     @Test func hashableConsistency() {
-        let a = MIDINote(onset: 1.0, offset: 2.0, note: 60, velocity: 100)
-        let b = MIDINote(onset: 1.0, offset: 2.0, note: 60, velocity: 100)
+        let a = MIDINote(onset: 1.0, offset: 2.0, pitch: 60, velocity: 100)
+        let b = MIDINote(onset: 1.0, offset: 2.0, pitch: 60, velocity: 100)
         #expect(a == b)
         #expect(a.hashValue == b.hashValue)
     }

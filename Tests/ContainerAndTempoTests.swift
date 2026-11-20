@@ -18,21 +18,21 @@ struct MIDIContainerTests {
     }
 
     @Test func initWithTracks() {
-        let track = MIDITrack(notes: [MIDINote(onset: 0, offset: 1, note: 60, velocity: 100)])
+        let track = MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
         let container = MIDIContainer(tracks: [track])
         #expect(container.tracks.count == 1)
         #expect(container.tracks[0].notes.count == 1)
     }
 
     @Test func initWithNotes() {
-        let notes = MIDINotes([MIDINote(onset: 0, offset: 1, note: 60, velocity: 100)])
+        let notes = MIDINotes([MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
         let container = MIDIContainer(notes: notes)
         #expect(container.tracks.count == 1)
         #expect(container.tracks[0].notes.count == 1)
     }
 
     @Test func initWithNotesAndSustains() {
-        let notes = MIDINotes([MIDINote(onset: 0, offset: 1, note: 60, velocity: 100)])
+        let notes = MIDINotes([MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
         let sustains = MIDISustainEvents([MIDISustainEvent(onset: 0, offset: 1)])
         let container = MIDIContainer(notes: notes, sustains: sustains)
         #expect(container.tracks[0].sustains.count == 1)
@@ -46,17 +46,17 @@ struct MIDIContainerTests {
 
     @Test func equatable() {
         let a = MIDIContainer(tracks: [
-            MIDITrack(notes: [MIDINote(onset: 0, offset: 1, note: 60, velocity: 100)])
+            MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
         ])
         let b = MIDIContainer(tracks: [
-            MIDITrack(notes: [MIDINote(onset: 0, offset: 1, note: 60, velocity: 100)])
+            MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
         ])
         #expect(a == b)
     }
 
     @Test func notEqualDifferentTracks() {
         let a = MIDIContainer(tracks: [
-            MIDITrack(notes: [MIDINote(onset: 0, offset: 1, note: 60, velocity: 100)])
+            MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
         ])
         let b = MIDIContainer(tracks: [])
         #expect(a != b)
@@ -70,8 +70,8 @@ struct MIDIContainerIndexedTests {
 
     @Test func indexedRoundtrip() {
         let original = MIDIContainer(notes: MIDINotes([
-            MIDINote(onset: 0, offset: 1, note: 60, velocity: 100),
-            MIDINote(onset: 2, offset: 3, note: 64, velocity: 80),
+            MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100),
+            MIDINote(onset: 2, offset: 3, pitch: 64, velocity: 80),
         ]))
         let indexed = original.indexed()
         let roundtripped = indexed.makeContainer()
@@ -89,8 +89,8 @@ struct MIDIContainerIndexedTests {
     }
 
     @Test func indexedMultipleTracks() {
-        let track1 = MIDITrack(notes: [MIDINote(onset: 0, offset: 1, note: 60, velocity: 100)])
-        let track2 = MIDITrack(notes: [MIDINote(onset: 2, offset: 3, note: 64, velocity: 80)])
+        let track1 = MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
+        let track2 = MIDITrack(notes: [MIDINote(onset: 2, offset: 3, pitch: 64, velocity: 80)])
         let container = MIDIContainer(tracks: [track1, track2])
         let indexed = container.indexed()
         let result = indexed.makeContainer()
@@ -123,7 +123,7 @@ struct MIDITempoTrackTests {
 
     @Test func setTimeSignatureDefault() {
         var tempo = MIDITempoTrack()
-        tempo.setTimeSignature(beatsPerMeasure: 3, beatsPerNote: 4)
+        tempo.timeSignature = MIDITimeSignature(3, 4)
         #expect(tempo.events.count == 1)
         let event = tempo.events[0]
         #expect(event.type == 0x58) // time signature meta event type
@@ -133,8 +133,8 @@ struct MIDITempoTrackTests {
 
     @Test func setTimeSignatureUpdatesExisting() {
         var tempo = MIDITempoTrack()
-        tempo.setTimeSignature(beatsPerMeasure: 4, beatsPerNote: 4)
-        tempo.setTimeSignature(beatsPerMeasure: 6, beatsPerNote: 8)
+        tempo.timeSignature = MIDITimeSignature(4, 4)
+        tempo.timeSignature = MIDITimeSignature(6, 8)
         #expect(tempo.events.count == 1) // should update, not append
         #expect(tempo.events[0].data[0] == 6) // numerator
         #expect(tempo.events[0].data[1] == 3) // log2(8) = 3

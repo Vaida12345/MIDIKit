@@ -44,7 +44,7 @@ struct ChordTestRNG {
 enum ChordFigures {
 
     static func note(_ onset: Double, _ key: Int, duration: Double, velocity: Int = 80) -> MIDINote {
-        MIDINote(onset: onset, offset: onset + duration, note: UInt8(key), velocity: UInt8(velocity))
+        MIDINote(onset: onset, offset: onset + duration, pitch: UInt8(key), velocity: UInt8(velocity))
     }
 
     static func indexed(_ notes: [MIDINote]) -> IndexedContainer {
@@ -138,7 +138,7 @@ enum ChordFigures {
         var rng = ChordTestRNG(seed: seed &+ 500)
         return notes.map { note in
             let noise = rng.double(-0.0002 ... 0.0002)
-            return MIDINote(onset: note.onset + noise, offset: note.offset + noise, note: note.note, velocity: note.velocity)
+            return MIDINote(onset: note.onset + noise, offset: note.offset + noise, pitch: note.pitch, velocity: note.velocity)
         }
     }
 
@@ -171,8 +171,8 @@ enum ChordFigures {
     /// The notes with the lengths drawn again, from an instant to several seconds, and the velocities drawn from `20 ... 120` (once, so a second call with the same seed gives the same velocities). Only for notes that never repeat a key, where any length is valid.
     static func withOtherOffsets(_ notes: [MIDINote], seed: UInt64) -> (velocitiesOnly: [MIDINote], rewritten: [MIDINote]) {
         var rng = ChordTestRNG(seed: seed &+ 4242)
-        let louder = notes.map { MIDINote(onset: $0.onset, offset: $0.offset, note: $0.note, velocity: UInt8(rng.int(20 ... 120))) }
-        let rewritten = louder.map { MIDINote(onset: $0.onset, offset: $0.onset + rng.double(0.001 ... 6), note: $0.note, velocity: $0.velocity) }
+        let louder = notes.map { MIDINote(onset: $0.onset, offset: $0.offset, pitch: $0.pitch, velocity: UInt8(rng.int(20 ... 120))) }
+        let rewritten = louder.map { MIDINote(onset: $0.onset, offset: $0.onset + rng.double(0.001 ... 6), pitch: $0.pitch, velocity: $0.velocity) }
         return (louder, rewritten)
     }
 

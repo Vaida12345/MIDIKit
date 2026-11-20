@@ -18,7 +18,7 @@ struct TempoTests {
         let original = MIDIContainer(
             tracks: [
                 MIDITrack(
-                    notes: [MIDINote(onset: 1, offset: 2, note: 60, velocity: 100)],
+                    notes: [MIDINote(onset: 1, offset: 2, pitch: 60, velocity: 100)],
                     sustains: [MIDISustainEvent(onset: 0.5, offset: 1.5)]
                 )
             ],
@@ -36,7 +36,7 @@ struct TempoTests {
         var container = MIDIContainer(
             tracks: [
                 MIDITrack(
-                    notes: [MIDINote(onset: 2, offset: 6, note: 60, velocity: 100)],
+                    notes: [MIDINote(onset: 2, offset: 6, pitch: 60, velocity: 100)],
                     sustains: [MIDISustainEvent(onset: 3, offset: 7)]
                 )
             ],
@@ -61,7 +61,7 @@ struct TempoTests {
     func normalizeToConstantTempoScalesTempoTrackMetaEvents() {
         let keySignature = MIDIMetaEvent(timestamp: 2, type: 0x59, data: Data([2, 0]))
         var container = MIDIContainer(
-            tracks: [MIDITrack(notes: [MIDINote(onset: 0, offset: 1, note: 60, velocity: 100)])],
+            tracks: [MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])],
             tempo: MIDITempoTrack(events: [keySignature], tempos: [MIDITempoTrack.Tempo(timestamp: 0, tempo: 60)])
         )
 
@@ -75,7 +75,7 @@ struct TempoTests {
         var container = MIDIContainer(
             tracks: [
                 MIDITrack(
-                    notes: [MIDINote(onset: 2, offset: 6, note: 60, velocity: 100)]
+                    notes: [MIDINote(onset: 2, offset: 6, pitch: 60, velocity: 100)]
                 )
             ],
             tempo: MIDITempoTrack(tempos: [

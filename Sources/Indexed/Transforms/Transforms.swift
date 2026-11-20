@@ -156,12 +156,12 @@ extension IndexedContainer {
         }
         self.sustains.contents.removeAll(where: { $0.onset < 0 })
         
-        i = self.controlEvents.startIndex
-        while i < self.controlEvents.endIndex {
-            self.controlEvents[i].onset -= firstNoteOnset
+        i = self.channelEvents.startIndex
+        while i < self.channelEvents.endIndex {
+            self.channelEvents[i].onset -= firstNoteOnset
             i &+= 1
         }
-        self.controlEvents.contents.removeAll(where: { $0.onset < 0 })
+        self.channelEvents.contents.removeAll(where: { $0.onset < 0 })
         
         i = self.metaEvents.startIndex
         while i < self.metaEvents.endIndex {

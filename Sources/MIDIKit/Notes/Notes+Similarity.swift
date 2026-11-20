@@ -220,7 +220,7 @@ extension MIDINotes {
         while index < notes.count {
             let note = notes[index]
             if note.onset.isFinite && note.offset.isFinite {
-                starts[Int(note.note) &+ 1] &+= 1
+                starts[Int(note.pitch) &+ 1] &+= 1
             }
             index &+= 1
         }
@@ -236,8 +236,8 @@ extension MIDINotes {
         while index < notes.count {
             let note = notes[index]
             if note.onset.isFinite && note.offset.isFinite {
-                order[cursors[Int(note.note)]] = index
-                cursors[Int(note.note)] &+= 1
+                order[cursors[Int(note.pitch)]] = index
+                cursors[Int(note.pitch)] &+= 1
             }
             index &+= 1
         }

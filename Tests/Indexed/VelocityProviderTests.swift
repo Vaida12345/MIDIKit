@@ -16,9 +16,9 @@ struct VelocityProviderTests {
     @Test
     func infersFromExactPitchSequenceFirst() {
         let indexed = Self.makeIndexed(notes: [
-            MIDINote(onset: 1.0, offset: 1.5, note: 60, velocity: 90),
-            MIDINote(onset: 2.0, offset: 2.5, note: 60, velocity: 75),
-            MIDINote(onset: 1.0, offset: 1.5, note: 67, velocity: 40),
+            MIDINote(onset: 1.0, offset: 1.5, pitch: 60, velocity: 90),
+            MIDINote(onset: 2.0, offset: 2.5, pitch: 60, velocity: 75),
+            MIDINote(onset: 1.0, offset: 1.5, pitch: 67, velocity: 40),
         ])
         let provider = indexed.makeVelocityProvider()
 
@@ -29,7 +29,7 @@ struct VelocityProviderTests {
     @Test
     func fallsBackToChromaWhenPitchMissing() {
         let indexed = Self.makeIndexed(notes: [
-            MIDINote(onset: 2.0, offset: 2.4, note: 72, velocity: 70),
+            MIDINote(onset: 2.0, offset: 2.4, pitch: 72, velocity: 70),
         ])
         let provider = indexed.makeVelocityProvider()
 
@@ -40,7 +40,7 @@ struct VelocityProviderTests {
     @Test
     func fallsBackToGlobalWhenChromaMissing() {
         let indexed = Self.makeIndexed(notes: [
-            MIDINote(onset: 3.0, offset: 3.2, note: 61, velocity: 55),
+            MIDINote(onset: 3.0, offset: 3.2, pitch: 61, velocity: 55),
         ])
         let provider = indexed.makeVelocityProvider()
 
@@ -51,8 +51,8 @@ struct VelocityProviderTests {
     @Test
     func outsideToleranceUsesPreviousGlobalValue() {
         let indexed = Self.makeIndexed(notes: [
-            MIDINote(onset: 1.0, offset: 1.2, note: 60, velocity: 20),
-            MIDINote(onset: 2.0, offset: 2.2, note: 64, velocity: 80),
+            MIDINote(onset: 1.0, offset: 1.2, pitch: 60, velocity: 20),
+            MIDINote(onset: 2.0, offset: 2.2, pitch: 64, velocity: 80),
         ])
         let provider = indexed.makeVelocityProvider()
 

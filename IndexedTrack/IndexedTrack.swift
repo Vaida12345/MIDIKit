@@ -17,8 +17,8 @@ public struct IndexedTrack: Sendable {
     public let notes: [MIDINote]
     /// The sustains of every source track, merged: sorted and disjoint.
     public let sustains: Sustains
-    /// The control events of every source track, sorted by onset.
-    public let controlEvents: [MIDIControlEvent]
+    /// The channel events of every source track, sorted by onset.
+    public let channelEvents: [MIDIChannelEvent]
     /// The meta events of every source track.
     public let metaEvents: [MIDIMetaEvent]
     

@@ -12,7 +12,7 @@ import MIDIKit
 // MARK: - Support
 
 private func note(_ onset: Double, _ offset: Double, _ pitch: UInt8 = 60) -> MIDINote {
-    MIDINote(onset: onset, offset: offset, note: pitch, velocity: 100)
+    MIDINote(onset: onset, offset: offset, pitch: pitch, velocity: 100)
 }
 
 /// A deterministic generator, so random cases are reproducible.

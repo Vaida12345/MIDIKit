@@ -21,8 +21,8 @@ struct IndexedContainerTests {
 
     @Test func initWithNotes() {
         let notes = MIDINotes([
-            MIDINote(onset: 0, offset: 1, note: 60, velocity: 100),
-            MIDINote(onset: 2, offset: 3, note: 64, velocity: 80),
+            MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100),
+            MIDINote(onset: 2, offset: 3, pitch: 64, velocity: 80),
         ])
         let container = MIDIContainer(notes: notes)
         let indexed = container.indexed()
@@ -32,8 +32,8 @@ struct IndexedContainerTests {
 
     @Test func makeContainerRoundtrip() {
         let notes = MIDINotes([
-            MIDINote(onset: 0, offset: 1, note: 60, velocity: 100),
-            MIDINote(onset: 2, offset: 3, note: 64, velocity: 80),
+            MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100),
+            MIDINote(onset: 2, offset: 3, pitch: 64, velocity: 80),
         ])
         let original = MIDIContainer(notes: notes)
         let indexed = original.indexed()
@@ -46,7 +46,7 @@ struct IndexedContainerTests {
     }
 
     @Test func sustainsPreserved() {
-        let notes = MIDINotes([MIDINote(onset: 0, offset: 1, note: 60, velocity: 100)])
+        let notes = MIDINotes([MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
         let sustains = MIDISustainEvents([MIDISustainEvent(onset: 0, offset: 2)])
         let container = MIDIContainer(notes: notes, sustains: sustains)
         let indexed = container.indexed()
@@ -57,9 +57,9 @@ struct IndexedContainerTests {
 
     @Test func notesGroupedByPitch() {
         let notes = MIDINotes([
-            MIDINote(onset: 0, offset: 1, note: 60, velocity: 100),
-            MIDINote(onset: 2, offset: 3, note: 60, velocity: 80),
-            MIDINote(onset: 1, offset: 2, note: 64, velocity: 90),
+            MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100),
+            MIDINote(onset: 2, offset: 3, pitch: 60, velocity: 80),
+            MIDINote(onset: 1, offset: 2, pitch: 64, velocity: 90),
         ])
         let container = MIDIContainer(notes: notes)
         let indexed = container.indexed()
@@ -69,8 +69,8 @@ struct IndexedContainerTests {
 
     @Test func sequenceIteration() {
         let notes = MIDINotes([
-            MIDINote(onset: 0, offset: 1, note: 60, velocity: 100),
-            MIDINote(onset: 1, offset: 2, note: 64, velocity: 80),
+            MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100),
+            MIDINote(onset: 1, offset: 2, pitch: 64, velocity: 80),
         ])
         let container = MIDIContainer(notes: notes)
         let indexed = container.indexed()
@@ -83,7 +83,7 @@ struct IndexedContainerTests {
 
     @Test func iteratorExhaustion() {
         let container = MIDIContainer(notes: MIDINotes([
-            MIDINote(onset: 0, offset: 1, note: 60, velocity: 100),
+            MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100),
         ]))
         let indexed = container.indexed()
         var iterator = indexed.makeIterator()
@@ -93,8 +93,8 @@ struct IndexedContainerTests {
     }
 
     @Test func multipleTracksMergeNotes() {
-        let track1 = MIDITrack(notes: [MIDINote(onset: 0, offset: 1, note: 60, velocity: 100)])
-        let track2 = MIDITrack(notes: [MIDINote(onset: 2, offset: 3, note: 64, velocity: 80)])
+        let track1 = MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
+        let track2 = MIDITrack(notes: [MIDINote(onset: 2, offset: 3, pitch: 64, velocity: 80)])
         let container = MIDIContainer(tracks: [track1, track2])
         let indexed = container.indexed()
 
@@ -107,8 +107,8 @@ struct IndexedContainerTests {
 
     @Test func minimumGapEnforcement() {
         let notes = MIDINotes([
-            MIDINote(onset: 0.0, offset: 0.5, note: 60, velocity: 100),
-            MIDINote(onset: 0.51, offset: 1.0, note: 60, velocity: 80),
+            MIDINote(onset: 0.0, offset: 0.5, pitch: 60, velocity: 100),
+            MIDINote(onset: 0.51, offset: 1.0, pitch: 60, velocity: 80),
         ])
         let container = MIDIContainer(notes: notes)
         let indexedWithGap = container.indexed(minimumConsecutiveNotesGap: 0.1)
@@ -125,7 +125,7 @@ struct IndexedContainerTests {
         let container = MIDIContainer(
             tracks: [
                 MIDITrack(
-                    notes: [MIDINote(onset: 1, offset: 2, note: 60, velocity: 100)],
+                    notes: [MIDINote(onset: 1, offset: 2, pitch: 60, velocity: 100)],
                     sustains: [MIDISustainEvent(onset: 0.5, offset: 1.5)]
                 )
             ],
@@ -145,7 +145,7 @@ struct IndexedContainerTests {
         let container = MIDIContainer(
             tracks: [
                 MIDITrack(
-                    notes: [MIDINote(onset: 2, offset: 6, note: 60, velocity: 100)],
+                    notes: [MIDINote(onset: 2, offset: 6, pitch: 60, velocity: 100)],
                     sustains: [MIDISustainEvent(onset: 3, offset: 7)]
                 )
             ],
@@ -166,8 +166,8 @@ struct IndexedContainerTests {
     /// Verifies close same-pitch onsets retain the later note.
     @Test func closeSamePitchNotesKeepLaterNote() {
         let container = MIDIContainer(notes: [
-            MIDINote(onset: 0, offset: 0.5, note: 60, velocity: 100),
-            MIDINote(onset: 0.05, offset: 1, note: 60, velocity: 80),
+            MIDINote(onset: 0, offset: 0.5, pitch: 60, velocity: 100),
+            MIDINote(onset: 0.05, offset: 1, pitch: 60, velocity: 80),
         ])
 
         let indexed = container.indexed(minimumConsecutiveNotesGap: 0.1)
@@ -181,8 +181,8 @@ struct IndexedContainerTests {
     /// Verifies an earlier same-pitch note is trimmed to the configured gap.
     @Test func overlappingSamePitchNotesAreTrimmedToMinimumGap() {
         let container = MIDIContainer(notes: [
-            MIDINote(onset: 0, offset: 1, note: 60, velocity: 100),
-            MIDINote(onset: 0.5, offset: 1.5, note: 60, velocity: 80),
+            MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100),
+            MIDINote(onset: 0.5, offset: 1.5, pitch: 60, velocity: 80),
         ])
 
         let indexed = container.indexed(minimumConsecutiveNotesGap: 0.1)
@@ -195,13 +195,13 @@ struct IndexedContainerTests {
     /// Verifies pitches are clamped into the indexed piano range before grouping.
     @Test func pitchesAreClampedIntoIndexedRange() {
         let container = MIDIContainer(notes: [
-            MIDINote(onset: 0, offset: 1, note: 10, velocity: 100),
-            MIDINote(onset: 2, offset: 3, note: 120, velocity: 80),
+            MIDINote(onset: 0, offset: 1, pitch: 10, velocity: 100),
+            MIDINote(onset: 2, offset: 3, pitch: 120, velocity: 80),
         ])
 
         let indexed = container.indexed()
 
-        #expect(indexed.contents.map(\.note) == [21, 108])
+        #expect(indexed.contents.map(\.pitch) == [21, 108])
         #expect(indexed.notes[21]?.count == 1)
         #expect(indexed.notes[108]?.count == 1)
     }
@@ -213,7 +213,7 @@ struct IndexedContainerTests {
                 MIDINote(
                     onset: Double(trackIndex),
                     offset: Double(trackIndex) + 0.5,
-                    note: UInt8(21 + trackIndex),
+                    pitch: UInt8(21 + trackIndex),
                     velocity: 100
                 )
             ])

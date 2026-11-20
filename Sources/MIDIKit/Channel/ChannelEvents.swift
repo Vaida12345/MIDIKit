@@ -1,5 +1,5 @@
 //
-//  Controls.swift
+//  ChannelEvents.swift
 //  MIDIKit
 //
 //  Created by Vaida on 2026-07-04.
@@ -10,10 +10,8 @@ import AudioToolbox
 import DetailedDescription
 
 
-/// To support efficient lookup, the sustain events are sorted on initialization.
-///
-/// The contents are not guaranteed to be sorted after iteration, as `container` does not update `contents` when the `onset`s for individual notes change.
-public struct MIDIControlEvents: Sendable, Equatable, DetailedStringConvertible {
+/// The channel events of a track, sorted by onset on initialization.
+public struct MIDIChannelEvents: Sendable, Equatable, DetailedStringConvertible {
     
     public var contents: [Element]
     
@@ -24,15 +22,15 @@ public struct MIDIControlEvents: Sendable, Equatable, DetailedStringConvertible 
     }
     
     
-    public typealias Element = MIDIControlEvent
+    public typealias Element = MIDIChannelEvent
     
-    public func detailedDescription(using descriptor: DetailedDescription.Descriptor<MIDIControlEvents>) -> any DescriptionBlockProtocol {
+    public func detailedDescription(using descriptor: DetailedDescription.Descriptor<MIDIChannelEvents>) -> any DescriptionBlockProtocol {
         descriptor.sequence("", of: self)
     }
 }
 
 
-extension MIDIControlEvents: ExpressibleByArrayLiteral, RandomAccessCollection, MutableCollection, BidirectionalCollection {
+extension MIDIChannelEvents: ExpressibleByArrayLiteral, RandomAccessCollection, MutableCollection, BidirectionalCollection {
     
     @inlinable public var startIndex: Int { 0 }
     @inlinable public var endIndex: Int { self.contents.count }

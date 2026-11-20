@@ -67,8 +67,8 @@ struct ProjectionTests {
 
     @Test func identityProjectionPreservesNotes() {
         let indexed = makeIndexed([
-            MIDINote(onset: 0, offset: 1, note: 60, velocity: 100),
-            MIDINote(onset: 2, offset: 3, note: 64, velocity: 80),
+            MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100),
+            MIDINote(onset: 2, offset: 3, pitch: 64, velocity: 80),
         ])
         indexed.projection(.identity)
         #expect(indexed.contents[0].onset == 0)
@@ -77,8 +77,8 @@ struct ProjectionTests {
 
     @Test func linearScalingProjection() {
         let indexed = makeIndexed([
-            MIDINote(onset: 0, offset: 1, note: 60, velocity: 100),
-            MIDINote(onset: 2, offset: 3, note: 64, velocity: 80),
+            MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100),
+            MIDINote(onset: 2, offset: 3, pitch: 64, velocity: 80),
         ])
         // Scale time by factor 2
         let warp = IndexedContainer.TimeWarpMapping(xs: [0, 1], ys: [0, 2], fallbackSlope: 2)
@@ -89,7 +89,7 @@ struct ProjectionTests {
 
     @Test func projectionPreservesDurations() {
         let indexed = makeIndexed([
-            MIDINote(onset: 1, offset: 2, note: 60, velocity: 100),
+            MIDINote(onset: 1, offset: 2, pitch: 60, velocity: 100),
         ])
         let warp = IndexedContainer.TimeWarpMapping(xs: [0, 2], ys: [0, 4], fallbackSlope: 2)
         indexed.projection(warp)
@@ -99,7 +99,7 @@ struct ProjectionTests {
 
     @Test func projectionShiftsSustains() {
         let indexed = makeIndexed([
-            MIDINote(onset: 1, offset: 2, note: 60, velocity: 100),
+            MIDINote(onset: 1, offset: 2, pitch: 60, velocity: 100),
         ], sustains: [
             MIDISustainEvent(onset: 1, offset: 2),
         ])
@@ -133,8 +133,8 @@ struct TimeWarpTests {
     }
 
     @Test func singleNoteEach() {
-        let a = makeIndexed([MIDINote(onset: 0, offset: 1, note: 60, velocity: 100)])
-        let b = makeIndexed([MIDINote(onset: 0, offset: 1, note: 60, velocity: 100)])
+        let a = makeIndexed([MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
+        let b = makeIndexed([MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
         let warp = a.timeWarp(other: b)
         #expect(warp.map(0) >= 0) // should return a valid mapping
     }
@@ -144,8 +144,8 @@ struct TimeWarpTests {
         var notesA: [MIDINote] = []
         var notesB: [MIDINote] = []
         for i in 0..<10 {
-            notesA.append(MIDINote(onset: Double(i), offset: Double(i) + 0.5, note: 60 + UInt8(i % 7), velocity: 100))
-            notesB.append(MIDINote(onset: Double(i) * 1.1, offset: Double(i) * 1.1 + 0.5, note: 60 + UInt8(i % 7), velocity: 100))
+            notesA.append(MIDINote(onset: Double(i), offset: Double(i) + 0.5, pitch: 60 + UInt8(i % 7), velocity: 100))
+            notesB.append(MIDINote(onset: Double(i) * 1.1, offset: Double(i) * 1.1 + 0.5, pitch: 60 + UInt8(i % 7), velocity: 100))
         }
         let a = makeIndexed(notesA)
         let b = makeIndexed(notesB)

@@ -88,7 +88,7 @@ struct ApplyingGapTests {
     @Test(arguments: 0..<10)
     func reusesTheLanesLayout(seed: Int) {
         let result = track(cleanInput(seed: UInt64(seed) &+ 300, count: 300)).applyingGap()
-        let fresh = IndexedTrack(validated: result.notes, sustains: result.sustains, controlEvents: result.controlEvents, metaEvents: result.metaEvents, profile: result.profile)
+        let fresh = IndexedTrack(validated: result.notes, sustains: result.sustains, channelEvents: result.channelEvents, metaEvents: result.metaEvents, profile: result.profile)
         #expect(result.lanes.members == fresh.lanes.members)
         #expect(result.lanes.starts == fresh.lanes.starts)
         #expect(result.lanes.notes == result.notes)
@@ -106,12 +106,12 @@ struct ApplyingGapTests {
             notes: cleanInput(seed: 5, count: 100),
             sustains: [MIDISustainEvent(onset: 0, offset: 2), MIDISustainEvent(onset: 3, offset: 5)],
             metaEvents: [MIDIMetaEvent(timestamp: 1, type: 1, data: Data([1]))],
-            controlEvents: MIDIControlEvents([MIDIControlEvent(onset: 0.5, channel: 0, velocity: 64)])
+            channelEvents: MIDIChannelEvents([MIDIChannelEvent(onset: 0.5, message: .controlChange(controller: 0, value: 64))])
         )
         let indexed = IndexedTrack(MIDIContainer(tracks: [source]))
         let result = indexed.applyingGap()
         #expect(result.sustains == indexed.sustains)
-        #expect(result.controlEvents == indexed.controlEvents)
+        #expect(result.channelEvents == indexed.channelEvents)
         #expect(result.metaEvents == indexed.metaEvents)
         #expect(result.profile is GenericProfile)
     }

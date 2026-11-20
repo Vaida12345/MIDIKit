@@ -25,7 +25,7 @@ public struct GenericProfile: AnalysisProfile {
     ///
     /// On each key, a run of consecutive notes no louder than `threshold`, each starting within `proximityThreshold` after the previous one ends, is removed when the note before the run also ends within `proximityThreshold` before it. That note is then extended to where the run ended. The note before the run is louder than `threshold`, or is the first note on the key; the first note on a key never starts a run.
     ///
-    /// Only notes and offsets change: sustains, control events, meta events and the profile of `track` are kept.
+    /// Only notes and offsets change: sustains, channel events, meta events and the profile of `track` are kept.
     ///
     /// - Parameters:
     ///   - track: The track to clean up.
@@ -100,7 +100,7 @@ public struct GenericProfile: AnalysisProfile {
             initializedCount = write
         }
 
-        return IndexedTrack(validated: kept, sustains: track.sustains, controlEvents: track.controlEvents, metaEvents: track.metaEvents, profile: track.profile)
+        return IndexedTrack(validated: kept, sustains: track.sustains, channelEvents: track.channelEvents, metaEvents: track.metaEvents, profile: track.profile)
     }
 
 }

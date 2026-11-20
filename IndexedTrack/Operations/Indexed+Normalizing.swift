@@ -21,7 +21,7 @@ extension IndexedTrack {
     ///
     /// A release up to 1/4 beat after a sustain ends counts as within it, and so does a release in a gap shorter than 1/2 beat between two sustains. A note is never shortened below 0.1 beat by these rules. The notes of the last chord keep their offsets. Finally, every note ends before the next note on its key starts.
     ///
-    /// Only offsets change: onsets, sustains, control events, meta events and the ``profile`` are kept as they are.
+    /// Only offsets change: onsets, sustains, channel events, meta events and the ``profile`` are kept as they are.
     ///
     /// - Parameter preserve: What to favor where the sustains do not decide: the acoustic result, or readable notes.
     ///
@@ -67,7 +67,7 @@ extension IndexedTrack {
             key &+= 1
         }
 
-        return IndexedTrack(validated: notes, sustains: sustains, controlEvents: self.controlEvents, metaEvents: self.metaEvents, profile: self.profile, reusingLayoutOf: lanes)
+        return IndexedTrack(validated: notes, sustains: sustains, channelEvents: self.channelEvents, metaEvents: self.metaEvents, profile: self.profile, reusingLayoutOf: lanes)
     }
 
 

@@ -22,8 +22,8 @@ struct DebugView: View {
     
     var body: some View {
         let width = pixelsPerBeat * container.contents.max(of: \.offset)!
-        let maxNote = container.contents.max(of: \.note)! + 4
-        let minNote = container.contents.min(of: \.note)! - 2
+        let maxNote = container.contents.max(of: \.pitch)! + 4
+        let minNote = container.contents.min(of: \.pitch)! - 2
         
         VStack {
             ZStack {

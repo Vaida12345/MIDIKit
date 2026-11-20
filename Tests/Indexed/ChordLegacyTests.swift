@@ -181,7 +181,7 @@ struct ChordConstantWindowTests {
             var rng = ChordTestRNG(seed: seed &+ 1000)
             let warped = notes.map { note in
                 let onset = note.onset * 1.07 + 0.25 * sin(note.onset * 0.3) + rng.double(-0.01 ... 0.01)
-                return MIDINote(onset: onset, offset: onset + note.duration, note: note.note, velocity: note.velocity)
+                return MIDINote(onset: onset, offset: onset + note.duration, pitch: note.pitch, velocity: note.velocity)
             }
             let mapping = ChordFigures.indexed(notes).timeWarp(other: ChordFigures.indexed(warped))
 

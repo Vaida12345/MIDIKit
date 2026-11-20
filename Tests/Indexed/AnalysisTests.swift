@@ -24,7 +24,7 @@ struct AnalysisTests {
 
     @Test func sustainCoverageNoSustains() {
         let indexed = makeIndexed([
-            MIDINote(onset: 0, offset: 2, note: 60, velocity: 100),
+            MIDINote(onset: 0, offset: 2, pitch: 60, velocity: 100),
         ])
         // No sustains → cumulative = 0 / _offsetUpperBound
         #expect(indexed.sustainCoverage == 0.0)
@@ -32,7 +32,7 @@ struct AnalysisTests {
 
     @Test func sustainCoverageFullCoverage() {
         let indexed = makeIndexed([
-            MIDINote(onset: 0, offset: 4, note: 60, velocity: 100),
+            MIDINote(onset: 0, offset: 4, pitch: 60, velocity: 100),
         ], sustains: [
             MIDISustainEvent(onset: 0, offset: 2),
             MIDISustainEvent(onset: 2, offset: 4),
@@ -58,10 +58,10 @@ struct AnalysisTests {
         var notes: [MIDINote] = []
         for bar in 0..<4 {
             let base = Double(bar) * 4.0
-            notes.append(MIDINote(onset: base, offset: base + 2.0, note: 60, velocity: 100))
-            notes.append(MIDINote(onset: base + 1, offset: base + 1.5, note: 64, velocity: 80))
-            notes.append(MIDINote(onset: base + 2, offset: base + 2.5, note: 67, velocity: 90))
-            notes.append(MIDINote(onset: base + 3, offset: base + 3.5, note: 72, velocity: 70))
+            notes.append(MIDINote(onset: base, offset: base + 2.0, pitch: 60, velocity: 100))
+            notes.append(MIDINote(onset: base + 1, offset: base + 1.5, pitch: 64, velocity: 80))
+            notes.append(MIDINote(onset: base + 2, offset: base + 2.5, pitch: 67, velocity: 90))
+            notes.append(MIDINote(onset: base + 3, offset: base + 3.5, pitch: 72, velocity: 70))
         }
         let indexed = makeIndexed(notes)
         let barLength = indexed.baselineBarLength(beatsPerMeasure: 4)
@@ -109,7 +109,7 @@ struct KeySignatureTests {
     @Test func cMajorReturnsNatural() {
         // Notes in C major scale (no sharps/flats)
         let cMajorNotes: [MIDINote] = [60, 62, 64, 65, 67, 69, 71, 72].map { pitch in
-            MIDINote(onset: Double(pitch - 60), offset: Double(pitch - 60) + 0.5, note: pitch, velocity: 100)
+            MIDINote(onset: Double(pitch - 60), offset: Double(pitch - 60) + 0.5, pitch: pitch, velocity: 100)
         }
         let indexed = makeIndexed(cMajorNotes)
         let keySig = indexed.keySignature()

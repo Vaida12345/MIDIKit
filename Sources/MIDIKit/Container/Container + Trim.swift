@@ -74,8 +74,8 @@ extension MIDITrack {
         self.sustains.contents.removeAll { $0.offset <= 0 }
 
         index = 0
-        while index < self.controlEvents.contents.count {
-            self.controlEvents.contents[index].onset = Swift.max(self.controlEvents.contents[index].onset - shift, 0)
+        while index < self.channelEvents.contents.count {
+            self.channelEvents.contents[index].onset = Swift.max(self.channelEvents.contents[index].onset - shift, 0)
             index &+= 1
         }
 

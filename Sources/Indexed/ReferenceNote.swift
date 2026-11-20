@@ -61,8 +61,8 @@ extension ReferenceNote: Interval {
     
     @inlinable
     public var note: UInt8 {
-        get { self.pointee.note }
-        nonmutating set { self.pointee.note = newValue }
+        get { self.pointee.pitch }
+        nonmutating set { self.pointee.pitch = newValue }
     }
     
     /// The key, alias to `note`.

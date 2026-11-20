@@ -36,7 +36,7 @@ public struct MIDINotes:  Sendable, Equatable, DetailedStringConvertible {
     /// - Complexity: O(*n*)
     public func noteRange() -> (min: UInt8, max: UInt8)? {
         guard !self.isEmpty else { return nil }
-        let notes = self.contents.map(\.note)
+        let notes = self.contents.map(\.pitch)
         
         return (notes.min()!, notes.max()!)
     }
@@ -55,7 +55,7 @@ public struct MIDINotes:  Sendable, Equatable, DetailedStringConvertible {
         descriptor.sequence(for: \.contents)
     }
     
-    public static let preview: MIDINotes = MIDINotes((21...108).map { MIDINote(onset: Double($0) - 21, offset: Double($0) - 20, note: $0, velocity: $0, channel: 0) })
+    public static let preview: MIDINotes = MIDINotes((21...108).map { MIDINote(onset: Double($0) - 21, offset: Double($0) - 20, pitch: $0, velocity: $0, channel: 0) })
     
     
     @inlinable

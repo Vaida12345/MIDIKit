@@ -23,7 +23,7 @@ extension MIDITrack {
         }
         
         notes.forEach { _, note in
-            var message = MIDINoteMessage(channel: note.channel, note: note.note, velocity: note.velocity, releaseVelocity: note.releaseVelocity, duration: Float32(note.offset - note.onset))
+            var message = MIDINoteMessage(channel: note.channel, note: note.pitch, velocity: note.velocity, releaseVelocity: note.releaseVelocity, duration: Float32(note.offset - note.onset))
             MusicTrackNewMIDINoteEvent(musicTrack, note.onset, &message)
         }
         
@@ -34,9 +34,9 @@ extension MIDITrack {
             MusicTrackNewMIDIChannelEvent(musicTrack, sustain.offset, &last)
         }
         
-        controlEvents.forEach { _, control in
-            var message = MIDIChannelMessage(status: 0xB0, data1: control.channel, data2: control.velocity, reserved: 0)
-            MusicTrackNewMIDIChannelEvent(musicTrack, control.onset, &message)
+        channelEvents.forEach { _, event in
+            var message = event.channelMessage
+            MusicTrackNewMIDIChannelEvent(musicTrack, event.onset, &message)
         }
         
         // there is no way to write back raw data, as AudioToolbox raw data expects encoding `Data` as `UInt8`, which is unsafe in Swift.

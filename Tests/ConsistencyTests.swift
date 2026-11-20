@@ -17,21 +17,21 @@ struct ConsistencyTests {
     func checkPitch() {
         do {
             let notes = [
-                MIDINote(onset: 10, offset: 11, note: 20, velocity: 10)
+                MIDINote(onset: 10, offset: 11, pitch: 20, velocity: 10)
             ]
             let container = MIDIContainer(tracks: [MIDITrack(notes: notes)])
             #expect(!container._checkConsistency())
         }
         do {
             let notes = [
-                MIDINote(onset: 10, offset: 11, note: 110, velocity: 10)
+                MIDINote(onset: 10, offset: 11, pitch: 110, velocity: 10)
             ]
             let container = MIDIContainer(tracks: [MIDITrack(notes: notes)])
             #expect(!container._checkConsistency())
         }
         do {
             let notes = [
-                MIDINote(onset: 10, offset: 11, note: 50, velocity: 10)
+                MIDINote(onset: 10, offset: 11, pitch: 50, velocity: 10)
             ]
             let container = MIDIContainer(tracks: [MIDITrack(notes: notes)])
             #expect(container._checkConsistency())
@@ -42,7 +42,7 @@ struct ConsistencyTests {
     func checkVelocity() {
         do {
             let notes = [
-                MIDINote(onset: 10, offset: 11, note: 50, velocity: 0)
+                MIDINote(onset: 10, offset: 11, pitch: 50, velocity: 0)
             ]
             let container = MIDIContainer(tracks: [MIDITrack(notes: notes)])
             #expect(!container._checkConsistency())
@@ -53,7 +53,7 @@ struct ConsistencyTests {
     func checkDuration() {
         do {
             let notes = [
-                MIDINote(onset: 10, offset: 9, note: 50, velocity: 0)
+                MIDINote(onset: 10, offset: 9, pitch: 50, velocity: 0)
             ]
             let container = MIDIContainer(tracks: [MIDITrack(notes: notes)])
             #expect(!container._checkConsistency())
@@ -85,8 +85,8 @@ struct ConsistencyTests {
     func checkOverlaps() {
         do {
             let notes = [
-                MIDINote(onset: 0, offset: 10, note: 50, velocity: 50),
-                MIDINote(onset: 5, offset: 15, note: 50, velocity: 50),
+                MIDINote(onset: 0, offset: 10, pitch: 50, velocity: 50),
+                MIDINote(onset: 5, offset: 15, pitch: 50, velocity: 50),
             ]
             let container = MIDIContainer(tracks: [MIDITrack(notes: notes)])
             #expect(!container._checkConsistency())
@@ -94,8 +94,8 @@ struct ConsistencyTests {
         
         do {
             let notes = [
-                MIDINote(onset: 0, offset: 4.9, note: 50, velocity: 50),
-                MIDINote(onset: 5, offset: 15, note: 50, velocity: 50),
+                MIDINote(onset: 0, offset: 4.9, pitch: 50, velocity: 50),
+                MIDINote(onset: 5, offset: 15, pitch: 50, velocity: 50),
             ]
             let container = MIDIContainer(tracks: [MIDITrack(notes: notes)])
             #expect(container._checkConsistency())

@@ -17,7 +17,7 @@ struct ReferenceNoteTests {
     ) throws {
         let buffer = UnsafeMutableBufferPointer<MIDINote>.allocate(capacity: 1)
         defer { buffer.deallocate() }
-        buffer[0] = MIDINote(onset: 1.0, offset: 2.0, note: 60, velocity: 100)
+        buffer[0] = MIDINote(onset: 1.0, offset: 2.0, pitch: 60, velocity: 100)
         let ref = ReferenceNote(buffer.baseAddress!)
         try body(ref, buffer)
     }
@@ -26,19 +26,19 @@ struct ReferenceNoteTests {
         try withReferenceNote { ref, _ in
             #expect(ref.pointee.onset == 1.0)
             #expect(ref.pointee.offset == 2.0)
-            #expect(ref.pointee.note == 60)
+            #expect(ref.pointee.pitch == 60)
             #expect(ref.pointee.velocity == 100)
         }
     }
 
     @Test func pointeeSetter() throws {
         try withReferenceNote { ref, buffer in
-            ref.pointee = MIDINote(onset: 3.0, offset: 4.0, note: 72, velocity: 50)
+            ref.pointee = MIDINote(onset: 3.0, offset: 4.0, pitch: 72, velocity: 50)
             #expect(ref.pointee.onset == 3.0)
-            #expect(ref.pointee.note == 72)
+            #expect(ref.pointee.pitch == 72)
             // The underlying buffer is also updated
             #expect(buffer[0].onset == 3.0)
-            #expect(buffer[0].note == 72)
+            #expect(buffer[0].pitch == 72)
         }
     }
 
@@ -87,7 +87,7 @@ struct ReferenceNoteTests {
         try withReferenceNote { ref, buffer in
             ref.note = 72
             #expect(ref.note == 72)
-            #expect(buffer[0].note == 72)
+            #expect(buffer[0].pitch == 72)
         }
     }
 
@@ -134,7 +134,7 @@ struct ReferenceNoteTests {
         try withReferenceNote { ref1, _ in
             let otherBuffer = UnsafeMutableBufferPointer<MIDINote>.allocate(capacity: 1)
             defer { otherBuffer.deallocate() }
-            otherBuffer[0] = MIDINote(onset: 1.0, offset: 2.0, note: 60, velocity: 100)
+            otherBuffer[0] = MIDINote(onset: 1.0, offset: 2.0, pitch: 60, velocity: 100)
             let ref2 = ReferenceNote(otherBuffer.baseAddress!)
             // Same pointee values, but different pointers
             #expect(ref1.pointee == ref2.pointee)
@@ -145,7 +145,7 @@ struct ReferenceNoteTests {
         try withReferenceNote { ref, _ in
             let buffer2 = UnsafeMutableBufferPointer<MIDINote>.allocate(capacity: 1)
             defer { buffer2.deallocate() }
-            buffer2[0] = MIDINote(onset: 0.5, offset: 1.0, note: 40, velocity: 50)
+            buffer2[0] = MIDINote(onset: 0.5, offset: 1.0, pitch: 40, velocity: 50)
             let earlier = ReferenceNote(buffer2.baseAddress!)
             #expect(earlier < ref)
             #expect(!(ref < earlier))

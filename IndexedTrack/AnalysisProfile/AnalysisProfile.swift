@@ -22,7 +22,7 @@ public protocol AnalysisProfile: Sendable {
 
     /// Returns `track` without the notes that are artifacts of how it was produced, such as stray quiet notes from a transcriber.
     ///
-    /// ``IndexedTrack/removingArtifacts(threshold:proximityThreshold:)`` calls this. The implementation must be deterministic, and must return a track that keeps the ``IndexedTrack/profile``, sustains, control events and meta events of `track`, and whose notes still meet the invariants of ``IndexedTrack``. Removing notes and extending the note before a removed one up to where that one ended keeps them.
+    /// ``IndexedTrack/removingArtifacts(threshold:proximityThreshold:)`` calls this. The implementation must be deterministic, and must return a track that keeps the ``IndexedTrack/profile``, sustains, channel events and meta events of `track`, and whose notes still meet the invariants of ``IndexedTrack``. Removing notes and extending the note before a removed one up to where that one ended keeps them.
     ///
     /// The default implementation uses ``GenericProfile/removingArtifacts(from:threshold:proximityThreshold:)``.
     ///

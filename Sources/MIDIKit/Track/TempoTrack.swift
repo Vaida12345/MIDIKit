@@ -17,17 +17,30 @@ public struct MIDITempoTrack: Sendable, CustomStringConvertible, DetailedStringC
     public var contents: [Tempo]
     
     
-    public mutating func setTimeSignature(beatsPerMeasure: UInt8, beatsPerNote: UInt8) {
-        var data = Data(capacity: 4)
-        data.append(beatsPerMeasure)
-        data.append(UInt8(log2(Double(beatsPerNote))))
-        data.append(24)
-        data.append(8)
-        
-        if let eventIndex = events.firstIndex(where: { AVMIDIMetaEvent.EventType(rawValue: Int($0.type)) == .timeSignature }) {
-            events[eventIndex].data = data
-        } else {
-            events.append(MIDITrack.MetaEvent(timestamp: 0, type: UInt8(AVMIDIMetaEvent.EventType.timeSignature.rawValue), data: data))
+    /// The time signature of the track: the first valid time-signature meta event in ``events``.
+    ///
+    /// Setting a time signature replaces the data of the first time-signature event, or adds one at time 0 if there is none. Setting `nil` removes every time-signature event.
+    ///
+    /// A file written without a time signature gets ``MIDITimeSignature/default``, 4/4, from CoreMIDI.
+    public var timeSignature: MIDITimeSignature? {
+        get {
+            var index = 0
+            while index < self.events.count {
+                if let signature = MIDITimeSignature(self.events[index]) { return signature }
+                index &+= 1
+            }
+            return nil
+        }
+        set {
+            guard let newValue else {
+                self.events.removeAll { $0.type == 0x58 }
+                return
+            }
+            if let index = self.events.firstIndex(where: { $0.type == 0x58 }) {
+                self.events[index].data = newValue.data
+            } else {
+                self.events.append(newValue.event(at: 0))
+            }
         }
     }
     

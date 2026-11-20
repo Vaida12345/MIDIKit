@@ -72,7 +72,8 @@ extension MIDIContainer {
             var sustainOpen: Bool = false
             var sustainStart: MusicTimeStamp = 0
             var sustains: [MIDISustainEvent] = []
-            var controlEvents: [MIDIControlEvent] = []
+            var lastTimeStamp: MusicTimeStamp = 0
+            var channelEvents: [MIDIChannelEvent] = []
             
             while iteratorHasNextEvent {
                 var dataPointer: UnsafeRawPointer?
@@ -84,6 +85,7 @@ extension MIDIContainer {
                     MusicEventIteratorGetEventInfo(iterator, &timeStamp, &eventType, &dataPointer, &dataSize)
                 }
                 defer { MusicEventIteratorNextEvent(iterator) }
+                lastTimeStamp = Swift.max(lastTimeStamp, timeStamp)
                 guard let dataPointer else { continue }
                 
                 // The raw values, 0-10
@@ -107,8 +109,8 @@ extension MIDIContainer {
 
                 case kMusicEventType_MIDIChannelMessage:
                     let event = dataPointer.load(as: MIDIChannelMessage.self)
-                    guard (event.status & 0xF0) == 0xB0 else { continue } // only parse MIDI channel 1 events.
-                    if event.data1 == 64 {
+                    // The sustain pedal, control change 64 on any channel, becomes sustains; 0...63 is up, and 64...127 is down.
+                    if (event.status & 0xF0) == 0xB0 && event.data1 == 64 {
                         // sustain
                         if event.data2 >= 64 {
                             if !sustainOpen { // update sustainOpen only if it is not open.
@@ -119,8 +121,11 @@ extension MIDIContainer {
                             sustainOpen = false
                             sustains.append(MIDITrack.SustainEvent(onset: sustainStart, offset: timeStamp))
                         }
+                    } else if let channelEvent = MIDIChannelEvent(onset: timeStamp, event) {
+                        channelEvents.append(channelEvent)
                     } else {
-                        controlEvents.append(MIDIControlEvent(onset: timeStamp, channel: event.data1, velocity: event.data2))
+                        let logger = Logger(subsystem: "MIDIKit", category: "MIDIContainer.init")
+                        logger.warning("Unhandled MIDI channel message with status \(event.status)")
                     }
 
                 case kMusicEventType_Meta:
@@ -144,8 +149,18 @@ extension MIDIContainer {
                     continue
                 }
             }
+            // A pedal still down when the track ends is released at the end of the track.
+            if sustainOpen {
+                var trackLength: MusicTimeStamp = 0
+                var size = UInt32(MemoryLayout<MusicTimeStamp>.size)
+                MusicTrackGetProperty(track, kSequenceTrackProperty_TrackLength, &trackLength, &size)
+                let end = Swift.max(trackLength, lastTimeStamp)
+                if end > sustainStart {
+                    sustains.append(MIDITrack.SustainEvent(onset: sustainStart, offset: end))
+                }
+            }
             midiTrack.sustains = MIDISustainEvents(sustains)
-            midiTrack.controlEvents = MIDIControlEvents(controlEvents)
+            midiTrack.channelEvents = MIDIChannelEvents(channelEvents)
             
             return midiTrack
         }

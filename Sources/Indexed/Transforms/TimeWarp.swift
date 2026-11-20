@@ -28,9 +28,9 @@ extension IndexedContainer {
             i &+= 1
         }
         
-        i = self.controlEvents.startIndex
-        while i < self.controlEvents.endIndex {
-            self.controlEvents[i].onset = mapping.map(self.controlEvents[i].onset)
+        i = self.channelEvents.startIndex
+        while i < self.channelEvents.endIndex {
+            self.channelEvents[i].onset = mapping.map(self.channelEvents[i].onset)
             i &+= 1
         }
         
@@ -429,7 +429,7 @@ private extension IndexedContainer {
         events.reserveCapacity(container.contents.count)
         for i in container.contents.indices {
             let note = container.contents[i]
-            events.append(OnsetEvent(time: note.onset, pitch: note.note, originalIndex: i))
+            events.append(OnsetEvent(time: note.onset, pitch: note.pitch, originalIndex: i))
         }
 
         events.sort {
@@ -485,7 +485,7 @@ private extension IndexedContainer {
             MIDINote(
                 onset: $0.time,
                 offset: $0.time + 0.05,
-                note: $0.pitch,
+                pitch: $0.pitch,
                 velocity: 64,
                 channel: 0,
                 releaseVelocity: 0
