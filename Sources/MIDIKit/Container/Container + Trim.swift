@@ -65,13 +65,10 @@ extension MIDITrack {
             index &+= 1
         }
 
-        index = 0
-        while index < self.sustains.contents.count {
-            self.sustains.contents[index].onset = Swift.max(self.sustains.contents[index].onset - shift, 0)
-            self.sustains.contents[index].offset -= shift
-            index &+= 1
+        self.sustains = self.sustains.transformed { sustain in
+            let offset = sustain.offset - shift
+            return offset > 0 ? MIDISustainEvent(onset: Swift.max(sustain.onset - shift, 0), offset: offset) : nil
         }
-        self.sustains.contents.removeAll { $0.offset <= 0 }
 
         index = 0
         while index < self.channelEvents.contents.count {

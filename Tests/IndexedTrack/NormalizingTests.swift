@@ -58,6 +58,15 @@ struct NormalizingTests {
         #expect(normalizedOffset(indexed, .notesDisplay) == 1)
     }
 
+    /// A pedal change at 2 keeps two sustains: a note held into the second one, with the next chord before the change, is kept long enough to reach the second pedal. Merged into one sustain, it would be cut at the next chord.
+    @Test
+    func aPedalChangeSeparatesTheSustains() {
+        let indexed = pair(offset: 3, next: 1, sustains: [MIDISustainEvent(onset: 0, offset: 2), MIDISustainEvent(onset: 2, offset: 4)])
+        #expect(indexed.sustains.count == 2)
+        #expect(normalizedOffset(indexed, .acousticResult) == 2 + 0.1)
+        #expect(normalizedOffset(indexed, .notesDisplay) == 1)
+    }
+
     @Test
     func spansThreeSustains() {
         let indexed = pair(offset: 3, next: 0.8, sustains: [MIDISustainEvent(onset: 0, offset: 0.5), MIDISustainEvent(onset: 1, offset: 1.2), MIDISustainEvent(onset: 2, offset: 4)])

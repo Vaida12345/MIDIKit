@@ -18,7 +18,7 @@ extension IndexedTrack {
     /// - Notes whose pitch is outside `21...108`, whose times are not finite, or that end before they start are dropped.
     /// - Two notes on the same key whose onsets are closer than `minimumConsecutiveNotesGap` are merged into one, with the earlier onset, the later offset and the louder velocity: the later one is usually a second trigger of the same strike.
     /// - Every note ends at least `minimumConsecutiveNotesGap` before the next note on its key starts. A note that this leaves shorter than `minimumConsecutiveNotesGap` is dropped.
-    /// - Sustains that overlap or touch are merged, and invalid ones are dropped.
+    /// - The sustains of every track are combined as ``MIDISustainEvents/init(_:minimumGap:)`` describes, with `minimumConsecutiveNotesGap` as the gap: invalid ones are dropped, two whose onsets are closer than the gap are merged, and every other one ends at least the gap before the next one starts, so every pedal change is kept.
     /// - Meta events are collected from every track and from the tempo track, which holds the time and key signatures of format-1 files. Raw messages, such as SysEx, are collected from every track.
     ///
     /// The ``lanes`` are built along the way, so the first access to them costs nothing.
@@ -137,9 +137,9 @@ extension IndexedTrack {
             initializedCount = slots.count
         }
         
-        // MARK: Sustains, merged when they overlap or touch.
+        // MARK: Sustains, a gap apart at every pedal change.
 
-        let sustains = Sustains(tracks.lazy.flatMap(\.sustains))
+        let sustains = Sustains(tracks.lazy.flatMap(\.sustains), minimumGap: gap)
 
         // MARK: Control and meta events, in time order.
         
@@ -174,7 +174,7 @@ extension IndexedTrack {
     ///
     /// - Parameters:
     ///   - notes: The cleaned-up notes.
-    ///   - sustains: The merged sustains, which are valid by construction.
+    ///   - sustains: The sustains, which are sorted and disjoint by construction.
     ///   - channelEvents: The channel events.
     ///   - metaEvents: The meta events.
     ///   - rawData: The raw messages.
@@ -225,7 +225,7 @@ extension IndexedTrack {
     public func makeContainer() -> MIDIContainer {
         var track = MIDITrack(
             notes: MIDINotes(self.notes),
-            sustains: MIDISustainEvents(self.sustains.contents),
+            sustains: self.sustains,
             metaEvents: self.metaEvents,
             channelEvents: MIDIChannelEvents(self.channelEvents)
         )
@@ -235,7 +235,7 @@ extension IndexedTrack {
     
     /// Returns whether the notes are sorted by (onset, pitch), and every lane is valid disjoint intervals.
     ///
-    /// The sustains need no check, as ``Sustains`` is valid by construction.
+    /// The sustains need no check, as ``MIDISustainEvents`` is sorted and disjoint by construction.
     ///
     /// For debug-only `assert`s.
     static func isValid(notes: [MIDINote], lanes: Lanes) -> Bool {

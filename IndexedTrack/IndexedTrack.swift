@@ -15,7 +15,7 @@ public struct IndexedTrack: Sendable {
     
     /// Cleaned-up notes sorted by (onset, pitch): pitches 21...108, same-key notes disjoint and gapped.
     public let notes: [MIDINote]
-    /// The sustains of every source track, merged: sorted and disjoint.
+    /// The sustains of every source track, sorted and disjoint, with a gap at every pedal change.
     public let sustains: Sustains
     /// The channel events of every source track, sorted by onset.
     public let channelEvents: [MIDIChannelEvent]
@@ -30,5 +30,11 @@ public struct IndexedTrack: Sendable {
     
     /// The structures derived from the notes, computed on first use and shared by every copy of this track.
     internal let cache = Cache()
+    
+    
+    /// Sustains sorted by onset and disjoint, with a gap at every pedal change.
+    ///
+    /// ``IndexedTrack/init(_:profile:minimumConsecutiveNotesGap:)`` creates them with its `minimumConsecutiveNotesGap` as the gap. The queries of ``Intervals/DisjointIntervals`` work on them.
+    public typealias Sustains = MIDISustainEvents
     
 }

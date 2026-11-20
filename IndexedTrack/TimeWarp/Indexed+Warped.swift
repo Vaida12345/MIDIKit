@@ -34,14 +34,7 @@ extension IndexedTrack {
             }
         }
         
-        container.tracks[0].sustains.contents.withUnsafeMutableBufferPointer { sustains in
-            var index = 0
-            while index < sustains.count {
-                sustains[index].onset = warp.map(sustains[index].onset)
-                sustains[index].offset = warp.map(sustains[index].offset)
-                index &+= 1
-            }
-        }
+        container.tracks[0].sustains = container.tracks[0].sustains.transformed { MIDISustainEvent(onset: warp.map($0.onset), offset: warp.map($0.offset)) }
         
         container.tracks[0].channelEvents.contents.withUnsafeMutableBufferPointer { events in
             var index = 0

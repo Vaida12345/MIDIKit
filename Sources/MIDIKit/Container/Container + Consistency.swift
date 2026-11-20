@@ -14,7 +14,7 @@ extension MIDIContainer {
     ///
     /// This function essentially checks and ensures consistency across file IOs.
     ///
-    /// This function checks for the note pitch, velocity, and no overlapping.
+    /// This function checks the pitch, velocity and duration of every note, and that notes on the same key do not overlap. Sustains need no check, as ``MIDISustainEvents`` keeps them sorted and disjoint.
     ///
     /// - Returns: Whether the check passes.
     @discardableResult
@@ -34,25 +34,6 @@ extension MIDIContainer {
                 }
                 if note.duration <= 0 {
                     logger.warning("You initialized a MIDI note \(note) with invalid duration. CoreMIDI may choose to ignore this note on IO.")
-                    passed = false
-                }
-            }
-            
-            if !track.sustains.indices.dropFirst().allSatisfy({ track.sustains[$0 &- 1].onset <= track.sustains[$0].onset }) {
-                logger.warning("The sustain events are not sorted.")
-                passed = false
-            }
-            
-            var sustainIterator = track.sustains.makeIterator()
-            var _curr = sustainIterator.next()
-            var _next = sustainIterator.next()
-            
-            while let curr = _curr {
-                guard let next = _next else { break }
-                defer { _curr = next; _next = sustainIterator.next() }
-                
-                if curr.offset >= next.onset {
-                    logger.warning("You initialized a MIDI sustain \(curr) that overlaps with others. CoreMIDI may produce sustains with incorrect lengths.")
                     passed = false
                 }
             }

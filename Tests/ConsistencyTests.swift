@@ -60,6 +60,7 @@ struct ConsistencyTests {
         }
     }
     
+    /// Overlapping sustains are split when the track is created, so they always pass.
     @Test
     func checkSustains() {
         do {
@@ -68,7 +69,8 @@ struct ConsistencyTests {
                 MIDISustainEvent(onset: 5, offset: 15),
             ]
             let container = MIDIContainer(tracks: [MIDITrack(sustains: sustains)])
-            #expect(!container._checkConsistency())
+            #expect(container.tracks[0].sustains.contents == [MIDISustainEvent(onset: 0, offset: 5 - 1.0 / 128), MIDISustainEvent(onset: 5, offset: 15)])
+            #expect(container._checkConsistency())
         }
         
         do {

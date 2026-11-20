@@ -25,7 +25,9 @@ struct IndexedSustainsTests {
             MIDISustainEvent(onset: .nan, offset: 7),
             MIDISustainEvent(onset: 8, offset: .infinity),
         ])
-        #expect(sustains.contents == [MIDISustainEvent(onset: 0, offset: 2), MIDISustainEvent(onset: 3, offset: 4)])
+        let gap = 1.0 / 128
+        // The touching pair stays apart, and the sustain inside splits the one around it, which stays down until 2.
+        #expect(sustains.contents == [MIDISustainEvent(onset: 0, offset: 1 - gap), MIDISustainEvent(onset: 1, offset: 1.5 - gap), MIDISustainEvent(onset: 1.5, offset: 2), MIDISustainEvent(onset: 3, offset: 4)])
         #expect(sustains.isValidDisjointIntervals())
     }
 
@@ -55,14 +57,24 @@ struct IndexedSustainsTests {
         #expect(sustains.indices(overlapping: 1...3) == 0..<2)
     }
 
-    /// The track merges the sustains of every source track.
+    /// The track combines the sustains of every source track, keeping the pedal change.
     @Test
-    func trackMergesSustains() {
+    func trackCombinesSustains() {
         let container = MIDIContainer(tracks: [
             MIDITrack(notes: [], sustains: [MIDISustainEvent(onset: 0, offset: 1)]),
             MIDITrack(notes: [], sustains: [MIDISustainEvent(onset: 0.5, offset: 2)]),
         ])
-        #expect(IndexedTrack(container).sustains.contents == [MIDISustainEvent(onset: 0, offset: 2)])
+        #expect(IndexedTrack(container).sustains.contents == [MIDISustainEvent(onset: 0, offset: 0.5 - 1.0 / 128), MIDISustainEvent(onset: 0.5, offset: 2)])
+    }
+
+    /// The track uses its minimum gap between consecutive notes as the gap between sustains.
+    @Test
+    func usesMinimumConsecutiveNotesGap() {
+        let container = MIDIContainer(tracks: [
+            MIDITrack(notes: [], sustains: [MIDISustainEvent(onset: 0, offset: 1)]),
+            MIDITrack(notes: [], sustains: [MIDISustainEvent(onset: 1, offset: 2)]),
+        ])
+        #expect(IndexedTrack(container, minimumConsecutiveNotesGap: 1 / 16).sustains.contents == [MIDISustainEvent(onset: 0, offset: 1 - 1 / 16), MIDISustainEvent(onset: 1, offset: 2)])
     }
 
 }

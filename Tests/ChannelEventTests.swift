@@ -111,6 +111,25 @@ struct ChannelEventTests {
         #expect(container.tracks[0].sustains.contents == [MIDISustainEvent(onset: 1, offset: 2), MIDISustainEvent(onset: 4, offset: 6)])
     }
 
+    /// A pedal lifted and pressed again on the same tick is a pedal change: it loads as two sustains, 1/128 beat apart, and is written back as two.
+    @Test
+    func samePedalChangeLoadsAsTwoSustains() throws {
+        let sequence = try Self.sequence { track in
+            Self.addNote(to: track, at: 0, duration: 4)
+            Self.addControlChange(to: track, at: 1, channel: 0, controller: 64, value: 127)
+            Self.addControlChange(to: track, at: 2, channel: 0, controller: 64, value: 0)
+            Self.addControlChange(to: track, at: 2, channel: 0, controller: 64, value: 127)
+            Self.addControlChange(to: track, at: 3, channel: 0, controller: 64, value: 0)
+        }
+        defer { DisposeMusicSequence(sequence) }
+        let container = try MIDIContainer(sequence: sequence)
+
+        let expected = [MIDISustainEvent(onset: 1, offset: 2 - 1.0 / 128), MIDISustainEvent(onset: 2, offset: 3)]
+        #expect(container.tracks[0].sustains.contents == expected)
+        // 2 - 1/128 is a whole number of ticks at the write resolution.
+        #expect(try MIDIContainer(data: container.data()).tracks[0].sustains.contents == expected)
+    }
+
 
     // MARK: - Support
 

@@ -96,10 +96,7 @@ public extension MIDIContainer {
                 note.offset = scaledTime(at: note.offset)
             }
             
-            track.sustains.mutatingForEach { _, sustain in
-                sustain.onset = scaledTime(at: sustain.onset)
-                sustain.offset = scaledTime(at: sustain.offset)
-            }
+            track.sustains = track.sustains.transformed { MIDISustainEvent(onset: scaledTime(at: $0.onset), offset: scaledTime(at: $0.offset)) }
 
             for index in track.channelEvents.contents.indices {
                 track.channelEvents.contents[index].onset = scaledTime(at: track.channelEvents.contents[index].onset)

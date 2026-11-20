@@ -4,6 +4,7 @@
 //
 
 import MIDIKit
+import Intervals
 import Testing
 
 
@@ -128,6 +129,107 @@ struct MIDISustainEventsTests {
         let a = MIDISustainEvents([MIDISustainEvent(onset: 1, offset: 2)])
         let b = MIDISustainEvents([MIDISustainEvent(onset: 1, offset: 2)])
         #expect(a == b)
+    }
+
+    // MARK: A gap at every pedal change
+
+    private static let gap = 1.0 / 128
+
+    private static func sustains(_ ranges: (Double, Double)...) -> [MIDISustainEvent] {
+        ranges.map { MIDISustainEvent(onset: $0.0, offset: $0.1) }
+    }
+
+    @Test func touchingSustainsStayApart() {
+        let gap = Self.gap
+        #expect(MIDISustainEvents(Self.sustains((1, 2), (0, 1))).contents == Self.sustains((0, 1 - gap), (1, 2)))
+    }
+
+    @Test func nearlyTouchingSustainsGetTheFullGap() {
+        let gap = Self.gap
+        let onset = 1 + gap / 2
+        #expect(MIDISustainEvents(Self.sustains((0, 1), (onset, 2))).contents == Self.sustains((0, onset - gap), (onset, 2)))
+    }
+
+    @Test func overlappingSustainsSplitAtTheLaterOnset() {
+        let gap = Self.gap
+        #expect(MIDISustainEvents(Self.sustains((0, 2), (1, 3))).contents == Self.sustains((0, 1 - gap), (1, 3)))
+    }
+
+    /// A sustain inside another splits it, and the pedal stays down until the end of the outer one.
+    @Test func aContainedSustainSplitsTheOuterOne() {
+        let gap = Self.gap
+        #expect(MIDISustainEvents(Self.sustains((0, 4), (1, 2))).contents == Self.sustains((0, 1 - gap), (1, 4)))
+    }
+
+    /// Onsets closer than the gap are the same pedal change.
+    @Test func onsetsWithinTheGapMerge() {
+        let gap = Self.gap
+        #expect(MIDISustainEvents(Self.sustains((0, 1), (gap / 2, 3))).contents == Self.sustains((0, 3)))
+        #expect(MIDISustainEvents(Self.sustains((0, 2), (0, 1))).contents == Self.sustains((0, 2)))
+    }
+
+    @Test func sustainsFarApartAreKept() {
+        let sustains = Self.sustains((0, 1), (1.5, 2), (2.5, 2.5))
+        #expect(MIDISustainEvents(sustains).contents == sustains)
+    }
+
+    @Test func invalidSustainsAreDropped() {
+        let sustains = MIDISustainEvents(Self.sustains((0, 1), (3, 2), (.nan, 4), (5, .infinity), (-.infinity, 6)))
+        #expect(sustains.contents == Self.sustains((0, 1)))
+    }
+
+    @Test func customGap() {
+        #expect(MIDISustainEvents(Self.sustains((0, 1), (1, 2)), minimumGap: 1 / 16).contents == Self.sustains((0, 1 - 1 / 16), (1, 2)))
+    }
+
+    @Test func insertSplitsAtThePedalChange() {
+        let gap = Self.gap
+        var sustains = MIDISustainEvents(Self.sustains((0, 1), (3, 4)))
+        sustains.insert(MIDISustainEvent(onset: 1, offset: 2))
+        #expect(sustains.contents == Self.sustains((0, 1 - gap), (1, 2), (3, 4)))
+        sustains.insert(MIDISustainEvent(onset: 3.5, offset: 5))
+        #expect(sustains.contents == Self.sustains((0, 1 - gap), (1, 2), (3, 3.5 - gap), (3.5, 5)))
+        sustains.insert(MIDISustainEvent(onset: 6, offset: 5)) // ends before it starts
+        #expect(sustains.count == 4)
+    }
+
+    @Test func insertContentsOfSplitsAtThePedalChange() {
+        let gap = Self.gap
+        var sustains = MIDISustainEvents(Self.sustains((0, 2), (5, 6)))
+        sustains.insert(contentsOf: MIDISustainEvents(Self.sustains((1, 3), (6, 7))))
+        #expect(sustains.contents == Self.sustains((0, 1 - gap), (1, 3), (5, 6 - gap), (6, 7)))
+    }
+
+    /// On random sustains, the result is sorted and disjoint with the gap, starts only where a source sustain starts, and covers only what the sources cover.
+    @Test(arguments: 0..<20)
+    func randomSustains(seed: Int) {
+        var rng = IndexedTrackRNG(seed: UInt64(seed) &+ 9_000)
+        let source = (0..<rng.int(0...40)).map { _ in
+            let onset = Double(rng.int(0...640)) / 64 + (rng.int(0...3) == 0 ? Double(rng.int(0...100)) / 100_000 : 0)
+            return MIDISustainEvent(onset: onset, offset: onset + Double(rng.int(0...128)) / 64)
+        }
+        let sustains = MIDISustainEvents(source)
+
+        #expect(sustains.isValidDisjointIntervals())
+        for index in sustains.indices.dropFirst() {
+            #expect(sustains[index].onset - sustains[index - 1].offset >= Self.gap - 1e-12)
+        }
+        for sustain in sustains {
+            #expect(source.contains { $0.onset == sustain.onset })
+            for time in [sustain.onset, (sustain.onset + sustain.offset) / 2, sustain.offset] {
+                #expect(source.contains { $0.onset <= time && time <= $0.offset })
+            }
+        }
+    }
+
+    /// Transforms that keep the sustains disjoint keep their spacing, and others clean them up.
+    @Test func transformsKeepTheSpacing() {
+        let sustains = MIDISustainEvents(Self.sustains((0, 1), (1.001, 2)), minimumGap: 1 / 1024)
+        let scaled = sustains.transformed { MIDISustainEvent(onset: $0.onset * 2, offset: $0.offset * 2) }
+        #expect(scaled.contents == Self.sustains((0, 2), (2.002, 4)))
+
+        let collapsed = sustains.transformed { _ in MIDISustainEvent(onset: 0, offset: 1) }
+        #expect(collapsed.contents == Self.sustains((0, 1)))
     }
 
 }
