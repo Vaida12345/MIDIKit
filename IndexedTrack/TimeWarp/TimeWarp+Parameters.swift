@@ -12,7 +12,7 @@ extension TimeWarp {
     ///
     /// The search pairs the chords of the two tracks. It scores a pair by the keys the two chords share, charges for the chords left without a partner, and charges for a timing that does not follow a smoothly changing tempo: the tempo is one of ``tempoBinCount`` states, and it may move one state between two paired chords. Times are in beats at 120 BPM, and costs are in the units of a match score, where one shared key is worth 2.
     ///
-    /// Use one of the presets, ``generic``, ``transkun`` or ``pianoTranscription``, and change a single constant by copying it into a variable.
+    /// Start from ``generic``, and change a single constant by copying it into a variable.
     public struct Parameters: Sendable, Hashable {
         
         /// The cost of each key of a chord that the chord it is paired with does not hold, which is the keys of either chord that are not shared.
@@ -128,53 +128,9 @@ extension TimeWarp {
         /// The parameters that assume nothing about where the notes came from.
         ///
         /// Tuned on about 200 pieces of the ASAP dataset, as the sheet, against the transcriptions of their MAESTRO recordings by transkun and by PianoTranscription, each cut to the performance and whole with the silence and extra material around it. The ground truth is the dataset's beat annotations, at the beats that have a chord of the sheet on them. On 211 other pieces, 96.5% of those beats fall within 50 ms of the truth for the cut recordings and 96.4% for the whole ones, 97.8% within 100 ms and 98.6% within 250 ms.
+        ///
+        /// The same constants serve every transcriber, as tuning per transcriber did not help. Constants tuned on the transkun transcriptions alone, and on the PianoTranscription transcriptions alone, beat these on neither: on held-out pieces, the differences were within ±0.1 points of the beats within 50 ms, 0 to 2 standard errors and mostly slightly negative, which is noise. These constants also score alike on both transcribers: on held-out pieces, 96.50%, 97.76% and 98.63% of the beats fall within 50, 100 and 250 ms for transkun, and 96.47%, 97.76% and 98.64% for PianoTranscription.
         public static let generic = Parameters(
-            mismatchPenalty: 0.8,
-            gapOpen: 1,
-            gapExtend: 0.8,
-            tempoBinCount: 21,
-            tempoBinRatio: 1.35,
-            tempoMoveCost: 0.6,
-            tempoPriorSigma: 1.1,
-            bandHalfWidth: 32,
-            timingNoise: 0.08,
-            relativeTimingNoise: 0.25,
-            timingWeight: 0.5,
-            timingCap: 6,
-            splitCost: 0.5,
-            rollScale: 0.08,
-            maximumSkip: 6,
-            maximumExtras: 3,
-            fitTolerance: 1/50
-        )
-        
-        /// The parameters for notes transcribed by transkun.
-        ///
-        /// The same constants as ``generic``, for now: tuning on transkun's transcriptions alone gained nothing over the pooled constants on held-out pieces (within 0.1 points, which is within the noise), and constants tuned on recordings cut to the performance failed more than one in ten recordings that have extra material around the performance. The preset exists so that the constants can diverge without a change to the callers.
-        public static let transkun = Parameters(
-            mismatchPenalty: 0.8,
-            gapOpen: 1,
-            gapExtend: 0.8,
-            tempoBinCount: 21,
-            tempoBinRatio: 1.35,
-            tempoMoveCost: 0.6,
-            tempoPriorSigma: 1.1,
-            bandHalfWidth: 32,
-            timingNoise: 0.08,
-            relativeTimingNoise: 0.25,
-            timingWeight: 0.5,
-            timingCap: 6,
-            splitCost: 0.5,
-            rollScale: 0.08,
-            maximumSkip: 6,
-            maximumExtras: 3,
-            fitTolerance: 1/50
-        )
-        
-        /// The parameters for notes transcribed by PianoTranscription.
-        ///
-        /// The same constants as ``generic``, for now, for the reasons given for ``transkun``. The search never reads offsets, which PianoTranscription does not report faithfully.
-        public static let pianoTranscription = Parameters(
             mismatchPenalty: 0.8,
             gapOpen: 1,
             gapExtend: 0.8,

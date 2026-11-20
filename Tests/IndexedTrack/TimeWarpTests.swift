@@ -749,8 +749,6 @@ struct IndexedTrackTimeWarpTests {
     @Test
     func theParametersAreValidOnlyInTheirRanges() {
         #expect(TimeWarp.Parameters.generic.isValid)
-        #expect(TimeWarp.Parameters.transkun.isValid)
-        #expect(TimeWarp.Parameters.pianoTranscription.isValid)
         
         var parameters = TimeWarp.Parameters.generic
         parameters.tempoBinCount = 20
@@ -1194,16 +1192,14 @@ struct IndexedTrackTimeWarpTests {
     }
     
     @Test
-    func theThreePresetsRecoverACleanWarp() {
+    func theGenericParametersRecoverACleanWarp() {
         let sheetNotes = toySheet(chords: 300, seed: 12)
         let (performanceNotes, truth) = realize(Scenario(name: "presets", ratio: 1.25, drift: 0.2), sheet: sheetNotes)
         let sheet = track(sheetNotes)
         let performance = track(performanceNotes)
-        for parameters in [TimeWarp.Parameters.generic, .transkun, .pianoTranscription] {
-            let warp = sheet.timeWarp(to: performance, parameters: parameters)
-            let errors = TimeWarp.Events(of: sheet).times.map { abs(warp.map($0) - truth($0)) }
-            #expect(percentile(errors, 0.95) <= 0.03)
-        }
+        let warp = sheet.timeWarp(to: performance, parameters: .generic)
+        let errors = TimeWarp.Events(of: sheet).times.map { abs(warp.map($0) - truth($0)) }
+        #expect(percentile(errors, 0.95) <= 0.03)
     }
     
     /// A long piece in the time of a test: 2,000 chords against 2,200.

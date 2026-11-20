@@ -26,7 +26,7 @@ extension IndexedTrack {
     ///
     /// - Parameters:
     ///   - other: The track to map onto, which has the same piece.
-    ///   - parameters: The constants of the search. The default value is ``TimeWarp/Parameters/generic``. A track that came from a transcriber may have a preset of its own.
+    ///   - parameters: The constants of the search. The default value is ``TimeWarp/Parameters/generic``, which suits every transcriber.
     ///
     /// - Returns: The warp from the beats of this track to the beats of `other`. To map the other way, call this on `other`.
     ///
