@@ -948,7 +948,7 @@ struct IndexedTrackTimeWarpTests {
     }
     
     /// The reference tests are only as good as the pieces they run on: between them, the best paths take every way of arriving that the search has.
-    @Test
+    @Test(.tags(.evolution), .evolution)
     func theRandomPiecesTakeEveryWayOfArriving() {
         var total = WaysOfArriving()
         let cases = (0..<12).map { TempoCase.generic(seed: $0) } + (0..<4).map { TempoCase.otherConstants(seed: $0) }
@@ -976,7 +976,7 @@ struct IndexedTrackTimeWarpTests {
         #expect(abs(counted - Double(alignment.score)) < 0.03, "the pairs score \(counted), not \(alignment.score)")
     }
     
-    @Test
+    @Test(.tags(.evolution), .evolution)
     func theDirectedPiecesTakeRestartsAndSplits() {
         var total = WaysOfArriving()
         for seed in 0..<8 {
@@ -1103,7 +1103,7 @@ struct IndexedTrackTimeWarpTests {
     // MARK: Recovery
     
     /// A known tempo curve is recovered from a sheet and a performance made from it, at the chords of the sheet.
-    @Test(arguments: recoveryScenarios)
+    @Test(.tags(.evolution), .evolution, arguments: recoveryScenarios)
     fileprivate func recoversTheTempoCurve(scenario: Scenario) {
         var errors: [Double] = []
         for (index, chords) in [250, 500, 800].enumerated() {
@@ -1121,7 +1121,7 @@ struct IndexedTrackTimeWarpTests {
     }
     
     /// Unrelated music before and after the piece in the performance does not matter.
-    @Test
+    @Test(.tags(.evolution), .evolution)
     func ignoresMusicBeforeAndAfterThePiece() {
         var scenario = Scenario(name: "extra music", ratio: 1.15, randomWarp: 0.25, jitter: 0.03, missing: 0.03, extra: 0.03, tolerance: 0.12)
         scenario.junkChords = 80
@@ -1139,7 +1139,7 @@ struct IndexedTrackTimeWarpTests {
     }
     
     /// A sheet warped by a known function, which `timeWarp(to:)` has to give back: the performance has the same notes, so only the fit is off.
-    @Test(arguments: 0..<3)
+    @Test(.tags(.evolution), .evolution, arguments: 0..<3)
     func recoversTheWarpThatMadeTheTrack(seed: Int) {
         let sheetNotes = toySheet(chords: 400, seed: UInt64(30 + seed))
         var scenario = Scenario(name: "equivariance", ratio: 1.2, drift: 0.3, randomWarp: 0.3)
@@ -1203,7 +1203,7 @@ struct IndexedTrackTimeWarpTests {
     }
     
     /// A long piece in the time of a test: 2,000 chords against 2,200.
-    @Test
+    @Test(.tags(.evolution), .evolution)
     func aLongPieceTakesSeconds() {
         let sheetNotes = toySheet(chords: 2000, seed: 21)
         let (performanceNotes, truth) = realize(Scenario(name: "long", ratio: 1.2, randomWarp: 0.3, jitter: 0.03, missing: 0.05, extra: 0.05), sheet: sheetNotes)
