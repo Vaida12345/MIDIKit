@@ -1342,6 +1342,16 @@ struct TimeWarpTests {
         #expect(reloaded.tracks.flatMap(\.notes.contents).map(\.onset).sorted() == [0.5, 2.5])
     }
 
+    /// The result is cleaned with the gap passed in, so a track created with a smaller gap can keep it.
+    @Test
+    func warpedUsesTheGapPassedIn() {
+        let container = MIDIContainer(tracks: [MIDITrack(notes: [note(0, 0.003, 60), note(0.005, 1, 60)])])
+        let indexed = container.indexed(minimumConsecutiveNotesGap: 1/512)
+        #expect(indexed.notes.count == 2)
+        #expect(indexed.warped(by: .identity, minimumConsecutiveNotesGap: 1/512).notes.count == 2)
+        #expect(indexed.warped(by: .identity).notes.count == 1)
+    }
+    
     @Test
     func warpedKeepsTheProfile() {
         let indexed = IndexedTrack(MIDIContainer(tracks: [MIDITrack(notes: [note(0, 1, 60), note(1, 2, 62)])]), profile: TaggedProfile())

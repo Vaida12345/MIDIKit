@@ -14,7 +14,7 @@ extension IndexedTrack {
     
     /// Returns the warp that maps the times of this track onto the times of `other`, which has the same piece.
     ///
-    /// The typical pair is a sheet, whose notes are where they are written at a steady tempo, and a performance of it, which plays them at a tempo that wanders, pauses at a fermata, rolls chords, misses some notes and adds others. Both tracks may also have material the other lacks around the piece, such as the silence before the first note, a second playing, or applause. The result maps a time in beats of this track to the time in beats of `other` where the same notes sound. Use ``warped(by:)`` to apply it.
+    /// The typical pair is a sheet, whose notes are where they are written at a steady tempo, and a performance of it, which plays them at a tempo that wanders, pauses at a fermata, rolls chords, misses some notes and adds others. Both tracks may also have material the other lacks around the piece, such as the silence before the first note, a second playing, or applause. The result maps a time in beats of this track to the time in beats of `other` where the same notes sound. Use ``warped(by:minimumConsecutiveNotesGap:)`` to apply it.
     ///
     /// The search reads onsets and keys only. Velocities, offsets, sustains and channel events do not take part, as a transcriber does not report them faithfully. It works on the ``chords`` of the two tracks, each formed by its ``profile``, in these steps:
     ///

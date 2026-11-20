@@ -47,7 +47,7 @@ public struct DownbeatTracker: Sendable, Hashable {
 
     /// Whether the offsets of the notes are reliable enough to read.
     ///
-    /// When `false`, the tracker never reads a note offset: every note counts as half a beat long, the duration cue is `0`, and the end of the piece is taken from the onsets and the sustains.
+    /// When `false`, the tracker never reads a note offset: every note counts as half a beat long, the duration cue is `0`, and the end of the piece is taken from the onsets and the sustains. Either way, the piece is decoded until at most two of the longest bars after the last onset.
     ///
     /// The tracker also reads the onsets of ``IndexedTrack/chords``, which the profile forms. The glissando check that every ``ChordArbiter`` shares looks at how long notes last, so a chord can still depend on the offsets.
     public var readsOffsets: Bool
@@ -168,6 +168,9 @@ public struct DownbeatTracker: Sendable, Hashable {
     /// The numbers of beats in a bar.
     static let meters = [2, 3, 4]
 
+    /// Two of the longest bars, in beats: how far after the last onset the decoding goes at most.
+    static let maximumBarSpan = 2 * Double(meters.max()!) * maximumBeat
+
 
     /// Finds the downbeats of `track`.
     ///
@@ -193,6 +196,8 @@ public struct DownbeatTracker: Sendable, Hashable {
             for note in notes { end = Swift.max(end, note.offset) }
         }
         for sustain in track.sustains { end = Swift.max(end, sustain.offset) }
+        // The decoding ends at most two of the longest bars after the last onset: frames after it hold no onsets, and a note or pedal held far beyond the music would otherwise set the memory, or trap converting the frame count to `Int`. A note or sustain that ends later is still sounding when the decoding ends.
+        end = Swift.min(end, notes[notes.count &- 1].onset + Self.maximumBarSpan)
 
         // MARK: Evidence per frame
 

@@ -8,7 +8,7 @@
 
 /// A monotone mapping from the times of one ``IndexedTrack`` to the times of another, as a piecewise linear function.
 ///
-/// ``IndexedTrack/timeWarp(to:parameters:)`` estimates the warp between two tracks of the same piece, such as a sheet and a performance of it, and ``IndexedTrack/warped(by:)`` applies it. All times are in beats at 120 BPM, like the times of an ``IndexedTrack``.
+/// ``IndexedTrack/timeWarp(to:parameters:)`` estimates the warp between two tracks of the same piece, such as a sheet and a performance of it, and ``IndexedTrack/warped(by:minimumConsecutiveNotesGap:)`` applies it. All times are in beats at 120 BPM, like the times of an ``IndexedTrack``.
 ///
 /// The warp is made of its ``knots``. Between two knots it is linear, and it is strictly increasing as a whole, so no two times map to the same time and the order of events never changes. Before the first knot and after the last, it continues with the slope of the nearest segment, limited to `0.3...3` so that the few chords at an end do not stretch or squeeze everything beyond them. A warp of a single knot continues with a slope of 1, which makes it a shift.
 public struct TimeWarp: Sendable, Hashable {

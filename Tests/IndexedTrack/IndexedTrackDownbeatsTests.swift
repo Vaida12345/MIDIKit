@@ -201,6 +201,15 @@ struct IndexedTrackDownbeatsTests {
         #expect(result.contains(1e20))
         #expect(isStrictlyIncreasing(result))
 
+        // A note and a pedal held far beyond the music end the decoding two of the longest bars after the last onset.
+        let held = IndexedTrack(MIDIContainer(tracks: [MIDITrack(
+            notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 80), MIDINote(onset: 4, offset: 1e20, pitch: 64, velocity: 80)],
+            sustains: [MIDISustainEvent(onset: 4, offset: 1e19)]
+        )]))
+        let heldDownbeats = held.downbeats()
+        #expect(isStrictlyIncreasing(heldDownbeats))
+        #expect(heldDownbeats.allSatisfy { $0 <= 4 + 2 * 4 * 2.8 + 0.1 })
+
         // A silence of several beats, which a floor of 0 or less made impossible on every path.
         let sparse = IndexedTrack(MIDIContainer(tracks: [MIDITrack(notes: [MIDINote(onset: 0, offset: 0.5, pitch: 60, velocity: 80), MIDINote(onset: 10, offset: 10.5, pitch: 62, velocity: 80)])]))
         for floor in [0, -0.01, .nan, .infinity] as [Double] {
