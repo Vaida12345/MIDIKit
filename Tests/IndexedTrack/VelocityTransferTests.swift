@@ -192,7 +192,7 @@ struct VelocityTransferTests {
         #expect(computed.notes.map(\.velocity) == performance.notes.map(\.velocity))
     }
     
-    @Test
+    @Test(.tags(.evolution), .evolution)
     func aKnownWarpWithJitterKeepsEveryPartner() throws {
         let sheet = track(cleanInput(seed: 77, count: 600))
         let (played, velocities, _) = perform(sheet, seed: 3, jitter: 0.02, map: { 1.3 * $0 + 4 })
@@ -274,7 +274,7 @@ struct VelocityTransferTests {
     
     // MARK: Recovery
     
-    @Test
+    @Test(.tags(.evolution), .evolution)
     func recoveryOfAWarpedPerformanceWithMissedQuietNotes() {
         // A performance that drifts and wanders around the sheet, with 15 ms of jitter and accents of 12 around a smooth level. Like a transcriber, it misses the notes played well under their surroundings far more often: 40% of those 10 or more under the level, 1% of the others.
         let sheet = track(cleanInput(seed: 2026, count: 1500))
