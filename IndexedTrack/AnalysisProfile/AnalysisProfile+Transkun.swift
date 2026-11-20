@@ -10,7 +10,7 @@ import MIDIKit
 
 /// The profile for notes that [Transkun](https://github.com/Yujia-Yan/Transkun) transcribed.
 ///
-/// Chords are formed with ``ChordArbiter/transkun`` and downbeats found with ``DownbeatTracker/transkun``, which both read the offsets, as Transkun's follow the keys. Artifacts are removed with ``GenericProfile/removingArtifacts(from:threshold:proximityThreshold:)``.
+/// Chords are formed with ``ChordArbiter/transkun``, which reads the offsets and the velocities, and downbeats found with ``DownbeatTracker/transkun``, which reads the offsets: Transkun's offsets follow the keys, and its velocities the played ones. Artifacts are removed with ``GenericProfile/removingArtifacts(from:threshold:proximityThreshold:)``.
 ///
 /// ## Shape of the Output
 ///
@@ -88,26 +88,26 @@ extension ChordArbiter {
 
     /// The arbiter for notes that [Transkun](https://github.com/Yujia-Yan/Transkun) transcribed.
     ///
-    /// Onsets sit on a grid of about 23 ms, so a gap of two frames is the only one that is a coin flip, and the offsets follow the keys, which makes the release a usable cue.
+    /// The offsets follow the keys, which makes the release a usable cue, and the velocities follow the played ones, which makes the velocity of the second note one too.
     ///
-    /// Tuned on the transcription of the MAESTRO dataset.
+    /// Tuned on the transcriptions of the MAESTRO audio by Transkun 1.3.0, against the chords of the ASAP scores, in four folds. On held-out pieces, constants tuned this way find 92.4% of the chords exactly (F-measure), against 92.2% for the constants tuned on the output of earlier versions and 92.0% for ``generic``, and judge 11.2% of the pairs 20 to 80 ms apart wrong, against 11.6% and 12.1%; they did better than the earlier constants in every fold. Without the velocity cue, the F-measure would be 0.18 percentage points lower, and with the weaker release cue of the earlier constants, 0.12 lower.
     public static let transkun = ChordArbiter(
-        stepLimit: 22.5,
-        octaveLimit: 49.005,
-        otherLimit: 39.69,
-        previousWeight: 0.37,
-        nextWeight: 0.14,
+        stepLimit: 20,
+        octaveLimit: 45,
+        otherLimit: 40,
+        previousWeight: 0.3,
+        nextWeight: 0.1,
         isolationKnee: 2,
-        isolationCap: 8,
-        isolationFloor: 0.1,
-        densityWeight: -0.18,
+        isolationCap: 5.5,
+        isolationFloor: 0.6,
+        densityWeight: -0.14,
         densityCenter: 4,
-        densityWindow: 150,
-        releaseWeight: 0.1,
-        releaseScale: 14.7,
-        releaseCap: 3,
-        velocityWeight: 0,
-        velocityCenter: 64,
+        densityWindow: 200,
+        releaseWeight: 0.15,
+        releaseScale: 15,
+        releaseCap: 4.5,
+        velocityWeight: 0.15,
+        velocityCenter: 60,
         velocityCap: 4,
         maximumSize: 24
     )
@@ -119,7 +119,7 @@ extension DownbeatTracker {
     
     /// [Transkun](https://github.com/Yujia-Yan/Transkun): its offsets follow the keys, so the duration cue weighs more.
     ///
-    /// Tuned on the transkun transcriptions of the MAESTRO audio.
+    /// Tuned on the transkun transcriptions of the MAESTRO audio, made before Transkun 1.3.0. On the output of 1.3.0, it finds the downbeats of the 519 ASAP performances that have audio as well as ``generic`` does, with an F-measure of 0.48 within ±70 ms for both. Tuning it again on that output gained 0.013 on the pieces it was tuned on but lost 0.007 on held-out ones, so these constants were kept.
     public static let transkun = DownbeatTracker(
         bassWeight: 1.2,
         massWeight: 0.1,
