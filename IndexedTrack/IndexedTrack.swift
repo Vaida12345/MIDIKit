@@ -22,6 +22,9 @@ public struct IndexedTrack: Sendable {
     /// The meta events of every source track.
     public let metaEvents: [MIDIMetaEvent]
     
+    /// The raw messages, such as system exclusive (SysEx) messages, of every track, sorted by timestamp.
+    public let rawData: [MIDIRawData]
+    
     /// The choices the analyses of this track make, such as how chords are formed.
     public let profile: any AnalysisProfile
     

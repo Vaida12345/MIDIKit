@@ -35,10 +35,11 @@ public struct MIDITrack: CustomStringConvertible, DetailedStringConvertible, Sen
     
     public var channelEvents: MIDIChannelEvents
     
-    /// The range of the notes in the track.
+    /// The time span of the notes in the track, from the earliest onset to the latest offset, or `nil` if the track has no notes.
     @inlinable
-    public var range: ClosedRange<MusicTimeStamp> {
-        (notes.min(of: \.onset) ?? 0) ... (notes.max(of: \.offset) ?? 0)
+    public var range: ClosedRange<MusicTimeStamp>? {
+        guard let onset = notes.min(of: \.onset), let offset = notes.max(of: \.offset) else { return nil }
+        return onset ... Swift.max(onset, offset)
     }
     
     @inlinable

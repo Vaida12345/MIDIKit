@@ -19,7 +19,7 @@ extension IndexedTrack {
     /// - Two notes on the same key whose onsets are closer than `minimumConsecutiveNotesGap` are merged into one, with the earlier onset, the later offset and the louder velocity: the later one is usually a second trigger of the same strike.
     /// - Every note ends at least `minimumConsecutiveNotesGap` before the next note on its key starts. A note that this leaves shorter than `minimumConsecutiveNotesGap` is dropped.
     /// - Sustains that overlap or touch are merged, and invalid ones are dropped.
-    /// - Meta events are collected from every track and from the tempo track, which holds the time and key signatures of format-1 files.
+    /// - Meta events are collected from every track and from the tempo track, which holds the time and key signatures of format-1 files. Raw messages, such as SysEx, are collected from every track.
     ///
     /// The ``lanes`` are built along the way, so the first access to them costs nothing.
     ///
@@ -147,11 +147,14 @@ extension IndexedTrack {
         channelEvents.sort { $0.onset < $1.onset }
         var metaEvents = tracks.flatMap(\.metaEvents) + source.tempo.events // the tempo track holds the time and key signatures of format-1 files
         metaEvents.sort { $0.timestamp < $1.timestamp }
+        var rawData = tracks.flatMap(\.rawData)
+        rawData.sort { $0.timestamp < $1.timestamp }
         
         self.notes = notes
         self.sustains = sustains
         self.channelEvents = channelEvents
         self.metaEvents = metaEvents
+        self.rawData = rawData
         self.profile = profile
         
         let lanes = Lanes(members: members, starts: cleanedStarts, notes: notes)
@@ -167,19 +170,21 @@ extension IndexedTrack {
     /// - Precondition: The arguments meet the invariants of ``IndexedTrack``, checked with an `assert`:
     ///   - `notes` are sorted by (onset, pitch), with pitches in `21...108`;
     ///   - the notes on each key are disjoint: each ends before the next one starts;
-    ///   - `channelEvents` are sorted by onset, and `metaEvents` by timestamp.
+    ///   - `channelEvents` are sorted by onset, and `metaEvents` and `rawData` by timestamp.
     ///
     /// - Parameters:
     ///   - notes: The cleaned-up notes.
     ///   - sustains: The merged sustains, which are valid by construction.
     ///   - channelEvents: The channel events.
     ///   - metaEvents: The meta events.
+    ///   - rawData: The raw messages.
     ///   - profile: The choices the analyses of this track make.
-    package init(validated notes: [MIDINote], sustains: Sustains, channelEvents: [MIDIChannelEvent], metaEvents: [MIDIMetaEvent], profile: any AnalysisProfile) {
+    package init(validated notes: [MIDINote], sustains: Sustains, channelEvents: [MIDIChannelEvent], metaEvents: [MIDIMetaEvent], rawData: [MIDIRawData], profile: any AnalysisProfile) {
         self.notes = notes
         self.sustains = sustains
         self.channelEvents = channelEvents
         self.metaEvents = metaEvents
+        self.rawData = rawData
         self.profile = profile
 
         self.assertInvariants()
@@ -189,14 +194,15 @@ extension IndexedTrack {
     ///
     /// Transforms that only change times without reordering notes or changing their keys, such as ``applyingGap(ideal:minimumNoteLength:)``, use this to keep the layout of the lanes: the new ``lanes`` share `lanes`' layout and refer to the new notes, so the first access to them costs nothing.
     ///
-    /// - Precondition: The arguments meet the invariants listed in ``init(validated:sustains:channelEvents:metaEvents:profile:)``, and `notes[i]` has the same key and (onset, pitch) rank as the note `lanes` was built for at index `i`. Both are checked with an `assert`.
-    init(validated notes: [MIDINote], sustains: Sustains, channelEvents: [MIDIChannelEvent], metaEvents: [MIDIMetaEvent], profile: any AnalysisProfile, reusingLayoutOf lanes: Lanes) {
+    /// - Precondition: The arguments meet the invariants listed in ``init(validated:sustains:channelEvents:metaEvents:rawData:profile:)``, and `notes[i]` has the same key and (onset, pitch) rank as the note `lanes` was built for at index `i`. Both are checked with an `assert`.
+    init(validated notes: [MIDINote], sustains: Sustains, channelEvents: [MIDIChannelEvent], metaEvents: [MIDIMetaEvent], rawData: [MIDIRawData], profile: any AnalysisProfile, reusingLayoutOf lanes: Lanes) {
         assert(notes.count == lanes.notes.count && zip(notes, lanes.notes).allSatisfy { $0.pitch == $1.pitch }, "The notes must have the same keys as the notes the lanes were built for.")
 
         self.notes = notes
         self.sustains = sustains
         self.channelEvents = channelEvents
         self.metaEvents = metaEvents
+        self.rawData = rawData
         self.profile = profile
 
         let lanes = Lanes(members: lanes.members, starts: lanes.starts, notes: notes)
@@ -210,18 +216,20 @@ extension IndexedTrack {
         assert(Self.isValid(notes: notes, lanes: self.lanes), "The notes break the invariants of an indexed track.")
         assert(channelEvents.indices.dropFirst().allSatisfy { channelEvents[$0 &- 1].onset <= channelEvents[$0].onset }, "The channel events must be sorted by onset.")
         assert(metaEvents.indices.dropFirst().allSatisfy { metaEvents[$0 &- 1].timestamp <= metaEvents[$0].timestamp }, "The meta events must be sorted by timestamp.")
+        assert(rawData.indices.dropFirst().allSatisfy { rawData[$0 &- 1].timestamp <= rawData[$0].timestamp }, "The raw messages must be sorted by timestamp.")
     }
     
     /// Returns the track as a container with a single track, at a constant 120 BPM.
     ///
     /// - Complexity: O(*n*), where *n* is the number of events.
     public func makeContainer() -> MIDIContainer {
-        let track = MIDITrack(
+        var track = MIDITrack(
             notes: MIDINotes(self.notes),
             sustains: MIDISustainEvents(self.sustains.contents),
             metaEvents: self.metaEvents,
             channelEvents: MIDIChannelEvents(self.channelEvents)
         )
+        track.rawData = self.rawData
         return MIDIContainer(tracks: [track], tempo: MIDITempoTrack(tempos: [MIDITempoTrack.Tempo(timestamp: 0, tempo: 120)]))
     }
     

@@ -88,7 +88,7 @@ struct ApplyingGapTests {
     @Test(arguments: 0..<10)
     func reusesTheLanesLayout(seed: Int) {
         let result = track(cleanInput(seed: UInt64(seed) &+ 300, count: 300)).applyingGap()
-        let fresh = IndexedTrack(validated: result.notes, sustains: result.sustains, channelEvents: result.channelEvents, metaEvents: result.metaEvents, profile: result.profile)
+        let fresh = IndexedTrack(validated: result.notes, sustains: result.sustains, channelEvents: result.channelEvents, metaEvents: result.metaEvents, rawData: result.rawData, profile: result.profile)
         #expect(result.lanes.members == fresh.lanes.members)
         #expect(result.lanes.starts == fresh.lanes.starts)
         #expect(result.lanes.notes == result.notes)

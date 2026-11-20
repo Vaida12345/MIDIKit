@@ -171,7 +171,7 @@ struct NormalizingTests {
         #expect(result.metaEvents == indexed.metaEvents)
         #expect(result.profile is GenericProfile)
 
-        let fresh = IndexedTrack(validated: result.notes, sustains: result.sustains, channelEvents: result.channelEvents, metaEvents: result.metaEvents, profile: result.profile)
+        let fresh = IndexedTrack(validated: result.notes, sustains: result.sustains, channelEvents: result.channelEvents, metaEvents: result.metaEvents, rawData: result.rawData, profile: result.profile)
         #expect(result.lanes.members == fresh.lanes.members)
         #expect(result.lanes.starts == fresh.lanes.starts)
     }

@@ -126,7 +126,7 @@ struct IndexedTrackTests {
             channelEvents: MIDIChannelEvents([MIDIChannelEvent(onset: 0.5, message: .controlChange(controller: 0, value: 64))])
         )
         let indexed = IndexedTrack(MIDIContainer(tracks: [source]))
-        let validated = IndexedTrack(validated: indexed.notes, sustains: indexed.sustains, channelEvents: indexed.channelEvents, metaEvents: indexed.metaEvents, profile: indexed.profile)
+        let validated = IndexedTrack(validated: indexed.notes, sustains: indexed.sustains, channelEvents: indexed.channelEvents, metaEvents: indexed.metaEvents, rawData: indexed.rawData, profile: indexed.profile)
         
         #expect(validated.notes == indexed.notes)
         #expect(validated.sustains == indexed.sustains)
@@ -166,7 +166,7 @@ struct IndexedTrackTests {
         #expect(seen == Set(indexed.notes.indices))
         
         // The lanes stored by the initializer equal the ones the lazy path builds.
-        let fresh = IndexedTrack(validated: indexed.notes, sustains: indexed.sustains, channelEvents: indexed.channelEvents, metaEvents: indexed.metaEvents, profile: indexed.profile)
+        let fresh = IndexedTrack(validated: indexed.notes, sustains: indexed.sustains, channelEvents: indexed.channelEvents, metaEvents: indexed.metaEvents, rawData: indexed.rawData, profile: indexed.profile)
         let lazy = fresh.lanes
         #expect(lazy.members == lanes.members)
         #expect(lazy.starts == lanes.starts)
@@ -184,4 +184,23 @@ struct IndexedTrackTests {
         }
     }
     
+
+    /// Raw messages, such as SysEx, are kept from every track, survive transforms, and are written back.
+    @Test
+    func rawDataIsCarried() {
+        let gmOn = MIDIRawData(timestamp: 3, data: Data([0xF0, 0x7E, 0x7F, 0x09, 0x01, 0xF7]))
+        let yamaha = MIDIRawData(timestamp: 1, data: Data([0xF0, 0x43, 0x10, 0x4C, 0x00, 0x00, 0x7E, 0x00, 0xF7]))
+        var first = MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
+        first.rawData = [gmOn]
+        var second = MIDITrack(notes: [MIDINote(onset: 1, offset: 2, pitch: 62, velocity: 100)])
+        second.rawData = [yamaha]
+        let indexed = IndexedTrack(MIDIContainer(tracks: [first, second], tempo: MIDITempoTrack(tempos: [MIDITempoTrack.Tempo(timestamp: 0, tempo: 120)])))
+
+        #expect(indexed.rawData == [yamaha, gmOn]) // sorted by timestamp
+        #expect(indexed.applyingGap().rawData == indexed.rawData)
+        #expect(indexed.normalizing(preserve: .acousticResult).rawData == indexed.rawData)
+        #expect(indexed.removingArtifacts(threshold: 40).rawData == indexed.rawData)
+        #expect(indexed.makeContainer().tracks[0].rawData == [yamaha, gmOn])
+    }
+
 }

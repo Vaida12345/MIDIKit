@@ -100,7 +100,7 @@ public struct GenericProfile: AnalysisProfile {
             initializedCount = write
         }
 
-        return IndexedTrack(validated: kept, sustains: track.sustains, channelEvents: track.channelEvents, metaEvents: track.metaEvents, profile: track.profile)
+        return IndexedTrack(validated: kept, sustains: track.sustains, channelEvents: track.channelEvents, metaEvents: track.metaEvents, rawData: track.rawData, profile: track.profile)
     }
 
 }

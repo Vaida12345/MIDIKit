@@ -10,29 +10,6 @@ import AudioToolbox
 
 extension MIDITrack {
     
-    /// Quantize the track.
-    ///
-    /// In a time signature of 4/4, A `beats` of 1 indicates a quarter note (one beat), regardless of time signature.
-    ///
-    /// - SeeAlso: ``MIDITrack``
-    public mutating func quantize(by beats: MusicTimeStamp) {
-        func _quantize(value: inout MusicTimeStamp) {
-            value = (value / beats).rounded(.toNearestOrAwayFromZero) * beats
-        }
-        
-        for i in 0..<self.notes.count {
-            var duration = self.notes[i].duration
-            _quantize(value: &duration) // duration then onset, as onset would change the duration.
-            _quantize(value: &self.notes[i].onset)
-            self.notes[i].duration = Swift.max(duration, 1/4)
-        }
-        
-        for i in 0..<self.sustains.count {
-            _quantize(value: &self.sustains[i].onset)
-            _quantize(value: &self.sustains[i].offset)
-        }
-    }
-    
     /// Returns the measures of the track.
     ///
     /// The measures are well-defined in MIDI. In a time signature of `n/m`, `n` `m`th notes go in one measure.

@@ -11,7 +11,7 @@ import Essentials
 
 public extension MIDIContainer {
     
-    /// Rewrites all note, sustain, control event and meta event timestamps so playback is represented in a single tempo domain.
+    /// Rewrites all note, sustain, channel event, meta event and raw data timestamps so playback is represented in a single tempo domain.
     ///
     /// This preserves real-time musical timing while converting beat positions to a timeline where
     /// `constantTempo` is the only tempo. After conversion, ``tempo`` is replaced with exactly one
@@ -21,6 +21,8 @@ public extension MIDIContainer {
     /// without changing notes, sustains, channel events, meta events, or tempo events.
     ///
     /// - Parameter constantTempo: The target tempo in BPM. Must be greater than `0`.
+    ///
+    /// - Complexity: O(*T* log *T* + *n* log *T*), where *T* is the number of tempo events and *n* the number of timestamps rewritten.
     mutating func normalizeToConstantTempo(_ constantTempo: Double) {
         precondition(constantTempo > 0, "constantTempo must be greater than 0")
         
@@ -52,53 +54,69 @@ public extension MIDIContainer {
             }
         }
         
-        // Function to calculate time scaled to the constant tempo
-        func scaledTime(
-            at timestamp: MusicTimeStamp,
-            tempoEvents: [MIDITempoTrack.Tempo],
-            constantTempo: Double
-        ) -> MusicTimeStamp {
+        // Where each tempo segment starts on the constant-tempo time line, summed once in order.
+        let segmentStarts = [MusicTimeStamp](unsafeUninitializedCapacity: effectiveTempoEvents.count) { buffer, initializedCount in
             var scaled: MusicTimeStamp = 0
-            var currentTempoEvent = tempoEvents[0]
-            
-            for nextTempoEvent in tempoEvents.dropFirst() {
-                if timestamp < nextTempoEvent.timestamp {
-                    break
-                }
-                
-                let duration = nextTempoEvent.timestamp - currentTempoEvent.timestamp
-                scaled += duration * constantTempo / currentTempoEvent.tempo
-                currentTempoEvent = nextTempoEvent
+            buffer[0] = 0
+            var index = 1
+            while index < effectiveTempoEvents.count {
+                let previous = effectiveTempoEvents[index &- 1]
+                scaled += (effectiveTempoEvents[index].timestamp - previous.timestamp) * constantTempo / previous.tempo
+                buffer[index] = scaled
+                index &+= 1
             }
-            
-            let remainingDuration = timestamp - currentTempoEvent.timestamp
-            scaled += remainingDuration * constantTempo / currentTempoEvent.tempo
-            return scaled
+            initializedCount = effectiveTempoEvents.count
+        }
+        
+        /// Returns `timestamp` on the constant-tempo time line.
+        ///
+        /// The segment is the last tempo event at or before `timestamp`, found by binary search; times before the first event use the first tempo.
+        ///
+        /// - Complexity: O(log *T*), where *T* is the number of tempo events.
+        func scaledTime(at timestamp: MusicTimeStamp) -> MusicTimeStamp {
+            // The first index whose event starts after `timestamp`.
+            var low = 1
+            var high = effectiveTempoEvents.count
+            while low < high {
+                let middle = (low &+ high) >> 1
+                if effectiveTempoEvents[middle].timestamp <= timestamp {
+                    low = middle &+ 1
+                } else {
+                    high = middle
+                }
+            }
+            let segment = low &- 1
+            let event = effectiveTempoEvents[segment]
+            return segmentStarts[segment] + (timestamp - event.timestamp) * constantTempo / event.tempo
         }
         
         self.tracks.mutatingForEach { _, track in
             track.notes.mutatingForEach { _, note in
-                note.onset = scaledTime(at: note.onset, tempoEvents: effectiveTempoEvents, constantTempo: constantTempo)
-                note.offset = scaledTime(at: note.offset, tempoEvents: effectiveTempoEvents, constantTempo: constantTempo)
+                note.onset = scaledTime(at: note.onset)
+                note.offset = scaledTime(at: note.offset)
             }
             
             track.sustains.mutatingForEach { _, sustain in
-                sustain.onset = scaledTime(at: sustain.onset, tempoEvents: effectiveTempoEvents, constantTempo: constantTempo)
-                sustain.offset = scaledTime(at: sustain.offset, tempoEvents: effectiveTempoEvents, constantTempo: constantTempo)
+                sustain.onset = scaledTime(at: sustain.onset)
+                sustain.offset = scaledTime(at: sustain.offset)
             }
 
             for index in track.channelEvents.contents.indices {
-                track.channelEvents.contents[index].onset = scaledTime(at: track.channelEvents.contents[index].onset, tempoEvents: effectiveTempoEvents, constantTempo: constantTempo)
+                track.channelEvents.contents[index].onset = scaledTime(at: track.channelEvents.contents[index].onset)
             }
 
             for index in track.metaEvents.indices {
-                track.metaEvents[index].timestamp = scaledTime(at: track.metaEvents[index].timestamp, tempoEvents: effectiveTempoEvents, constantTempo: constantTempo)
+                track.metaEvents[index].timestamp = scaledTime(at: track.metaEvents[index].timestamp)
+            }
+
+            for index in track.rawData.indices {
+                track.rawData[index].timestamp = scaledTime(at: track.rawData[index].timestamp)
             }
         }
 
         // The tempo track's own meta events, such as time and key signatures.
         for index in self.tempo.events.indices {
-            self.tempo.events[index].timestamp = scaledTime(at: self.tempo.events[index].timestamp, tempoEvents: effectiveTempoEvents, constantTempo: constantTempo)
+            self.tempo.events[index].timestamp = scaledTime(at: self.tempo.events[index].timestamp)
         }
 
         self.tempo.contents = [MIDITempoTrack.Tempo(timestamp: 0, tempo: constantTempo)]

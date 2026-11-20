@@ -58,14 +58,11 @@ struct MIDITrackTests {
             MIDINote(onset: 1.0, offset: 3.0, pitch: 60, velocity: 100),
             MIDINote(onset: 2.0, offset: 5.0, pitch: 64, velocity: 80),
         ])
-        #expect(track.range.lowerBound == 1.0)
-        #expect(track.range.upperBound == 5.0)
+        #expect(track.range == 1.0...5.0)
     }
 
     @Test func rangeEmptyTrack() {
-        let track = MIDITrack()
-        #expect(track.range.lowerBound == 0.0)
-        #expect(track.range.upperBound == 0.0)
+        #expect(MIDITrack().range == nil)
     }
 
     @Test func appendNotes() {
@@ -85,43 +82,6 @@ struct MIDITrackTests {
         let a = MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
         let b = MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 64, velocity: 100)])
         #expect(a != b)
-    }
-
-}
-
-
-@Suite("MIDITrack.Quantize")
-struct MIDITrackQuantizeTests {
-
-    @Test func quantizeQuarterNotes() {
-        var track = MIDITrack(notes: [
-            MIDINote(onset: 0.05, offset: 0.95, pitch: 60, velocity: 100),
-            MIDINote(onset: 1.02, offset: 1.98, pitch: 64, velocity: 80),
-        ])
-        track.quantize(by: 1.0)
-        // Should quantize to nearest beat
-        #expect(track.notes[0].onset == 0.0)
-        #expect(track.notes[1].onset == 1.0)
-    }
-
-    @Test func quantizePreservesMinimumDuration() {
-        var track = MIDITrack(notes: [
-            MIDINote(onset: 0.02, offset: 0.1, pitch: 60, velocity: 100),
-        ])
-        track.quantize(by: 1.0)
-        // Duration should be at least 0.25 (1/4)
-        #expect(track.notes[0].duration >= 0.25)
-    }
-
-    @Test func quantizeSustains() {
-        var track = MIDITrack(
-            sustains: [
-                MIDISustainEvent(onset: 0.08, offset: 2.92),
-            ]
-        )
-        track.quantize(by: 1.0)
-        #expect(track.sustains[0].onset == 0.0)
-        #expect(track.sustains[0].offset == 3.0)
     }
 
 }

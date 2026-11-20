@@ -50,7 +50,7 @@ extension IndexedTrack {
             }
         }
 
-        return IndexedTrack(validated: notes, sustains: self.sustains, channelEvents: self.channelEvents, metaEvents: self.metaEvents, profile: self.profile, reusingLayoutOf: lanes)
+        return IndexedTrack(validated: notes, sustains: self.sustains, channelEvents: self.channelEvents, metaEvents: self.metaEvents, rawData: self.rawData, profile: self.profile, reusingLayoutOf: lanes)
     }
 
 }
