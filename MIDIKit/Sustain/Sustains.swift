@@ -30,7 +30,7 @@ public struct MIDISustainEvents: Sendable, Equatable, DetailedStringConvertible 
     ///
     /// - Parameters:
     ///   - sustains: The source sustains, in any order.
-    ///   - minimumGap: The minimum gap between consecutive sustains, in beats. It must be finite and greater than zero. The default value is `1/128`, the same as the minimum gap between consecutive notes of `IndexedTrack`, and a whole number of ticks of ``MIDIContainer/writeResolution``.
+    ///   - minimumGap: The minimum gap between consecutive sustains, in beats. It must be finite and greater than zero; a gap under two ticks of ``MIDIContainer/writeResolution`` is raised to two ticks, so a written pedal up always comes before the next pedal down. The default value is `1/128`, the same as the minimum gap between consecutive notes of `IndexedTrack`, and a whole number of ticks of ``MIDIContainer/writeResolution``.
     ///
     /// - Complexity: O(*n* log *n*), where *n* is the number of sustains.
     public init(_ sustains: some Sequence<MIDISustainEvent> = [], minimumGap: Double = 1/128) {
@@ -132,6 +132,8 @@ public struct MIDISustainEvents: Sendable, Equatable, DetailedStringConvertible 
     ///
     /// - Complexity: O(*n*), where *n* is the number of sustains.
     private static func normalized(_ sorted: [MIDISustainEvent], minimumGap: Double) -> [MIDISustainEvent] {
+        // Two ticks of the write grid at least: rounding to the grid lengthens a sustain shorter than a tick by up to a tick, and the pedal up must still come a tick before the next pedal down.
+        let minimumGap = Swift.max(minimumGap, 2 / Double(MIDIContainer.writeResolution))
         var result: [MIDISustainEvent] = []
         result.reserveCapacity(sorted.count)
 

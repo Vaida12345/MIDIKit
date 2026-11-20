@@ -80,6 +80,24 @@ struct ChannelEventTests {
         #expect(program.status == 0xC9 && program.data1 == 42 && program.data2 == 0)
     }
 
+    /// At the same time, a SysEx message and a program change are written before the note they set up.
+    @Test
+    func setupIsWrittenBeforeNotesAtTheSameTime() throws {
+        var track = MIDITrack(
+            notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 80)],
+            channelEvents: MIDIChannelEvents([MIDIChannelEvent(onset: 0, message: .programChange(program: 40))])
+        )
+        track.rawData = [MIDIRawData(timestamp: 0, data: Data([0xF0, 0x7E, 0x7F, 0x09, 0x01, 0xF7]))]
+        let bytes = Array(try MIDIContainer(tracks: [track]).data())
+
+        func position(of pattern: [UInt8]) throws -> Int {
+            try #require((0...(bytes.count - pattern.count)).first { bytes[$0..<($0 + pattern.count)].elementsEqual(pattern) })
+        }
+        let noteOn = try position(of: [0x90, 60])
+        #expect(try position(of: [0xC0, 40]) < noteOn)
+        #expect(try position(of: [0x7E, 0x7F, 0x09, 0x01, 0xF7]) < noteOn)
+    }
+
     /// The sustain pedal is read as sustains, on any channel, and never as a channel event.
     @Test
     func sustainPedalIsNotAChannelEvent() throws {

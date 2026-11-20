@@ -86,6 +86,12 @@ struct IndexedKeySignatureTests {
         // Every pitch class with the same weight.
         let chromatic = (0..<12).map { note(Double($0), Double($0) + 1, UInt8(60 + $0)) }
         #expect(track(chromatic).estimateKeySignature() == nil)
+
+        // Weights such as 0.1, whose sum does not divide evenly, leave rounding residue after the mean is subtracted.
+        for length in [0.1, 0.3, 0.7] {
+            let short = (0..<12).map { note(Double($0), Double($0) + length, UInt8(60 + $0)) }
+            #expect(track(short).estimateKeySignature() == nil, "\(length)")
+        }
     }
 
     @Test

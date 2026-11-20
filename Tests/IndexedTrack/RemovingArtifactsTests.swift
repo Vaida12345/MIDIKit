@@ -66,17 +66,24 @@ struct RemovingArtifactsTests {
         #expect(indexed.removingArtifacts(threshold: 30).notes == [note(0, 1, 50, velocity: 20), note(1.01, 1.5, 50, velocity: 50)])
     }
 
+    /// A later quiet note on the key, far from the ghost note, doesn't save the ghost note.
+    @Test
+    func aLaterQuietNoteDoesNotKeepAGhostNote() {
+        let indexed = track([note(0, 1, 50), note(1.1, 1.2, 50, velocity: 20), note(5, 5.1, 50, velocity: 20)])
+        #expect(indexed.removingArtifacts(threshold: 40).notes == [note(0, 1.2, 50), note(5, 5.1, 50, velocity: 20)])
+    }
+
     @Test
     func aRunFarFromTheNoteBeforeIsKept() {
         let indexed = track([note(0, 1, 50), note(2, 2.1, 50, velocity: 20)])
         #expect(indexed.removingArtifacts(threshold: 30).notes == indexed.notes)
     }
 
-    /// A quiet note far from the run after it ends that run without starting a new one.
+    /// A quiet note far from the run after it starts a new run: the run after it stays, and the quiet note is removed when the note before it is close.
     @Test
-    func aGapInsideARunEndsIt() {
+    func aGapInsideARunStartsANewOne() {
         let indexed = track([note(0, 1, 50), note(1.1, 1.2, 50, velocity: 20), note(2, 2.1, 50, velocity: 20)])
-        #expect(indexed.removingArtifacts(threshold: 30).notes == indexed.notes)
+        #expect(indexed.removingArtifacts(threshold: 30).notes == [note(0, 1.2, 50), note(2, 2.1, 50, velocity: 20)])
     }
 
     @Test

@@ -221,16 +221,19 @@ extension IndexedTrack {
     
     /// Returns the track as a container with a single track, at a constant 120 BPM.
     ///
+    /// Time signatures go in the tempo track, the only track where CoreMIDI accepts them. The other meta events stay with the notes.
+    ///
     /// - Complexity: O(*n*), where *n* is the number of events.
     public func makeContainer() -> MIDIContainer {
         var track = MIDITrack(
             notes: MIDINotes(self.notes),
             sustains: self.sustains,
-            metaEvents: self.metaEvents,
+            metaEvents: self.metaEvents.filter { $0.type != 0x58 },
             channelEvents: MIDIChannelEvents(self.channelEvents)
         )
         track.rawData = self.rawData
-        return MIDIContainer(tracks: [track], tempo: MIDITempoTrack(tempos: [MIDITempoTrack.Tempo(timestamp: 0, beatsPerMinute: 120)]))
+        let tempo = MIDITempoTrack(metaEvents: self.metaEvents.filter { $0.type == 0x58 }, tempos: [MIDITempoTrack.Tempo(timestamp: 0, beatsPerMinute: 120)])
+        return MIDIContainer(tracks: [track], tempo: tempo)
     }
     
     /// Returns whether the notes are sorted by (onset, pitch), and every lane is valid disjoint intervals.

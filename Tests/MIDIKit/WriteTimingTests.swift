@@ -112,6 +112,20 @@ struct WriteTimingTests {
         #expect(read.map(\.velocity) == [3, 40])
     }
     
+    /// A note longer than 512 beats, where a `Float32` step exceeds half a tick, keeps its length to the tick, and a later note stays on its tick.
+    @Test
+    func longNotesKeepTheirTicks() throws {
+        let tick = 1 / Double(MIDIContainer.writeResolution)
+        let notes = [
+            MIDINote(onset: 0, offset: 4_959_839 * tick, pitch: 60, velocity: 80),
+            MIDINote(onset: 4_960_000 * tick, offset: 4_960_100 * tick, pitch: 62, velocity: 80),
+        ]
+        let read = try roundTrip(MIDIContainer(tracks: [MIDITrack(notes: notes)])).tracks[0].notes.contents.sorted()
+        
+        #expect(read.map { ($0.offset / tick).rounded() } == [4_959_839, 4_960_100])
+        #expect(read.map { ($0.onset / tick).rounded() } == [0, 4_960_000])
+    }
+    
     /// The sequence for playback keeps exact times; only files are written on the grid.
     @Test
     func sequenceKeepsExactTimes() throws {

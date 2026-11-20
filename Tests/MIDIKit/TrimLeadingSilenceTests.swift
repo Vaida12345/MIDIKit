@@ -99,6 +99,18 @@ struct TrimLeadingSilenceTests {
         #expect(result.tracks[0].sustains.contents == [MIDISustainEvent(onset: 1, offset: 2)])
     }
 
+    /// When everything moves later, the tempo at 0 still starts the piece, so the note before 0 keeps its tempo.
+    @Test
+    func negativeOnsetsKeepTheOpeningTempo() {
+        let notes = MIDITrack(notes: [MIDINote(onset: -1, offset: 0.5, pitch: 60, velocity: 80)])
+        let container = MIDIContainer(tracks: [notes], tempo: MIDITempoTrack([MIDITempoTrack.Tempo(timestamp: 0, beatsPerMinute: 60), MIDITempoTrack.Tempo(timestamp: 2, beatsPerMinute: 90)]))
+        #expect(container.trimmingLeadingSilence().tempo.tempos == [MIDITempoTrack.Tempo(timestamp: 0, beatsPerMinute: 60), MIDITempoTrack.Tempo(timestamp: 3, beatsPerMinute: 90)])
+
+        // A first tempo after 0 still leaves the default before it, as when trimming forward.
+        let late = MIDIContainer(tracks: [notes], tempo: MIDITempoTrack([MIDITempoTrack.Tempo(timestamp: 2, beatsPerMinute: 90)]))
+        #expect(late.trimmingLeadingSilence().tempo.tempos == [MIDITempoTrack.Tempo(timestamp: 3, beatsPerMinute: 90)])
+    }
+
     @Test
     func mutatingAndReturningAgree() {
         let container = MIDIContainer(tracks: [MIDITrack(

@@ -15,7 +15,7 @@ public protocol AnalysisProfile: Sendable {
     ///
     /// ``IndexedTrack/chords`` calls this the first time it is accessed and caches the result, so the implementation must be deterministic: the same track always gives the same chords. It must not read `track.chords`, which would never return; reading ``IndexedTrack/lanes`` and ``IndexedTrack/intervalTree`` is fine.
     ///
-    /// Use ``IndexedTrack/Chords/Builder`` to create the return value, or ``ChordArbiter/formChords(in:)`` with the constants that suit the notes.
+    /// Use ``IndexedTrack/Chords/Builder`` to create the return value, or ``ChordArbiter/formChords(in:)`` with the constants that suit the notes. Either must be given `track` itself: chords formed for any other notes, such as those of a transformed copy, stop the program, as the analyses index `track`'s notes with them.
     ///
     /// - Parameter track: The track whose notes are grouped.
     func formChords(in track: IndexedTrack) -> IndexedTrack.Chords

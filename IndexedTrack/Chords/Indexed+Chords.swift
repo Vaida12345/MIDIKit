@@ -21,6 +21,8 @@ extension IndexedTrack {
         }
 
         let chords = self.profile.formChords(in: self)
+        // The analyses index this track's notes with the chord members, some through unchecked pointers, so chords built for other notes must never be stored. O(n), once per track.
+        precondition(chords.notes == self.notes, "The profile formed chords for notes other than this track's; build them from the track passed to formChords(in:).")
 
         // Another caller may have stored its chords in the meantime; keep the first, they are identical as the profile is deterministic.
         return self.cache.chords.withLock { stored in

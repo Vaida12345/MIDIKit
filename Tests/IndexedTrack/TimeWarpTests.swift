@@ -1322,7 +1322,26 @@ struct TimeWarpTests {
         #expect(!indexed.metaEvents.isEmpty)
         #expect(warped.metaEvents.map(\.data) == indexed.metaEvents.map(\.data))
     }
-    
+
+    /// Times the warp maps before 0 move to 0, so a written file keeps the notes where the warp put them. Time signatures, which live in the tempo track, are warped too.
+    @Test
+    func warpedMovesTimesBeforeZeroToZero() throws {
+        let track = MIDITrack(notes: [note(4, 5, 60), note(6, 7, 62)], metaEvents: [MIDIMetaEvent(timestamp: 0, type: 0x06, data: Data("marker".utf8))])
+        let tempo = MIDITempoTrack(metaEvents: [MIDITimeSignature(4, 4).event(at: 0), MIDITimeSignature(3, 4).event(at: 6)], tempos: [MIDITempoTrack.Tempo(timestamp: 0, beatsPerMinute: 120)])
+        let indexed = IndexedTrack(MIDIContainer(tracks: [track], tempo: tempo))
+        // The first chord moves from 4 to 0.5, so 0 maps to -3.5.
+        let warp = try #require(TimeWarp(knots: [.init(source: 4, target: 0.5), .init(source: 6, target: 2.5)]))
+        #expect(warp.map(0) < 0)
+        let warped = indexed.warped(by: warp)
+
+        #expect(warped.notes.map(\.onset) == [0.5, 2.5])
+        #expect(warped.metaEvents.allSatisfy { $0.timestamp >= 0 })
+        #expect(warped.metaEvents.filter { $0.type == 0x58 }.map(\.timestamp) == [0, 2.5])
+
+        let reloaded = try MIDIContainer(data: warped.makeContainer().data())
+        #expect(reloaded.tracks.flatMap(\.notes.contents).map(\.onset).sorted() == [0.5, 2.5])
+    }
+
     @Test
     func warpedKeepsTheProfile() {
         let indexed = IndexedTrack(MIDIContainer(tracks: [MIDITrack(notes: [note(0, 1, 60), note(1, 2, 62)])]), profile: TaggedProfile())

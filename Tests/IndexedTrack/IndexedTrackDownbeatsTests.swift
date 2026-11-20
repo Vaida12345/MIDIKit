@@ -194,6 +194,28 @@ struct IndexedTrackDownbeatsTests {
         #expect(!messy.contains(figure.downbeats[2] + 1e-10))
     }
 
+    /// An anchor far past the end, or a divisor that gives no region, neither traps nor breaks the decoding.
+    @Test func extremeInputsDoNotTrap() {
+        let track = BarFigure(meter: 4, bars: 4).makeTrack()
+        let result = track.downbeats(prior: [1e20])
+        #expect(result.contains(1e20))
+        #expect(isStrictlyIncreasing(result))
+
+        // A silence of several beats, which a floor of 0 or less made impossible on every path.
+        let sparse = IndexedTrack(MIDIContainer(tracks: [MIDITrack(notes: [MIDINote(onset: 0, offset: 0.5, pitch: 60, velocity: 80), MIDINote(onset: 10, offset: 10.5, pitch: 62, velocity: 80)])]))
+        for floor in [0, -0.01, .nan, .infinity] as [Double] {
+            var tracker = DownbeatTracker.generic
+            tracker.beatFloor = floor
+            #expect(isStrictlyIncreasing(tracker.downbeats(in: sparse)), "\(floor)")
+        }
+
+        for divisor in [0, -1, .nan, .infinity] as [Double] {
+            var tracker = DownbeatTracker.generic
+            tracker.beatRegionDivisor = divisor
+            #expect(isStrictlyIncreasing(tracker.downbeats(in: track)))
+        }
+    }
+
     @Test func anchorsCloseTogetherAreKeptButDoNotBreakDecoding() {
         let figure = BarFigure(meter: 4, bars: 8)
         let anchors = [figure.downbeats[3], figure.downbeats[3] + 0.3, figure.downbeats[3] + 0.6]

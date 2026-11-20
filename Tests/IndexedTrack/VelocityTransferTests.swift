@@ -248,6 +248,15 @@ struct VelocityTransferTests {
         #expect(VelocityTransfer.Fill.median(of: performance.notes) == 45)
         #expect(VelocityTransfer.Fill.median(of: Array(performance.notes.prefix(3))) == 40)
     }
+
+    /// A velocity above 127, which `MIDINote` can hold, is counted rather than trapping.
+    @Test
+    func theMedianCountsVelocitiesAbove127() {
+        let performance = track([note(100, 100.5, 60, velocity: 200), note(101, 101.5, 62, velocity: 255), note(102, 102.5, 64, velocity: 40)])
+        #expect(VelocityTransfer.Fill.median(of: performance.notes) == 200)
+        // The unmatched sheet note falls back to the median, so this runs the histogram.
+        _ = track([note(0, 0.5, 30)]).applyingVelocities(from: performance, warp: .identity)
+    }
     
     @Test
     func aFillIsNeverBelowOne() {

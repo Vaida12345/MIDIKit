@@ -103,6 +103,10 @@ extension MIDITempoTrack {
             }
             index &+= 1
         }
+        // A negative shift reaches before the first tempo, where the first tempo applies (as in `normalizeToConstantTempo`), so a first tempo that starts by 0 moves to 0 rather than leaving the opening at the default tempo.
+        if inEffect == nil, shift < 0, let first = self.tempos.indices.min(by: { self.tempos[$0].timestamp < self.tempos[$1].timestamp }), self.tempos[first].timestamp <= 0 {
+            inEffect = first
+        }
 
         var tempos: [Tempo] = []
         tempos.reserveCapacity(self.tempos.count)

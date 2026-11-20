@@ -14,6 +14,13 @@ import IndexedTrack
 
 // MARK: - Support
 
+/// A profile that wrongly forms the chords of another track, one without notes.
+private struct OtherNotesProfile: AnalysisProfile {
+    func formChords(in track: IndexedTrack) -> IndexedTrack.Chords {
+        ChordArbiter.generic.formChords(in: IndexedTrack(MIDIContainer()))
+    }
+}
+
 /// A profile that puts every note in a chord of its own.
 private struct SingleNoteProfile: AnalysisProfile {
     func formChords(in track: IndexedTrack) -> IndexedTrack.Chords {
@@ -79,6 +86,26 @@ struct ChordsTests {
         let indexed = IndexedTrack(MIDIContainer(tracks: [MIDITrack(notes: [note(0, 1, 60), note(0, 1, 64), note(0, 1, 67)])]), profile: SingleNoteProfile())
         #expect(indexed.chords.count == 3)
         #expect(GenericProfile().formChords(in: indexed).count == 1)
+    }
+
+    /// The builder checks the chords in release builds too: an empty chord stops the program instead of reaching the analyses.
+    @Test
+    func anEmptyChordStopsTheProgram() async {
+        await #expect(processExitsWith: .failure) {
+            var builder = IndexedTrack.Chords.Builder(for: IndexedTrack(MIDIContainer(tracks: [MIDITrack(notes: [note(0, 1, 60)])])))
+            builder.append([0])
+            builder.append([])
+            _ = builder.build()
+        }
+    }
+
+    /// Chords formed for other notes are never stored, as the analyses index the track's notes with them.
+    @Test
+    func chordsForOtherNotesStopTheProgram() async {
+        await #expect(processExitsWith: .failure) {
+            let indexed = IndexedTrack(MIDIContainer(tracks: [MIDITrack(notes: [note(0, 1, 60), note(2, 3, 64)])]), profile: OtherNotesProfile())
+            _ = indexed.chords
+        }
     }
 
     @Test

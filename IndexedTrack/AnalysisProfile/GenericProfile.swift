@@ -62,13 +62,12 @@ public struct GenericProfile: AnalysisProfile {
                 let isClose = next < laneEnd && notes[lanes.members[next]].onset - notes[current].offset < proximityThreshold
 
                 if notes[current].velocity <= threshold && position > laneStart {
-                    if runEnd < 0 {
-                        runStart = position
-                        runEnd = position
-                    } else if isClose {
+                    if runEnd >= 0 && isClose {
                         runStart = position
                     } else {
-                        runEnd = -1
+                        // A quiet note far from the run after it starts a new run; that run stays, as no note close before it can absorb it.
+                        runStart = position
+                        runEnd = position
                     }
                 } else {
                     if runEnd >= 0 && isClose {

@@ -115,7 +115,20 @@ struct IndexedTrackTests {
         #expect(again.notes == indexed.notes)
         #expect(again.sustains == indexed.sustains)
     }
-    
+
+    /// The time signature of a format-1 file goes back to the tempo track, as CoreMIDI accepts it nowhere else, and survives a file round trip.
+    @Test
+    func timeSignatureSurvivesAFile() throws {
+        var tempo = MIDITempoTrack(tempos: [MIDITempoTrack.Tempo(timestamp: 0, beatsPerMinute: 120)])
+        tempo.timeSignature = MIDITimeSignature(3, 4)
+        let container = MIDIContainer(tracks: [MIDITrack(notes: [note(0, 1, 60)])], tempo: tempo)
+
+        let made = container.indexed().makeContainer()
+        #expect(made.tempo.timeSignature == MIDITimeSignature(3, 4))
+        #expect(made.tracks[0].metaEvents.allSatisfy { $0.type != 0x58 })
+        #expect(try MIDIContainer(data: made.data()).tempo.timeSignature == MIDITimeSignature(3, 4))
+    }
+
     /// The initializer for validated input keeps everything as given, and builds the lanes on first use.
     @Test
     func validatedInitializer() {

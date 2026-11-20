@@ -56,6 +56,8 @@ public struct DownbeatTracker: Sendable, Hashable {
     public var tempoChangeCost: Double
 
     /// The floor added to the onset envelope before its logarithm is taken, which bounds the cost of a beat without notes.
+    ///
+    /// It must be greater than zero; a value of `1e-12` or less, or NaN, acts as `1e-12`, and one over `1e12` as `1e12`.
     public var beatFloor: Double
 
     /// How much an onset between beats counts against the path, from `0` (not at all) to `1`.
@@ -233,8 +235,10 @@ public struct DownbeatTracker: Sendable, Hashable {
             index &+= 1
         }
 
-        let beatLikelihood = envelope.map { log($0 + self.beatFloor) }
-        let offBeatLikelihood = envelope.map { log(Swift.max(1e-6, 1 - self.offBeatWeight * $0) + self.beatFloor) }
+        // A floor of 0 or less, or NaN, would make a silent beat impossible on every path, so the decoding would find none; it is kept in `1e-12...1e12`.
+        let beatFloor = self.beatFloor > 1e-12 ? Swift.min(self.beatFloor, 1e12) : 1e-12
+        let beatLikelihood = envelope.map { log($0 + beatFloor) }
+        let offBeatLikelihood = envelope.map { log(Swift.max(1e-6, 1 - self.offBeatWeight * $0) + beatFloor) }
 
         // MARK: State space
 
@@ -248,7 +252,11 @@ public struct DownbeatTracker: Sendable, Hashable {
         let periodCount = periods.count
         let meters = Self.meters
         let bonuses = meters.map { $0 == 3 ? self.tripleMeterBonus : ($0 == 4 ? self.quadrupleMeterBonus : 0) }
-        let regions = periods.map { Swift.max(1, Int((Double($0) / self.beatRegionDivisor).rounded())) }
+        // A region of a beat or more acts as the whole beat, so the region is clamped to `1...period` before the conversion to `Int`, which a divisor of 0 or NaN would otherwise trap.
+        let regions = periods.map { period in
+            let region = (Double(period) / self.beatRegionDivisor).rounded()
+            return region >= 1 ? Int(Swift.min(region, Double(period))) : 1
+        }
 
         // A block holds the positions of one (meter, period) pair; blocks are ordered by meter, then period.
         var blockStarts: [Int] = []
@@ -273,8 +281,11 @@ public struct DownbeatTracker: Sendable, Hashable {
         var lastForced = Int.min / 2
         let minimumGap = 2 &* periods[0]
         for anchor in anchors {
-            let frame = Int((anchor / hop).rounded())
-            guard frame >= 0 && frame < frameCount && frame &- lastForced >= minimumGap else { continue }
+            // Anchors are non-negative; one past the last frame is kept in the result without forcing anything, and is checked before the conversion to `Int`, which would trap on a huge anchor.
+            let position = (anchor / hop).rounded()
+            guard position < Double(frameCount) else { continue }
+            let frame = Int(position)
+            guard frame >= 0 && frame &- lastForced >= minimumGap else { continue }
             forced[frame] = true
             anchorOfFrame[frame] = anchor
             lastForced = frame

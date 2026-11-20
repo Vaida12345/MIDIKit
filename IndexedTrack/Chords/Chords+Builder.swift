@@ -21,7 +21,7 @@ extension IndexedTrack.Chords {
     /// return builder.build()
     /// ```
     ///
-    /// The chords must be appended in the order of their first notes, and together they must hold every note of the track exactly once. Each chord must be non-empty, its note indices ascending, and hold each key at most once. These are checked with an `assert` in ``build()``.
+    /// The chords must be appended in the order of their first notes, and together they must hold every note of the track exactly once. Each chord must be non-empty, its note indices ascending, and hold each key at most once. ``build()`` checks these, and stops the program if one is broken, as the analyses index the track's notes with the chords, some through unchecked pointers.
     public struct Builder {
 
         private var members: [Int]
@@ -53,18 +53,16 @@ extension IndexedTrack.Chords {
 
         /// Returns the chords.
         ///
-        /// - Complexity: O(1) in release builds, O(*n*) in debug builds, which check the invariants.
+        /// - Complexity: O(*n*), where *n* is the number of notes, to check the invariants.
         public consuming func build() -> IndexedTrack.Chords {
             let chords = IndexedTrack.Chords(members: self.members, starts: self.starts, features: self.features, notes: self.notes)
-            assert(chords.isValid(), "The chords must be non-empty, ascending, ordered by their first notes, hold each key at most once, and hold every note exactly once.")
+            precondition(chords.isValid(), "The chords must be non-empty, ascending, ordered by their first notes, hold each key at most once, and hold every note exactly once.")
             return chords
         }
 
     }
 
     /// Returns whether the chords meet their invariants.
-    ///
-    /// For debug-only `assert`s.
     func isValid() -> Bool {
         guard self.members.count == self.notes.count else { return false }
 
@@ -78,13 +76,22 @@ extension IndexedTrack.Chords {
             guard self.members[lower] > previousFirst else { return false } // ordered by first note
             previousFirst = self.members[lower]
 
-            var keys = Set<UInt8>()
+            // The keys of the chord, one bit for each pitch: the pitches of an indexed track are in `21...108`.
+            var keys: (low: UInt64, high: UInt64) = (0, 0)
             var position = lower
             while position < upper {
                 let member = self.members[position]
                 guard member >= 0 && member < self.notes.count, !seen[member] else { return false }
                 seen[member] = true
-                guard keys.insert(self.notes[member].pitch).inserted else { return false } // a key twice
+                let pitch = self.notes[member].pitch
+                let bit = UInt64(1) << UInt64(pitch & 63)
+                if pitch < 64 {
+                    guard keys.low & bit == 0 else { return false } // a key twice
+                    keys.low |= bit
+                } else {
+                    guard keys.high & bit == 0 else { return false } // a key twice
+                    keys.high |= bit
+                }
                 guard position == lower || self.members[position &- 1] < member else { return false } // ascending
                 position &+= 1
             }

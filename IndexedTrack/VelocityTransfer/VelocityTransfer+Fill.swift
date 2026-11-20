@@ -37,7 +37,8 @@ extension VelocityTransfer {
         /// - Complexity: O(*n*), by a histogram of the velocities.
         static func median(of notes: [MIDINote]) -> Double {
             guard !notes.isEmpty else { return 64 }
-            var histogram = [Int](repeating: 0, count: 128)
+            // `UInt8` can hold velocities above 127, so the histogram covers every value it can hold.
+            var histogram = [Int](repeating: 0, count: Int(UInt8.max) &+ 1)
             for note in notes {
                 histogram[Int(note.velocity)] &+= 1
             }
@@ -49,7 +50,7 @@ extension VelocityTransfer {
             var upper = -1
             var seen = 0
             var velocity = 0
-            while velocity < 128 {
+            while velocity < histogram.count {
                 seen &+= histogram[velocity]
                 if lower < 0 && seen > lowerRank { lower = velocity }
                 if seen > upperRank { upper = velocity; break }

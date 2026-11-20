@@ -188,6 +188,24 @@ struct MIDISustainEventsTests {
         #expect(sustains.contents == Self.sustains((0, 1)))
     }
 
+    /// A gap under two ticks of the write grid is raised to two ticks, so no sustain is lost in a file.
+    @Test func aGapUnderTwoTicksIsRaised() throws {
+        let tick = 1 / Double(MIDIContainer.writeResolution)
+        func written(_ sustains: MIDISustainEvents) throws -> MIDISustainEvents {
+            try MIDIContainer(data: MIDIContainer(tracks: [MIDITrack(notes: [], sustains: sustains)]).data()).tracks[0].sustains
+        }
+
+        // Onsets closer than two ticks are one pedal change.
+        let close = MIDISustainEvents(Self.sustains((1, 1.00001), (1.00002, 2)), minimumGap: 1e-5)
+        #expect(close.contents == Self.sustains((1, 2)))
+        #expect(try written(close).contents == Self.sustains((1, 2)))
+
+        // Further apart, the pedal is up for two ticks. Reading cleans up with the default gap of 1/128, which merges this pedal change, but the pedal is down as long as before: no part of it is lost.
+        let apart = MIDISustainEvents(Self.sustains((1, 1.0001), (1.0003, 2)), minimumGap: 1e-5)
+        #expect(apart.contents == Self.sustains((1, 1.0003 - 2 * tick), (1.0003, 2)))
+        #expect(try written(apart).contents == Self.sustains((1, 2)))
+    }
+
     @Test func customGap() {
         #expect(MIDISustainEvents(Self.sustains((0, 1), (1, 2)), minimumGap: 1 / 16).contents == Self.sustains((0, 1 - 1 / 16), (1, 2)))
     }

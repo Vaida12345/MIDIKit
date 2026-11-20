@@ -24,6 +24,18 @@ extension MIDITrack {
             }
         }
         
+        // CoreMIDI keeps the order of insertion for events at the same time, so the raw data and channel events, such as a GM reset or a program change, go before the notes they set up.
+        rawData.forEach { _, raw in
+            raw.withUnsafePointer { pointer in
+                _ = MusicTrackNewMIDIRawDataEvent(musicTrack, grid.snap(raw.timestamp), pointer)
+            }
+        }
+        
+        channelEvents.forEach { _, event in
+            var message = event.channelMessage
+            MusicTrackNewMIDIChannelEvent(musicTrack, grid.snap(event.onset), &message)
+        }
+        
         notes.forEach { _, note in
             let (onset, offset) = grid.snap(onset: note.onset, offset: note.offset)
             var message = MIDINoteMessage(channel: note.channel, note: note.pitch, velocity: note.velocity, releaseVelocity: note.releaseVelocity, duration: grid.duration(offset - onset))
@@ -36,17 +48,6 @@ extension MIDITrack {
             var last  = MIDIChannelMessage(status: 0xB0, data1: 64, data2: 0,   reserved: 0)
             MusicTrackNewMIDIChannelEvent(musicTrack, onset, &first)
             MusicTrackNewMIDIChannelEvent(musicTrack, offset, &last)
-        }
-        
-        channelEvents.forEach { _, event in
-            var message = event.channelMessage
-            MusicTrackNewMIDIChannelEvent(musicTrack, grid.snap(event.onset), &message)
-        }
-        
-        rawData.forEach { _, raw in
-            raw.withUnsafePointer { pointer in
-                _ = MusicTrackNewMIDIRawDataEvent(musicTrack, grid.snap(raw.timestamp), pointer)
-            }
         }
         
         return musicTrack
@@ -77,11 +78,12 @@ struct TickGrid {
     
     /// Converts a duration to the `Float32` a note message stores.
     ///
-    /// On a grid, the duration is rounded down to a `Float32`, never up: a note that ends exactly where the next note on its key starts would otherwise end a hair after it, and Core Audio would write the next note-on before this note-off, losing a note.
+    /// On a grid, the duration is rounded down to a `Float32` when that keeps it within half a tick: a note that ends exactly where the next note on its key starts would otherwise end a hair after it, and Core Audio would write the next note-on before this note-off, losing a note. From about 512 beats, a `Float32` step is larger than half a tick, so the duration is rounded to the nearest `Float32` instead, which keeps it on its tick.
     func duration(_ duration: Double) -> Float32 {
         let rounded = Float32(duration)
-        guard resolution != nil, Double(rounded) > duration else { return rounded }
-        return rounded.nextDown
+        guard let resolution, Double(rounded) > duration else { return rounded }
+        let down = rounded.nextDown
+        return (duration - Double(down)) * resolution < 0.5 ? down : rounded
     }
     
     /// Rounds an interval to the grid, keeping it at least one tick long.

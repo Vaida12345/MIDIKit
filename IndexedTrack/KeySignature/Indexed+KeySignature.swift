@@ -82,7 +82,8 @@ extension IndexedTrack {
             variance += histogram[pitchClass] * histogram[pitchClass]
             pitchClass &+= 1
         }
-        guard variance > 0 else { return nil }
+        // Equal weights leave only rounding residue after subtracting the mean, so the variance is compared with the size of the weights.
+        guard variance > 1e-12 * mean * mean else { return nil }
 
         var best = (score: -Double.infinity, signature: KeySignature.natural)
         var secondScore = -Double.infinity
