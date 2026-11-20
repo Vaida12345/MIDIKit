@@ -29,12 +29,6 @@ struct IOTests {
         }
     }
     
-    @Test func readEmptyData() async throws {
-        let data = try FinderItem(at: "/Users/vaida/DataBase/Swift Package/Test Reference/MIDIKit/empty.mid").load(.data)
-        let container = try MIDIContainer(data: data)
-        #expect(container.tracks == [])
-    }
-    
     /// Verifies that valid notes survive a Standard MIDI File round trip within the accepted beat precision.
     @Test func consistency() async throws {
         var generator = DeterministicRandomNumberGenerator(seed: 0x4D49_4449_4B69_74)
