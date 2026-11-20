@@ -8,12 +8,13 @@
 import Foundation
 import AudioToolbox
 import SwiftUI
+import Intervals
 
 
 /// A MIDI note message.
 ///
 /// `MIDINote`s are comparable using their ``onset``.
-public struct MIDINote: Sendable, Hashable, Interval, Comparable, BitwiseCopyable {
+public struct MIDINote: Sendable, Hashable, Interval, Comparable, BitwiseCopyable, Intervals::Interval {
     
     /// The onset, in beats.
     public var onset: MusicTimeStamp
