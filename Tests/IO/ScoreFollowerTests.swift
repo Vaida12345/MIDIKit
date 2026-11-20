@@ -22,7 +22,8 @@ struct ScoreFollowerTests {
 
         let positions = consume([60, 62, 64], with: follower)
 
-        #expect(positions.map(\.beat) == [0, 1, 2])
+        // The first note alone is not enough evidence: an initial alignment needs two exact matches.
+        #expect(positions.map(\.beat) == [1, 2])
         #expect(positions.allSatisfy { !$0.didJump })
     }
 
@@ -45,8 +46,10 @@ struct ScoreFollowerTests {
         await follower.update(reference: reference([60, 62, 64, 65]))
 
         _ = consume(60, with: follower, at: 1_000)
+        _ = consume(62, with: follower, at: 2_000)
         let position = consume(65, with: follower, at: 4_000)
 
+        // Two exact matches commit the alignment first; the skip over 64 then advances to 65.
         #expect(position?.beat == 3)
     }
 
@@ -59,7 +62,8 @@ struct ScoreFollowerTests {
         let extraPosition = consume(61, with: follower, at: 2_000)
         let recoveredPosition = consume(62, with: follower, at: 3_000)
 
-        #expect(extraPosition?.beat == 0)
+        // One matched note is not enough evidence to commit, so the extra note reports nothing.
+        #expect(extraPosition == nil)
         #expect(recoveredPosition?.beat == 1)
     }
 
@@ -176,28 +180,17 @@ struct ScoreFollowerTests {
         #expect(positions.last?.beat == 5)
     }
 
-    /// Ensures a sustained run of ambiguous repeated pitches continues to the end of a long score.
-    @Test("continues through a long repeated-pitch passage")
-    func followsLongRepeatedPitchPassage() async {
+    /// Ensures a long score made of one repeated pitch never commits a position, as no moment can be told apart from another.
+    @Test("never commits within a long ambiguous repeated-pitch score")
+    func doesNotCommitInLongRepeatedPitchScore() async {
         let pitches = Array(repeating: UInt8(60), count: 128)
         let follower = ScoreFollower()
         await follower.update(reference: reference(pitches))
 
         let positions = consume(pitches, with: follower)
 
-        #expect(positions.last?.beat == 127)
-    }
-
-    /// Ensures ambiguous matches advance continuously instead of leaving the committed position behind.
-    @Test("advances every match through a long repeated-pitch passage")
-    func advancesEveryLongRepeatedPitchMatch() async {
-        let pitches = Array(repeating: UInt8(60), count: 128)
-        let follower = ScoreFollower()
-        await follower.update(reference: reference(pitches))
-
-        let positions = consume(pitches, with: follower)
-
-        #expect(positions.map(\.beat) == (0..<128).map(Double.init))
+        #expect(positions.isEmpty)
+        #expect(follower.lastPosition == nil)
     }
 
     /// Ensures repeated-pitch alignment remains fast enough to keep up with live MIDI input.
@@ -212,7 +205,7 @@ struct ScoreFollowerTests {
         let positions = consume(pitches, with: follower)
         let elapsed = start.duration(to: clock.now)
 
-        #expect(positions.last?.beat == 511)
+        #expect(positions.isEmpty) // ambiguous throughout, see `doesNotCommitInLongRepeatedPitchScore`
         #expect(elapsed < .seconds(1))
     }
 
@@ -241,9 +234,10 @@ struct ScoreFollowerTests {
             }
         }
 
+        // The first chord commits only on its third note; every later note reports its chord.
         #expect(
             positions.map(\.beat)
-                == (0..<12).flatMap { Array(repeating: Double($0), count: 3) }
+                == [0] + (1..<12).flatMap { Array(repeating: Double($0), count: 3) }
         )
     }
 
@@ -283,9 +277,9 @@ struct ScoreFollowerTests {
         #expect(positions.last?.beat == 72)
     }
 
-    /// Ensures overlapping, differently sized chords advance to every widely spaced score moment.
-    @Test("follows widely spaced chords with a shared tone and varying sizes")
-    func followsAmbiguousWidelySpacedChords() async {
+    /// Ensures nested chords, each containing the previous one, never commit a position: every chord matches a prefix of the next, so no alignment leads its alternatives.
+    @Test("never commits within nested chords that share their tones")
+    func doesNotCommitInNestedChords() async {
         let chords: [[UInt8]] = [
             [60],
             [60, 61],
@@ -315,7 +309,7 @@ struct ScoreFollowerTests {
             chordBeats.append(follower.lastPosition?.beat ?? -.infinity)
         }
 
-        #expect(chordBeats == stride(from: 0, through: 72, by: 8).map(Double.init))
+        #expect(chordBeats == Array(repeating: -.infinity, count: chords.count))
     }
 
     @Test("starts from a matching middle passage")
@@ -395,7 +389,7 @@ struct ScoreFollowerTests {
 
         _ = follower.consume(noteOn: 60, timestamp: 1_000)
         follower.consume(noteOff: 60)
-        #expect(follower.lastPosition?.beat == 0)
+        #expect(follower.lastPosition == nil) // one note is not enough evidence to commit
 
         _ = follower.consume(noteOn: 64, timestamp: 2_000)
         follower.consume(noteOff: 64)
@@ -425,7 +419,8 @@ struct ScoreFollowerTests {
             consume($0, with: follower, at: 0)
         }
 
-        #expect(positions.map(\.beat) == [0, 1, 2])
+        // As with valid timestamps, the first note alone does not commit.
+        #expect(positions.map(\.beat) == [1, 2])
     }
 
     /// Ensures a reset does not assume the performer has restarted from the first reference moment.
@@ -453,9 +448,10 @@ struct ScoreFollowerTests {
         _ = consume(64, with: follower, at: 1_000)
         #expect(consume(67, with: follower, at: 2_000)?.beat == 1)
 
-        await follower.update(referenceMoments: [.init(beat: 4, pitches: [72])])
+        await follower.update(referenceMoments: [.init(beat: 4, pitches: [72]), .init(beat: 5, pitches: [74])])
         #expect(follower.lastPosition == nil)
-        #expect(consume(72, with: follower, at: 3_000)?.beat == 4)
+        #expect(consume(72, with: follower, at: 3_000) == nil) // a new reference needs fresh evidence
+        #expect(consume(74, with: follower, at: 4_000)?.beat == 5)
     }
     
     @Test("merges near-simultaneous pre-grouped reference moments")

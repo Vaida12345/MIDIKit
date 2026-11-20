@@ -45,10 +45,7 @@ let package = Package(
         .executableTarget(
             name: "Client",
             dependencies: ["MIDIKit"],
-            path: "Client",
-            swiftSettings: [
-                .unsafeFlags(["-Onone", "-Xfrontend", "-disable-llvm-optzns"])
-            ]
+            path: "Client"
         ),
         .testTarget(name: "Tests", dependencies: ["MIDIKit", "Intervals", "IndexedTrack"], path: "Tests"),
     ],
