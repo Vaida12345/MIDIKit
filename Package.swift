@@ -29,7 +29,7 @@ let package = Package(
         .target(
             name: "MIDIKit",
             dependencies: ["DetailedDescription", "FinderItem", "Optimization", "Essentials", "ColorComponents", "Intervals"],
-            path: "Sources"
+            path: "MIDIKit"
         ),
         .target(
             name: "IndexedTrack",
