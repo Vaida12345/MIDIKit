@@ -1,0 +1,179 @@
+//
+//  ContainerAndTempoTests.swift
+//  MIDIKit
+//
+
+@testable
+import MIDIKit
+import Testing
+import AudioToolbox
+
+
+@Suite("MIDIContainer")
+struct MIDIContainerTests {
+
+    @Test func initEmpty() {
+        let container = MIDIContainer()
+        #expect(container.tracks.isEmpty)
+    }
+
+    @Test func initWithTracks() {
+        let track = MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
+        let container = MIDIContainer(tracks: [track])
+        #expect(container.tracks.count == 1)
+        #expect(container.tracks[0].notes.count == 1)
+    }
+
+    @Test func initWithNotes() {
+        let notes = MIDINotes([MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
+        let container = MIDIContainer(notes: notes)
+        #expect(container.tracks.count == 1)
+        #expect(container.tracks[0].notes.count == 1)
+    }
+
+    @Test func initWithNotesAndSustains() {
+        let notes = MIDINotes([MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
+        let sustains = MIDISustainEvents([MIDISustainEvent(onset: 0, offset: 1)])
+        let container = MIDIContainer(notes: notes, sustains: sustains)
+        #expect(container.tracks[0].sustains.count == 1)
+    }
+
+    @Test func initWithCustomTempo() {
+        let tempo = MIDITempoTrack(tempos: [MIDITempoTrack.Tempo(timestamp: 0, beatsPerMinute: 100)])
+        let container = MIDIContainer(tracks: [], tempo: tempo)
+        #expect(container.tempo.tempos[0].beatsPerMinute == 100)
+    }
+
+    @Test func equatable() {
+        let a = MIDIContainer(tracks: [
+            MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
+        ])
+        let b = MIDIContainer(tracks: [
+            MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
+        ])
+        #expect(a == b)
+    }
+
+    @Test func notEqualDifferentTracks() {
+        let a = MIDIContainer(tracks: [
+            MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
+        ])
+        let b = MIDIContainer(tracks: [])
+        #expect(a != b)
+    }
+
+}
+
+
+@Suite("MIDITempoTrack")
+struct MIDITempoTrackTests {
+
+    @Test func initDefault() {
+        let tempo = MIDITempoTrack()
+        #expect(tempo.metaEvents.isEmpty)
+        #expect(tempo.tempos.isEmpty)
+    }
+
+    @Test func initWithTempos() {
+        let tempo = MIDITempoTrack(tempos: [
+            MIDITempoTrack.Tempo(timestamp: 0, beatsPerMinute: 120),
+            MIDITempoTrack.Tempo(timestamp: 10, beatsPerMinute: 140),
+        ])
+        #expect(tempo.tempos.count == 2)
+        #expect(tempo.tempos[0].beatsPerMinute == 120)
+        #expect(tempo.tempos[1].beatsPerMinute == 140)
+    }
+
+    @Test func setTimeSignatureDefault() {
+        var tempo = MIDITempoTrack()
+        tempo.timeSignature = MIDITimeSignature(3, 4)
+        #expect(tempo.metaEvents.count == 1)
+        let event = tempo.metaEvents[0]
+        #expect(event.type == 0x58) // time signature meta event type
+        #expect(event.data[0] == 3) // numerator
+        #expect(event.data[1] == 2) // log2(4) = 2
+    }
+
+    @Test func setTimeSignatureUpdatesExisting() {
+        var tempo = MIDITempoTrack()
+        tempo.timeSignature = MIDITimeSignature(4, 4)
+        tempo.timeSignature = MIDITimeSignature(6, 8)
+        #expect(tempo.metaEvents.count == 1) // should update, not append
+        #expect(tempo.metaEvents[0].data[0] == 6) // numerator
+        #expect(tempo.metaEvents[0].data[1] == 3) // log2(8) = 3
+    }
+
+    @Test func tempoDefaultIs120() {
+        let tempo = MIDITempoTrack.Tempo.default
+        #expect(tempo.timestamp == 0)
+        #expect(tempo.beatsPerMinute == 120)
+    }
+
+    @Test func tempoInit() {
+        let tempo = MIDITempoTrack.Tempo(timestamp: 5.0, beatsPerMinute: 80.0)
+        #expect(tempo.timestamp == 5.0)
+        #expect(tempo.beatsPerMinute == 80.0)
+    }
+
+}
+
+
+@Suite("MIDIMetaEvent")
+struct MIDIMetaEventTests {
+
+    @Test func initBasic() {
+        let event = MIDIMetaEvent(timestamp: 1.0, type: 0x51, data: Data([0x07, 0xA1, 0x20]))
+        #expect(event.timestamp == 1.0)
+        #expect(event.type == 0x51)
+        #expect(event.data == Data([0x07, 0xA1, 0x20]))
+    }
+
+    @Test func hashable() {
+        let key = MIDIMetaEvent(timestamp: 0, type: 0x59, data: Data([2, 0]))
+        let events: Set<MIDIKit.MIDIMetaEvent> = [key, key, .defaultTimeSignature]
+        #expect(events.count == 2)
+        #expect(events.contains(MIDIMetaEvent(timestamp: 0, type: 0x59, data: Data([2, 0]))))
+    }
+
+    @Test func defaultTimeSignature() {
+        let event = MIDIMetaEvent.defaultTimeSignature
+        #expect(event.timestamp == 0.0)
+        #expect(event.type == 0x58) // time signature
+        #expect(event.data == Data([4, 2, 24, 8])) // 4/4, 24 MIDI clocks, 8 32nd notes
+    }
+
+    @Test func equatable() {
+        let a = MIDIMetaEvent(timestamp: 0, type: 1, data: Data([1, 2, 3]))
+        let b = MIDIMetaEvent(timestamp: 0, type: 1, data: Data([1, 2, 3]))
+        #expect(a == b)
+    }
+
+}
+
+@Suite("MIDIMetaEvent.withUnsafePointer")
+struct MetaEventAudioToolboxTests {
+
+    @Test func roundtripViaAudioToolbox() {
+        let original = MIDIMetaEvent(timestamp: 1.0, type: 0x01, data: Data([0x41, 0x42, 0x43]))
+        let toolboxValue: AudioToolbox.MIDIMetaEvent = original.withUnsafePointer { pointer in
+            return pointer.pointee
+        }
+        #expect(toolboxValue.metaEventType == 0x01)
+        #expect(toolboxValue.dataLength == 3)
+    }
+
+}
+
+
+@Suite("MIDIRawData.withUnsafePointer")
+struct RawDataAudioToolboxTests {
+
+    @Test func roundtripViaAudioToolbox() {
+        let original = MIDIRawData(timestamp: 1.0, data: Data([0x10, 0x20, 0x30]))
+        let toolboxValue: AudioToolbox.MIDIRawData = original.withUnsafePointer { pointer in
+            return pointer.pointee
+        }
+        #expect(toolboxValue.length == 3)
+    }
+
+}

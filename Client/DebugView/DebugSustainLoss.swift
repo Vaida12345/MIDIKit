@@ -7,16 +7,17 @@
 
 import SwiftUI
 import MIDIKit
+import IndexedTrack
 import Charts
 
 
 struct DebugSustainLossView: View {
     
-    let container: IndexedContainer
+    let track: IndexedTrack
     
     
     var body: some View {
-        let durations = container.sustains.map(\.duration)
+        let durations = track.sustains.map(\.duration)
         
         /// - Complexity: O(*n*).
         func loss(distances: [Double], reference: Double) -> Double {

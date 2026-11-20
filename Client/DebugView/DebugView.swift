@@ -8,11 +8,12 @@
 import SwiftUI
 import Foundation
 import MIDIKit
+import IndexedTrack
 
 
 struct DebugView: View {
     
-    let container: IndexedContainer
+    let track: IndexedTrack
     let bpm = 4.0
     
     let pixelsPerBeat: CGFloat = 100
@@ -21,9 +22,9 @@ struct DebugView: View {
     let beats: [Double]
     
     var body: some View {
-        let width = pixelsPerBeat * container.contents.max(of: \.offset)!
-        let maxNote = container.contents.max(of: \.note)! + 4
-        let minNote = container.contents.min(of: \.note)! - 2
+        let width = pixelsPerBeat * track.notes.max(of: \.offset)!
+        let maxNote = track.notes.max(of: \.pitch)! + 4
+        let minNote = track.notes.min(of: \.pitch)! - 2
         
         VStack {
             ZStack {
@@ -48,14 +49,14 @@ struct DebugView: View {
                     .frame(width: width, height: 1)
                     .position(x: width / 2, y: pixelsPerNote * CGFloat(maxNote - 60))
                 
-                ForEach(container.contents, id: \.self) { note in
+                ForEach(track.notes, id: \.self) { note in
                     DebugNoteView(note: note, pixelsPerBeat: pixelsPerBeat, pixelsPerNote: pixelsPerNote, maxNote: maxNote)
                 }
             }
             .frame(width: width, height: Double(maxNote - minNote) * pixelsPerNote)
             
             ZStack {
-                ForEach(container.sustains, id: \.self) { sustain in
+                ForEach(track.sustains, id: \.self) { sustain in
                     DebugSustainView(sustain: sustain, pixelsPerBeat: pixelsPerBeat, pixelsPerNote: pixelsPerNote)
                 }
                 .padding(.vertical, 5)
