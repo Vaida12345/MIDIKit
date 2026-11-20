@@ -8,3 +8,6 @@ DerivedData/
 .netrc
 Icon?
 References
+
+# Local benchmark harness and experiments, never committed
+/Benchmarks/

@@ -21,6 +21,11 @@ public struct GenericProfile: AnalysisProfile {
         ChordArbiter.generic.formChords(in: track)
     }
 
+    /// Finds the downbeats of `track` with ``DownbeatTracker/generic``.
+    public func downbeats(in track: IndexedTrack, prior: [Double]) -> [Double] {
+        DownbeatTracker.generic.downbeats(in: track, prior: prior)
+    }
+
     /// Returns `track` without the stray quiet notes that transcribers such as PianoTranscription tend to produce.
     ///
     /// On each key, a run of consecutive notes no louder than `threshold`, each starting within `proximityThreshold` after the previous one ends, is removed when the note before the run also ends within `proximityThreshold` before it. That note is then extended to where the run ended. The note before the run is louder than `threshold`, or is the first note on the key; the first note on a key never starts a run.
