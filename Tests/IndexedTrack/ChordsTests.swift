@@ -14,34 +14,6 @@ import IndexedTrack
 
 // MARK: - Support
 
-/// The constants of the old `Chord.Arbiter.transkun`, which `IndexedTrack` leaves to the transcription packages.
-private let transkun = ChordArbiter(
-    stepLimit: 22.5, octaveLimit: 49.005, otherLimit: 39.69,
-    previousWeight: 0.37, nextWeight: 0.14,
-    isolationKnee: 2, isolationCap: 8, isolationFloor: 0.1,
-    densityWeight: -0.18, densityCenter: 4, densityWindow: 150,
-    releaseWeight: 0.1, releaseScale: 14.7, releaseCap: 3,
-    velocityWeight: 0, velocityCenter: 64, velocityCap: 4,
-    maximumSize: 24
-)
-
-/// The constants of the old `Chord.Arbiter.pianoTranscription`.
-private let pianoTranscription = ChordArbiter(
-    stepLimit: 25, octaveLimit: 54.45, otherLimit: 44.1,
-    previousWeight: 0.37, nextWeight: 0.21,
-    isolationKnee: 2, isolationCap: 8, isolationFloor: 0.1,
-    densityWeight: -0.18, densityCenter: 4, densityWindow: 150,
-    releaseWeight: 0, releaseScale: 15, releaseCap: 3,
-    velocityWeight: 0.1, velocityCenter: 64, velocityCap: 4,
-    maximumSize: 24
-)
-
-/// A profile that forms chords with a given arbiter.
-private struct ArbiterProfile: AnalysisProfile {
-    let arbiter: ChordArbiter
-    func formChords(in track: IndexedTrack) -> IndexedTrack.Chords { arbiter.formChords(in: track) }
-}
-
 /// A profile that puts every note in a chord of its own.
 private struct SingleNoteProfile: AnalysisProfile {
     func formChords(in track: IndexedTrack) -> IndexedTrack.Chords {
@@ -97,12 +69,13 @@ struct ChordsTests {
         #expect(new.glissando == old.glissando)
     }
 
-    /// The release and velocity cues are off in `.generic`; these constants turn them on.
+    /// The release and velocity cues are off in `.generic`; the transcriber profiles turn them on.
     @Test(arguments: 0..<30)
     func matchesTheOldTunedArbiters(seed: Int) {
         let notes = ChordFigures.notes(seed: UInt64(seed) &+ 1000)
-        for (arbiter, algorithm) in [(transkun, TranscriptionAlgorithm.transkun), (pianoTranscription, .pianoTranscription)] {
-            let indexed = IndexedTrack(MIDIContainer(tracks: [MIDITrack(notes: notes)]), profile: ArbiterProfile(arbiter: arbiter))
+        let profiles: [(any AnalysisProfile, TranscriptionAlgorithm)] = [(TranskunProfile(), .transkun), (PianoTranscriptionProfile(), .pianoTranscription)]
+        for (profile, algorithm) in profiles {
+            let indexed = IndexedTrack(MIDIContainer(tracks: [MIDITrack(notes: notes)]), profile: profile)
             let new = partition(indexed.chords)
             let old = oldPartition(of: indexed, optimizeFor: algorithm)
             #expect(new.members == old.members, "\(algorithm)")
