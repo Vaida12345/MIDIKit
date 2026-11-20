@@ -25,29 +25,6 @@ private func randomSustains(seed: UInt64, end: Double) -> [MIDISustainEvent] {
     }
 }
 
-/// Runs the old `IndexedContainer.normalize` on the notes and sustains of `track`, and returns its notes in the order of `track.notes`.
-private func oldNormalized(_ track: IndexedTrack, preserve: IndexedTrack.PreserveSettings) -> [MIDINote] {
-    let old = IndexedContainer(container: track.makeContainer())
-    defer { withExtendedLifetime(old) {} }
-    #expect(ChordFigures.orderedNotes(of: old).map(\.pointee) == track.notes, "The old container must hold the same notes in the same order.")
-
-    old.normalize(preserve: IndexedContainer.PreserveSettings(rawValue: preserve.rawValue)!, optimizeFor: nil)
-    return ChordFigures.orderedNotes(of: old).map(\.pointee)
-}
-
-/// The onset of the next note on the same key as each note, or `nil` for the last.
-private func nextOnsetsOnKey(_ track: IndexedTrack) -> [Double?] {
-    var result = [Double?](repeating: nil, count: track.notes.count)
-    let lanes = track.lanes
-    for pitch in 21...108 as ClosedRange<UInt8> {
-        let lane = lanes[lane: pitch]
-        for position in lane.indices.dropLast() {
-            result[lane.noteIndex(at: position)] = lane[position + 1].onset
-        }
-    }
-    return result
-}
-
 /// A note at 60 from 0 to `offset`, followed by a separate chord at 72 at `next`.
 private func pair(offset: Double, next: Double, sustains: [MIDISustainEvent]) -> IndexedTrack {
     track([note(0, offset, 60), note(next, next + 0.1, 72)], sustains: sustains)
@@ -62,26 +39,6 @@ private func normalizedOffset(_ track: IndexedTrack, _ preserve: IndexedTrack.Pr
 
 @Suite(.timeLimit(.minutes(1)))
 struct NormalizingTests {
-
-    /// The same as the old `normalize`, except where it let a note end exactly where the next note on its key starts.
-    @Test(arguments: 0..<30)
-    func matchesTheOldNormalize(seed: Int) {
-        let notes = cleanInput(seed: UInt64(seed) &+ 500, count: 200)
-        let end = notes.map(\.offset).max() ?? 0
-        let indexed = track(notes, sustains: randomSustains(seed: UInt64(seed), end: end))
-        let nextOnsets = nextOnsetsOnKey(indexed)
-
-        for preserve in IndexedTrack.PreserveSettings.allCases {
-            let new = indexed.normalizing(preserve: preserve).notes
-            let old = oldNormalized(indexed, preserve: preserve)
-            #expect(new.map(\.onset) == old.map(\.onset))
-
-            for index in new.indices where new[index].offset != old[index].offset {
-                let next = nextOnsets[index]
-                #expect(next != nil && old[index].offset == next! && new[index].offset == next!.nextDown, "\(preserve), note \(index): old \(old[index].offset), new \(new[index].offset), next \(String(describing: next))")
-            }
-        }
-    }
 
     @Test
     func withinOneSustain() {
@@ -176,10 +133,10 @@ struct NormalizingTests {
         #expect(result.lanes.starts == fresh.lanes.starts)
     }
 
-    /// The new enum must decode the raw values of the old one, in the same order, until the old one is removed.
+    /// The raw values are those MIDIKit 1.x stored, so stored values still decode.
     @Test
-    func preserveSettingsMatchTheOldOnes() {
-        #expect(IndexedTrack.PreserveSettings.allCases.map(\.rawValue) == IndexedContainer.PreserveSettings.allCases.map(\.rawValue))
+    func preserveSettingsKeepTheirRawValues() {
+        #expect(IndexedTrack.PreserveSettings.allCases.map(\.rawValue) == ["Acoustic Result", "Notes Display"])
     }
 
     @Test

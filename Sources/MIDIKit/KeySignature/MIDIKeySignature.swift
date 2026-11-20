@@ -95,7 +95,7 @@ public struct MIDIKeySignature: Hashable, Sendable, Codable, CustomStringConvert
 
     // MARK: - Coding
 
-    // The format of `IndexedContainer.KeySignature`.
+    // The format of `IndexedContainer.KeySignature`, from MIDIKit 1.x.
     private enum LegacyCodingKeys: String, CodingKey {
         case pitches, accidental
     }
@@ -105,7 +105,7 @@ public struct MIDIKeySignature: Hashable, Sendable, Codable, CustomStringConvert
         try container.encode(self.sharps)
     }
 
-    /// Decodes a key signature, in either its own format or the format of `IndexedContainer.KeySignature`.
+    /// Decodes a key signature, in either its own format or the format of `IndexedContainer.KeySignature` from MIDIKit 1.x.
     ///
     /// - Throws: `DecodingError.dataCorrupted` when the value is not one of the 15 standard key signatures.
     public init(from decoder: any Decoder) throws {

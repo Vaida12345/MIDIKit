@@ -65,43 +65,6 @@ struct MIDIContainerTests {
 }
 
 
-@Suite("MIDIContainer.Indexed")
-struct MIDIContainerIndexedTests {
-
-    @Test func indexedRoundtrip() {
-        let original = MIDIContainer(notes: MIDINotes([
-            MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100),
-            MIDINote(onset: 2, offset: 3, pitch: 64, velocity: 80),
-        ]))
-        let indexed = original.indexed()
-        let roundtripped = indexed.makeContainer()
-        #expect(roundtripped.tracks.count == 1)
-        #expect(roundtripped.tracks[0].notes.count == 2)
-    }
-
-    @Test func indexedEmpty() {
-        let container = MIDIContainer()
-        let indexed = container.indexed()
-        #expect(indexed.isEmpty)
-        let result = indexed.makeContainer()
-        #expect(result.tracks.count == 1)
-        #expect(result.tracks[0].notes.isEmpty)
-    }
-
-    @Test func indexedMultipleTracks() {
-        let track1 = MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
-        let track2 = MIDITrack(notes: [MIDINote(onset: 2, offset: 3, pitch: 64, velocity: 80)])
-        let container = MIDIContainer(tracks: [track1, track2])
-        let indexed = container.indexed()
-        let result = indexed.makeContainer()
-        // Multi-track indexed combines into a single track with channel encoding
-        #expect(result.tracks.count == 1)
-        #expect(result.tracks[0].notes.count == 2)
-    }
-
-}
-
-
 @Suite("MIDITempoTrack")
 struct MIDITempoTrackTests {
 

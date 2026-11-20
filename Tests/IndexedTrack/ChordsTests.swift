@@ -30,52 +30,6 @@ private func partition(_ chords: IndexedTrack.Chords) -> (members: [[Int]], glis
     (chords.map { chord in chord.indices.map { chord.noteIndex(at: $0) } }, chords.map { $0.features.contains(.glissando) })
 }
 
-/// The chords the old arbiter forms for the same notes, in the same form as `partition(_:)`.
-private func oldPartition(of track: IndexedTrack, optimizeFor algorithm: TranscriptionAlgorithm?) -> (members: [[Int]], glissando: [Bool]) {
-    let old = IndexedContainer(container: track.makeContainer())
-    defer { withExtendedLifetime(old) {} }
-
-    let ordered = ChordFigures.orderedNotes(of: old)
-    #expect(ordered.map(\.pointee) == track.notes, "The old container must hold the same notes in the same order.")
-
-    var position: [ReferenceNote: Int] = [:]
-    for (index, note) in ordered.enumerated() { position[note] = index }
-    let chords = Chord.makeChords(from: old, optimizeFor: algorithm)
-        .map { chord in (members: chord.map { position[$0]! }.sorted(), glissando: chord.features.contains(.glissando)) }
-        .sorted { $0.members[0] < $1.members[0] }
-    return (chords.map(\.members), chords.map(\.glissando))
-}
-
-/// A profile that forms chords with the given arbiter.
-private struct ArbiterProfile: AnalysisProfile {
-    let arbiter: ChordArbiter
-    func formChords(in track: IndexedTrack) -> IndexedTrack.Chords {
-        self.arbiter.formChords(in: track)
-    }
-}
-
-/// The constants of the old arbiter's `transkun` preset, tuned on the output of Transkun before 1.3.0. ``ChordArbiter/transkun`` was tuned again since.
-private let transkunBefore130 = ChordArbiter(
-    stepLimit: 22.5,
-    octaveLimit: 49.005,
-    otherLimit: 39.69,
-    previousWeight: 0.37,
-    nextWeight: 0.14,
-    isolationKnee: 2,
-    isolationCap: 8,
-    isolationFloor: 0.1,
-    densityWeight: -0.18,
-    densityCenter: 4,
-    densityWindow: 150,
-    releaseWeight: 0.1,
-    releaseScale: 14.7,
-    releaseCap: 3,
-    velocityWeight: 0,
-    velocityCenter: 64,
-    velocityCap: 4,
-    maximumSize: 24
-)
-
 /// A run of `count` short notes a semitone apart, 0.1 beat apart.
 private func run(count: Int, from start: Double = 0, ascending: Bool = true) -> [MIDINote] {
     (0..<count).map { index in
@@ -90,29 +44,6 @@ private func run(count: Int, from start: Double = 0, ascending: Bool = true) -> 
 @Suite(.timeLimit(.minutes(1)))
 struct ChordsTests {
 
-    @Test(arguments: 0..<30)
-    func matchesTheOldGenericArbiter(seed: Int) {
-        let indexed = track(ChordFigures.notes(seed: UInt64(seed)))
-        let new = partition(indexed.chords)
-        let old = oldPartition(of: indexed, optimizeFor: nil)
-        #expect(new.members == old.members)
-        #expect(new.glissando == old.glissando)
-    }
-
-    /// The release and velocity cues are off in `.generic`; the old transcriber presets turn them on.
-    @Test(arguments: 0..<30)
-    func matchesTheOldTunedArbiters(seed: Int) {
-        let notes = ChordFigures.notes(seed: UInt64(seed) &+ 1000)
-        let profiles: [(any AnalysisProfile, TranscriptionAlgorithm)] = [(ArbiterProfile(arbiter: transkunBefore130), .transkun), (PianoTranscriptionProfile(), .pianoTranscription)]
-        for (profile, algorithm) in profiles {
-            let indexed = IndexedTrack(MIDIContainer(tracks: [MIDITrack(notes: notes)]), profile: profile)
-            let new = partition(indexed.chords)
-            let old = oldPartition(of: indexed, optimizeFor: algorithm)
-            #expect(new.members == old.members, "\(algorithm)")
-            #expect(new.glissando == old.glissando, "\(algorithm)")
-        }
-    }
-
     /// ``ChordArbiter/transkun`` was tuned on the output of Transkun 1.3.0, with both the release and the velocity cues on.
     @Test
     func transkunPresetIsPinned() {
@@ -121,7 +52,7 @@ struct ChordsTests {
         #expect([transkun.densityWeight, transkun.densityCenter, transkun.densityWindow, transkun.releaseWeight, transkun.releaseScale, transkun.releaseCap, transkun.velocityWeight, transkun.velocityCenter, transkun.velocityCap] == [-0.14, 4, 200, 0.15, 15, 4.5, 0.15, 60, 4])
         #expect(transkun.maximumSize == 24)
 
-        let indexed = IndexedTrack(MIDIContainer(tracks: [MIDITrack(notes: ChordFigures.notes(seed: 7))]), profile: TranskunProfile())
+        let indexed = IndexedTrack(MIDIContainer(tracks: [MIDITrack(notes: cleanInput(seed: 7, count: 200))]), profile: TranskunProfile())
         #expect(partition(indexed.chords).members == partition(ChordArbiter.transkun.formChords(in: indexed)).members)
     }
 
@@ -139,9 +70,6 @@ struct ChordsTests {
         let sustains = [MIDISustainEvent(onset: 0.02, offset: 0.9), MIDISustainEvent(onset: 3, offset: 4)]
         let indexed = track(run(count: 12) + run(count: 11, from: 3), sustains: sustains)
         let new = partition(indexed.chords)
-        let old = oldPartition(of: indexed, optimizeFor: nil)
-        #expect(new.members == old.members)
-        #expect(new.glissando == old.glissando)
         #expect(new.glissando.contains(true))
         #expect(new.glissando.contains(false))
     }
@@ -155,7 +83,7 @@ struct ChordsTests {
 
     @Test
     func isCached() {
-        let indexed = track(ChordFigures.notes(seed: 3))
+        let indexed = track(cleanInput(seed: 3, count: 200))
         let first = indexed.chords
         let second = indexed.chords
         #expect(first.members == second.members)

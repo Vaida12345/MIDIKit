@@ -117,17 +117,6 @@ struct IndexedKeySignatureTests {
         }
     }
 
-    /// The accidentals match those of the old `IndexedContainer.KeySignature`.
-    @Test
-    func matchesTheOldType() {
-        for old in IndexedContainer.KeySignature.allCases {
-            let new = IndexedTrack.KeySignature(sharps: old.accidental.rawValue * old.pitches.count)
-            #expect(new.pitches == old.pitches)
-            #expect(new.accidental.rawValue == old.accidental.rawValue)
-        }
-    }
-
-    /// Every old key signature decodes from its own encoding, and the new format round-trips.
     // MARK: Stored key signatures
 
     @Test
@@ -175,11 +164,19 @@ struct IndexedKeySignatureTests {
         #expect(IndexedTrack(indexed.makeContainer()).storedKeySignature?.sharps == -2)
     }
 
+    /// A key signature stored by MIDIKit 1.x, as the altered natural pitch classes in the order of the sharps or flats, decodes to the same key.
     @Test
     func decoding() throws {
-        for old in IndexedContainer.KeySignature.allCases {
-            let decoded = try JSONDecoder().decode(MIDIKeySignature.self, from: JSONEncoder().encode(old))
-            #expect(decoded.sharps == old.accidental.rawValue * old.pitches.count)
+        let sharpOrder = [5, 0, 7, 2, 9, 4, 11]
+        let flatOrder = [11, 4, 9, 2, 7, 0, 5]
+        var legacy = [(json: #"{"pitches":[],"accidental":0}"#, sharps: 0)]
+        for count in 1...7 {
+            legacy.append((#"{"pitches":\#(sharpOrder.prefix(count)),"accidental":1}"#, count))
+            legacy.append((#"{"pitches":\#(flatOrder.prefix(count)),"accidental":-1}"#, -count))
+        }
+        for (json, sharps) in legacy {
+            let decoded = try JSONDecoder().decode(MIDIKeySignature.self, from: Data(json.utf8))
+            #expect(decoded.sharps == sharps, "\(json)")
             #expect(try JSONDecoder().decode(MIDIKeySignature.self, from: JSONEncoder().encode(decoded)) == decoded)
         }
         #expect(throws: DecodingError.self) { try JSONDecoder().decode(MIDIKeySignature.self, from: Data(#"{"pitches":[0],"accidental":1}"#.utf8)) }

@@ -9,7 +9,7 @@ import AudioToolbox
 import Intervals
 
 
-public struct MIDISustainEvent: Sendable, Equatable, Interval, Hashable, Intervals::Interval {
+public struct MIDISustainEvent: Sendable, Equatable, Hashable, Interval {
     
     public var onset: MusicTimeStamp
     

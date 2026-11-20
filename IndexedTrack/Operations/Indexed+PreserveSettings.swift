@@ -12,7 +12,7 @@ extension IndexedTrack {
 
     /// What ``normalizing(preserve:)`` favors where the sustains do not decide a note's length.
     ///
-    /// The raw values match those of `IndexedContainer.PreserveSettings`, so values stored by raw value decode to the same case.
+    /// The raw values match those of `IndexedContainer.PreserveSettings` from MIDIKit 1.x, so values stored by raw value decode to the same case.
     public enum PreserveSettings: String, Hashable, Identifiable, CaseIterable, Sendable, BitwiseCopyable {
         /// Keeps note lengths that let the sustains sound as played, for the most realistic playback.
         case acousticResult = "Acoustic Result"

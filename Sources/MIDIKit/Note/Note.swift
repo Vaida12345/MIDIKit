@@ -14,7 +14,7 @@ import Intervals
 /// A MIDI note message.
 ///
 /// `MIDINote`s are ordered by ``onset``, then by ``pitch``, so sorting notes gives the order they are played in, and notes played together from low to high. The remaining properties break any further tie, so that two notes are ordered unless they are equal.
-public struct MIDINote: Sendable, Hashable, Interval, Comparable, BitwiseCopyable, Intervals::Interval {
+public struct MIDINote: Sendable, Hashable, Comparable, BitwiseCopyable, Interval {
     
     /// The onset, in beats.
     public var onset: MusicTimeStamp

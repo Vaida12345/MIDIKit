@@ -45,7 +45,7 @@ struct IndexedTrackRNG {
 }
 
 
-/// Random notes that need no cleanup rule that changed from `IndexedContainer`: pitches in range, valid times, and same-key onsets never closer than the gap. Notes may still overlap on the same key, so trimming is exercised.
+/// Random notes that need no cleanup rule that changed from MIDIKit 1.x: pitches in range, valid times, and same-key onsets never closer than the gap. Notes may still overlap on the same key, so trimming is exercised.
 func cleanInput(seed: UInt64, count: Int) -> [MIDINote] {
     var rng = IndexedTrackRNG(seed: seed)
     var notes: [MIDINote] = []

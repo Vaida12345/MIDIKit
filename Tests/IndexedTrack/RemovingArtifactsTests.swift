@@ -14,17 +14,6 @@ import IndexedTrack
 
 // MARK: - Support
 
-/// Runs the old `IndexedContainer.removingArtifacts` on the notes and sustains of `track`, and returns its notes sorted by (onset, pitch).
-private func oldRemovingArtifacts(_ track: IndexedTrack, threshold: UInt8) -> [MIDINote] {
-    let old = IndexedContainer(container: track.makeContainer())
-    defer { withExtendedLifetime(old) {} }
-    #expect(ChordFigures.orderedNotes(of: old).map(\.pointee) == track.notes, "The old container must hold the same notes in the same order.")
-
-    let result = old.removingArtifacts(threshold: threshold)
-    defer { withExtendedLifetime(result) {} }
-    return ChordFigures.orderedNotes(of: result).map(\.pointee).sorted(by: isOrdered)
-}
-
 /// A profile that keeps every note.
 private struct KeepsEverything: AnalysisProfile {
     func formChords(in track: IndexedTrack) -> IndexedTrack.Chords {
@@ -49,19 +38,8 @@ private struct ChordsOnly: AnalysisProfile {
 @Suite(.timeLimit(.minutes(1)))
 struct RemovingArtifactsTests {
 
-    @Test(arguments: 0..<30)
-    func matchesTheOldVersion(seed: Int) {
-        let indexed = track(cleanInput(seed: UInt64(seed) &+ 1_300, count: 300))
-        for threshold in [30, 40, 64] as [UInt8] {
-            let new = indexed.removingArtifacts(threshold: threshold).notes
-            let old = oldRemovingArtifacts(indexed, threshold: threshold)
-            #expect(new == old, "threshold \(threshold)")
-        }
-    }
-
-    /// Some seeds must remove notes, so the comparison above covers removal.
     @Test
-    func theComparisonRemovesNotes() {
+    func removesNotesFromRandomInput() {
         let removed = (0..<30).map { seed in
             let indexed = track(cleanInput(seed: UInt64(seed) &+ 1_300, count: 300))
             return indexed.notes.count - indexed.removingArtifacts(threshold: 40).notes.count
@@ -94,7 +72,7 @@ struct RemovingArtifactsTests {
         #expect(indexed.removingArtifacts(threshold: 30).notes == indexed.notes)
     }
 
-    /// A quiet note far from the run after it ends that run without starting a new one, as in the old version.
+    /// A quiet note far from the run after it ends that run without starting a new one.
     @Test
     func aGapInsideARunEndsIt() {
         let indexed = track([note(0, 1, 50), note(1.1, 1.2, 50, velocity: 20), note(2, 2.1, 50, velocity: 20)])

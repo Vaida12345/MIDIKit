@@ -121,10 +121,4 @@ public extension MIDIContainer {
 
         self.tempo.tempos = [MIDITempoTrack.Tempo(timestamp: 0, beatsPerMinute: constantTempo)]
     }
-    
-    /// Deprecated compatibility wrapper for ``normalizeToConstantTempo(_:)``.
-    @available(*, deprecated, renamed: "normalizeToConstantTempo(_:)")
-    mutating func adjustMIDINotesToConstantTempo(_ constantTempo: Double) {
-        self.normalizeToConstantTempo(constantTempo)
-    }
 }

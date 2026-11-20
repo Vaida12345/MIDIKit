@@ -40,12 +40,6 @@ struct MIDISustainEventTests {
         #expect(a != b)
     }
 
-    @Test func comparableByOnset() {
-        let early = MIDISustainEvent(onset: 0.0, offset: 1.0)
-        let late  = MIDISustainEvent(onset: 2.0, offset: 3.0)
-        #expect(early < late)
-    }
-
     @Test func hashable() {
         let a = MIDISustainEvent(onset: 1.0, offset: 2.0)
         let b = MIDISustainEvent(onset: 1.0, offset: 2.0)

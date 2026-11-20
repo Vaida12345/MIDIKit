@@ -44,7 +44,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "Client",
-            dependencies: ["MIDIKit"],
+            dependencies: ["MIDIKit", "IndexedTrack"],
             path: "Client"
         ),
         .testTarget(name: "Tests", dependencies: ["MIDIKit", "Intervals", "IndexedTrack"], path: "Tests"),

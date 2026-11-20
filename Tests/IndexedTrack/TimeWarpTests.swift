@@ -655,10 +655,8 @@ private struct TaggedProfile: AnalysisProfile {
 
 
 /// The tests of `IndexedTrack.timeWarp(to:parameters:)`, `IndexedTrack.warped(by:)` and `TimeWarp`.
-///
-/// The name `TimeWarpTests` is taken by the tests of the old implementation on `IndexedContainer`, which `swift test --filter TimeWarpTests` runs as well.
 @Suite(.timeLimit(.minutes(1)))
-struct IndexedTrackTimeWarpTests {
+struct TimeWarpTests {
     
     // MARK: The value
     

@@ -13,7 +13,7 @@ import DetailedDescription
 /// To support efficient lookup, the sustain events are sorted on initialization.
 ///
 /// The contents are not guaranteed to be sorted after iteration, as `container` does not update `contents` when the `onset`s for individual notes change.
-public struct MIDISustainEvents: DisjointIntervals, Sendable, Equatable, DetailedStringConvertible {
+public struct MIDISustainEvents: Sendable, Equatable, DetailedStringConvertible {
     
     public var contents: [Element]
     
@@ -28,7 +28,7 @@ public struct MIDISustainEvents: DisjointIntervals, Sendable, Equatable, Detaile
     /// - Complexity: O(*n*), shifting.
     @inlinable
     public mutating func insert(_ sustain: MIDISustainEvent) {
-        let index = self.firstIndex(after: sustain.onset) ?? self.contents.endIndex
+        let index = self.contents.firstIndex { $0.onset > sustain.onset } ?? self.contents.endIndex
         self.contents.insert(sustain, at: index)
     }
     

@@ -38,7 +38,7 @@ extension MIDIContainer {
                 }
             }
             
-            if track.sustains.contents != track.sustains.sorted() {
+            if !track.sustains.indices.dropFirst().allSatisfy({ track.sustains[$0 &- 1].onset <= track.sustains[$0].onset }) {
                 logger.warning("The sustain events are not sorted.")
                 passed = false
             }
@@ -59,51 +59,29 @@ extension MIDIContainer {
         }
         
         // MARK: - no note overlapping
-        let contents: UnsafeMutableBufferPointer<MIDINote>
-        defer { contents.deallocate() }
         
-        if self.tracks.count == 1,
-           let track = self.tracks.first {
-            var notes = track.notes.contents
-            notes.sort { $0.onset < $1.onset }
-            contents = .allocate(capacity: notes.count)
-            memcpy(contents.baseAddress!, &notes, MemoryLayout<MIDINote>.stride * notes.count)
-        } else {
-            var notes = self.tracks.flatMap(\.notes)
-            notes.sort { $0.onset < $1.onset }
-            contents = .allocate(capacity: notes.count)
-            memcpy(contents.baseAddress!, &notes, MemoryLayout<MIDINote>.stride * notes.count)
+        // The notes of every track, ordered by pitch and then onset, so that consecutive notes on a key are neighbors.
+        var notes = self.tracks.flatMap(\.notes)
+        notes.sort { $0.pitch < $1.pitch || ($0.pitch == $1.pitch && $0.onset < $1.onset) }
+        
+        func description(_ note: MIDINote) -> String {
+            "\(note.onset.formatted(.number.precision(.fractionLength(2)))) - \(note.offset.formatted(.number.precision(.fractionLength(2))))"
         }
         
-        // construct grouped
-        var grouped: [UInt8 : [ReferenceNote]] = [:]
-        contents.forEach { index, element in
-            grouped[element.pitch, default: []].append(ReferenceNote(contents.baseAddress! + index))
-        }
-        
-        // construct dictionary
-        var index = 0 as UInt8
-        while index <= 108 {
-            defer { index &+= 1 }
-            guard let contents = grouped[index] else { continue }
-            var i = 0
-            while i < contents.count - 1 {
-                // overlapping?
-                if contents[i].offset >= contents[i + 1].onset {
-                    func description(_ note: ReferenceNote) -> String {
-                        "\(note.onset.formatted(.number.precision(.fractionLength(2)))) - \(note.offset.formatted(.number.precision(.fractionLength(2))))"
-                    }
-                    
-                    logger.warning(
-                       """
-                       You initialized a MIDI event that overlaps with others. CoreMIDI may produce notes with incorrect lengths.
-                       \(MIDINote.description(for: contents[i].note))(note: \(contents[i].note), range: \(description(contents[i])) and \(description(contents[i + 1])))
-                       """
-                    )
-                    passed = false
-                }
-                i &+= 1
+        var index = 1
+        while index < notes.count {
+            let previous = notes[index &- 1]
+            let current = notes[index]
+            if previous.pitch == current.pitch && previous.offset >= current.onset {
+                logger.warning(
+                   """
+                   You initialized a MIDI event that overlaps with others. CoreMIDI may produce notes with incorrect lengths.
+                   \(MIDINote.description(for: previous.pitch))(note: \(previous.pitch), range: \(description(previous)) and \(description(current)))
+                   """
+                )
+                passed = false
             }
+            index &+= 1
         }
         
         return passed

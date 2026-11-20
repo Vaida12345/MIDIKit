@@ -136,17 +136,49 @@ struct IndexedTrackTests {
         #expect(validated.lanes.starts == indexed.lanes.starts)
     }
     
-    /// On input that needs none of the changed rules, the notes are the same as `IndexedContainer`'s.
-    @Test(arguments: 0..<20)
-    func matchesIndexedContainer(seed: Int) {
-        let notes = cleanInput(seed: UInt64(seed), count: 200)
-        let container = MIDIContainer(tracks: [MIDITrack(notes: notes)])
-        
-        let indexed = IndexedTrack(container)
-        let expected = IndexedContainer(container: container).makeContainer().tracks[0].notes.contents.sorted(by: isOrdered)
-        #expect(indexed.notes == expected)
+    /// `MIDIContainer.indexed(profile:minimumConsecutiveNotesGap:)` is the initializer.
+    @Test
+    func indexedIsTheInitializer() {
+        let container = MIDIContainer(tracks: [MIDITrack(notes: cleanInput(seed: 3, count: 200), sustains: [MIDISustainEvent(onset: 0, offset: 2), MIDISustainEvent(onset: 3, offset: 5)])])
+
+        let indexed = container.indexed()
+        let initialized = IndexedTrack(container)
+        #expect(indexed.notes == initialized.notes)
+        #expect(indexed.sustains == initialized.sustains)
+        #expect(indexed.profile is GenericProfile)
+
+        let tuned = container.indexed(profile: .transkun, minimumConsecutiveNotesGap: 1/16)
+        #expect(tuned.notes == IndexedTrack(container, profile: .transkun, minimumConsecutiveNotesGap: 1/16).notes)
+        #expect(tuned.profile is TranskunProfile)
     }
-    
+
+    @Test
+    func indexedRoundTrip() {
+        let container = MIDIContainer(notes: MIDINotes([MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100), MIDINote(onset: 2, offset: 3, pitch: 64, velocity: 80)]))
+        let result = container.indexed().makeContainer()
+        #expect(result.tracks.count == 1)
+        #expect(result.tracks[0].notes.contents == container.tracks[0].notes.contents)
+    }
+
+    @Test
+    func indexedEmpty() {
+        let indexed = MIDIContainer().indexed()
+        #expect(indexed.notes.isEmpty)
+        #expect(indexed.sustains.isEmpty)
+        let result = indexed.makeContainer()
+        #expect(result.tracks.count == 1)
+        #expect(result.tracks[0].notes.isEmpty)
+    }
+
+    @Test
+    func indexedMergesTracks() {
+        let first = MIDITrack(notes: [MIDINote(onset: 0, offset: 1, pitch: 60, velocity: 100)])
+        let second = MIDITrack(notes: [MIDINote(onset: 2, offset: 3, pitch: 64, velocity: 80)])
+        let result = MIDIContainer(tracks: [first, second]).indexed().makeContainer()
+        #expect(result.tracks.count == 1)
+        #expect(result.tracks[0].notes.count == 2)
+    }
+
     @Test(arguments: 0..<10)
     func lanes(seed: Int) {
         let indexed = track(cleanInput(seed: UInt64(seed) &+ 100, count: 300))

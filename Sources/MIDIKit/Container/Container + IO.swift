@@ -22,13 +22,7 @@ extension MIDIContainer {
     /// - It is 2⁷ × 3 × 5², so 128th notes, triplets, quintuplets, and quintuplets within quintuplets fall on whole ticks.
     /// - It stays well below the 32,767 the file format allows. Common files use 96 to 960 ticks, and some software converts files to its own grid, so the resolution is kept no larger than it needs to be: 9,600 is the smallest value that adds 384 to the 4,800 grid.
     public static let writeResolution: Int16 = 9600
-    
-    @inlinable
-    @available(*, deprecated, renamed: "write(to:)")
-    public func writeData(to destination: FinderItem) throws {
-        try self.write(to: destination)
-    }
-    
+
     /// Writes the MIDI as file to `destination`.
     ///
     /// File write is atomic. Times are rounded to the grid of ``writeResolution``, as described in ``data()``.

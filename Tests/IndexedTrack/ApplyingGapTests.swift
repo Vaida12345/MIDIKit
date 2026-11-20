@@ -12,7 +12,7 @@ import MIDIKit
 import IndexedTrack
 
 
-/// The rules of `IndexedContainer.applyGap`, one branch per case, with its clamp fixed to `onset + minimumNoteLength`.
+/// The rules of ``IndexedTrack/applyingGap()``, one branch per case, with the clamp at `onset + minimumNoteLength`.
 private func expectedGap(_ notes: [MIDINote], ideal: Double, minimumNoteLength: Double) -> [MIDINote] {
     var notes = notes
     for pitch in 21...108 as ClosedRange<UInt8> {
@@ -65,7 +65,7 @@ struct ApplyingGapTests {
         #expect(indexed.applyingGap().notes == [note(0, 1 - 1/8, 60), note(0, 0.95, 62), note(1, 2, 60)])
     }
 
-    /// `IndexedContainer.applyGap` clamped the offset to `duration + minimumNoteLength`, a length rather than a time, which near 0 made this note overlap the next.
+    /// MIDIKit 1.x clamped the offset to `duration + minimumNoteLength`, a length rather than a time, which near 0 made this note overlap the next.
     @Test
     func clampsToATimeNotALength() {
         let indexed = track([note(0, 0.205, 60), note(0.21, 1, 60)])
@@ -74,7 +74,7 @@ struct ApplyingGapTests {
         #expect(result.notes[0].offset < result.notes[1].onset)
     }
 
-    /// The single branchless expression equals the rules of `IndexedContainer.applyGap`, case by case.
+    /// The single branchless expression equals the branched rules, case by case.
     @Test(arguments: 0..<20)
     func matchesTheBranchedRules(seed: Int) {
         let indexed = track(cleanInput(seed: UInt64(seed) &+ 200, count: 300))
