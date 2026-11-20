@@ -188,6 +188,11 @@ struct MIDINoteDetermineTests {
         }
     }
 
+    
+    @Test func determineNote() {
+        print(MIDINote.determine(note: 60))
+    }
+    
 }
 
 
