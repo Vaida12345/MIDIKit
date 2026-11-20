@@ -17,6 +17,9 @@ extension IndexedTrack {
         
         /// The notes grouped by key, see ``IndexedTrack/lanes``.
         let lanes = Mutex<Lanes?>(nil)
+
+        /// The largest offsets of the interval tree over the notes, see ``IndexedTrack/intervalTree``.
+        let intervalTree = Mutex<[Double]?>(nil)
         
     }
     
