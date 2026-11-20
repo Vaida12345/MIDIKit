@@ -7,3 +7,6 @@ DerivedData/
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
 Icon?
+
+# Local benchmark harness and experiments, never committed
+/Benchmarks/
