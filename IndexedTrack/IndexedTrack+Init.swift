@@ -248,7 +248,7 @@ extension IndexedTrack {
         }
         
         for pitch in 21...108 as ClosedRange<UInt8> {
-            guard lanes[lane: pitch].isValidDisjointIntervals() else { return false }
+            guard lanes[pitch].isValidDisjointIntervals() else { return false }
         }
         return true
     }

@@ -75,7 +75,7 @@ extension IndexedTrack {
         /// Returns the lane at the given `laneIndex`.
         ///
         /// - Parameter laneIndex: 21...108.
-        public subscript(lane laneIndex: UInt8) -> Lane {
+        public subscript(_ laneIndex: UInt8) -> Lane {
             precondition(laneIndex >= 21 && laneIndex <= 108)
             
             let index = Int(laneIndex) &- 21

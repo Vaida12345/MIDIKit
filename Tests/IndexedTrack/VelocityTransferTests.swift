@@ -332,7 +332,7 @@ struct VelocityTransferTests {
         #expect(result.rawData == sheet.rawData && !sheet.rawData.isEmpty)
         #expect(result.metaEvents.map(\.data) == sheet.metaEvents.map(\.data))
         #expect(result.profile is MarkedProfile)
-        #expect(result.lanes[lane: 62].map(\.velocity) == [33])
+        #expect(result.lanes[62].map(\.velocity) == [33])
         #expect(IndexedTrack.isValid(notes: result.notes, lanes: result.lanes))
     }
     

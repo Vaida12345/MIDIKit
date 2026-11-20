@@ -186,7 +186,7 @@ struct IndexedTrackTests {
         
         var seen = Set<Int>()
         for pitch in 21...108 as ClosedRange<UInt8> {
-            let lane = lanes[lane: pitch]
+            let lane = lanes[pitch]
             #expect(lane.allSatisfy { $0.pitch == pitch })
             #expect(lane.isValidDisjointIntervals())
             for position in lane.indices {
