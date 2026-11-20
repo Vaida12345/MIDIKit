@@ -20,4 +20,26 @@ public protocol AnalysisProfile: Sendable {
     /// - Parameter track: The track whose notes are grouped.
     func formChords(in track: IndexedTrack) -> IndexedTrack.Chords
 
+    /// Returns `track` without the notes that are artifacts of how it was produced, such as stray quiet notes from a transcriber.
+    ///
+    /// ``IndexedTrack/removingArtifacts(threshold:proximityThreshold:)`` calls this. The implementation must be deterministic, and must return a track that keeps the ``IndexedTrack/profile``, sustains, control events and meta events of `track`, and whose notes still meet the invariants of ``IndexedTrack``. Removing notes and extending the note before a removed one up to where that one ended keeps them.
+    ///
+    /// The default implementation uses ``GenericProfile/removingArtifacts(from:threshold:proximityThreshold:)``.
+    ///
+    /// - Parameters:
+    ///   - track: The track to clean up.
+    ///   - threshold: The velocity at or under which a note may be an artifact. A profile that knows better may ignore it.
+    ///   - proximityThreshold: How close, in beats, an artifact is to the note before it. A profile that knows better may ignore it.
+    func removingArtifacts(from track: IndexedTrack, threshold: UInt8, proximityThreshold: Double) -> IndexedTrack
+
+}
+
+
+extension AnalysisProfile {
+
+    /// Returns `track` without the stray quiet notes, using ``GenericProfile/removingArtifacts(from:threshold:proximityThreshold:)``.
+    public func removingArtifacts(from track: IndexedTrack, threshold: UInt8, proximityThreshold: Double) -> IndexedTrack {
+        GenericProfile().removingArtifacts(from: track, threshold: threshold, proximityThreshold: proximityThreshold)
+    }
+
 }
