@@ -20,6 +20,9 @@ extension IndexedTrack {
 
         /// The largest offsets of the interval tree over the notes, see ``IndexedTrack/intervalTree``.
         let intervalTree = Mutex<[Double]?>(nil)
+
+        /// The notes grouped into chords by the profile, see ``IndexedTrack/chords``.
+        let chords = Mutex<Chords?>(nil)
         
     }
     

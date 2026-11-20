@@ -11,9 +11,14 @@ public struct GenericProfile: AnalysisProfile {
     
     /// Creates the generic profile.
     public init() {
-        
+
     }
-    
+
+    /// Groups the notes of `track` into chords with ``ChordArbiter/generic``.
+    public func formChords(in track: IndexedTrack) -> IndexedTrack.Chords {
+        ChordArbiter.generic.formChords(in: track)
+    }
+
 }
 
 
