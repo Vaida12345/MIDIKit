@@ -1,5 +1,5 @@
 {
-  "originHash" : "da2abe9642e7452fefb66c01c73b7aad14d8e26f5407fa7af1dbd104b366e636",
+  "originHash" : "148afde9ae8691fa1bf43d1dab8b36a545fe5502a892e50426e855352fd5b00e",
   "pins" : [
     {
       "identity" : "colorcomponents",
@@ -8,15 +8,6 @@
       "state" : {
         "revision" : "9dda8c01d3ba7fb84db4157a124a4ca534243f23",
         "version" : "1.1.1"
-      }
-    },
-    {
-      "identity" : "concurrentstream",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Vaida12345/ConcurrentStream.git",
-      "state" : {
-        "revision" : "4893c875edfe2dabbfcd9c0e8349c23b7a41d23b",
-        "version" : "1.2.1"
       }
     },
     {
