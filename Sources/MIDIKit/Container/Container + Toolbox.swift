@@ -40,13 +40,13 @@ extension MIDIContainer {
             MusicSequenceGetTempoTrack(sequence, &tempoTrack)
         }
         
-        tempo.events.forEach { _, event in
+        tempo.metaEvents.forEach { _, event in
             event.withUnsafePointer { pointer in
                 _ = MusicTrackNewMetaEvent(tempoTrack, grid.snap(event.timestamp), pointer)
             }
         }
-        tempo.contents.forEach { _, tempo in
-            MusicTrackNewExtendedTempoEvent(tempoTrack, grid.snap(tempo.timestamp), tempo.tempo)
+        tempo.tempos.forEach { _, tempo in
+            MusicTrackNewExtendedTempoEvent(tempoTrack, grid.snap(tempo.timestamp), tempo.beatsPerMinute)
         }
         
         return sequence
@@ -148,7 +148,7 @@ extension MIDIContainer {
 
                 case kMusicEventType_ExtendedTempo:
                     let tempo = dataPointer.load(as: Double.self)
-                    additionalInfo.tempos.append(MIDITempoTrack.Tempo(timestamp: timeStamp, tempo: tempo))
+                    additionalInfo.tempos.append(MIDITempoTrack.Tempo(timestamp: timeStamp, beatsPerMinute: tempo))
 
                 case kMusicEventType_MIDIRawData:
                     let event = dataPointer.load(as: AudioToolbox.MIDIRawData.self)
@@ -199,7 +199,7 @@ extension MIDIContainer {
             throw OSStatusError(code: -1)
         }
         
-        self.init(tracks: midiTracks, tempo: .init(events: midiTempoTrack.metaEvents, tempos: additionInfo.tempos))
+        self.init(tracks: midiTracks, tempo: .init(metaEvents: midiTempoTrack.metaEvents, tempos: additionInfo.tempos))
     }
     
 }

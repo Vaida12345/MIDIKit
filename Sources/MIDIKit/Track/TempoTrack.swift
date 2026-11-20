@@ -10,14 +10,17 @@ import DetailedDescription
 import AVFoundation
 
 
+/// The tempo track of a MIDI file: its tempo changes, and the meta events it holds, such as the time and key signatures of format-1 files.
 public struct MIDITempoTrack: Sendable, CustomStringConvertible, DetailedStringConvertible, Equatable {
-    
-    public var events: [MIDIMetaEvent]
-    
-    public var contents: [Tempo]
-    
-    
-    /// The time signature of the track: the first valid time-signature meta event in ``events``.
+
+    /// The meta events of the tempo track, such as time and key signatures.
+    public var metaEvents: [MIDIMetaEvent]
+
+    /// The tempo changes.
+    public var tempos: [Tempo]
+
+
+    /// The time signature of the track: the first valid time-signature meta event in ``metaEvents``.
     ///
     /// Setting a time signature replaces the data of the first time-signature event, or adds one at time 0 if there is none. Setting `nil` removes every time-signature event.
     ///
@@ -25,76 +28,114 @@ public struct MIDITempoTrack: Sendable, CustomStringConvertible, DetailedStringC
     public var timeSignature: MIDITimeSignature? {
         get {
             var index = 0
-            while index < self.events.count {
-                if let signature = MIDITimeSignature(self.events[index]) { return signature }
+            while index < self.metaEvents.count {
+                if let signature = MIDITimeSignature(self.metaEvents[index]) { return signature }
                 index &+= 1
             }
             return nil
         }
         set {
             guard let newValue else {
-                self.events.removeAll { $0.type == 0x58 }
+                self.metaEvents.removeAll { $0.type == 0x58 }
                 return
             }
-            if let index = self.events.firstIndex(where: { $0.type == 0x58 }) {
-                self.events[index].data = newValue.data
+            if let index = self.metaEvents.firstIndex(where: { $0.type == 0x58 }) {
+                self.metaEvents[index].data = newValue.data
             } else {
-                self.events.append(newValue.event(at: 0))
+                self.metaEvents.append(newValue.event(at: 0))
             }
         }
     }
-    
-    /// Creates a fresh tempo track
+
+    /// Creates a tempo track.
     ///
-    /// If you don't specify the meta events, a default one of 4/4 will be used on write. The default one is equivalent to
-    /// ```swift
-    /// [MIDIMetaEvent(timestamp: 0.0, type: .timeSignature, data: Data([4, 2, 24, 8]))]
-    /// ```
+    /// Without a time signature, a file is written with 4/4, ``MIDITimeSignature/default``. Without tempos, CoreMIDI writes a tempo of 120 BPM, ``Tempo/default``.
     ///
-    /// CoreMIDI will also insert a default tempo of 120.
-    ///
-    /// - SeeAlso: ``MIDIMetaEvent/defaultTimeSignature``, ``MIDITempoTrack/Tempo/default``
-    public init(events: [MIDITrack.MetaEvent] = [], tempos: [Tempo] = []) {
-        self.events = events
-        self.contents = tempos
+    /// - Parameters:
+    ///   - metaEvents: The meta events, such as time and key signatures.
+    ///   - tempos: The tempo changes.
+    public init(metaEvents: [MIDIMetaEvent] = [], tempos: [Tempo] = []) {
+        self.metaEvents = metaEvents
+        self.tempos = tempos
     }
-    
-    public init(_ contents: [Element]) {
-        self.init(events: [], tempos: contents)
+
+    /// Creates a tempo track with the given tempo changes and no meta events.
+    public init(_ tempos: [Tempo]) {
+        self.init(metaEvents: [], tempos: tempos)
     }
-    
-    
+
+
     public var description: String {
         self.detailedDescription
     }
-    
+
     public func detailedDescription(using descriptor: DetailedDescription.Descriptor<MIDITempoTrack>) -> any DescriptionBlockProtocol {
         descriptor.container {
-            descriptor.sequence(for: \.contents)
-            descriptor.sequence(for: \.events)
+            descriptor.sequence(for: \.tempos)
+            descriptor.sequence(for: \.metaEvents)
         }
     }
-    
+
     public typealias Element = Tempo
-    
+
+
+    // MARK: - Deprecated names
+
+    @available(*, deprecated, renamed: "metaEvents")
+    public var events: [MIDIMetaEvent] {
+        get { self.metaEvents }
+        set { self.metaEvents = newValue }
+    }
+
+    @available(*, deprecated, renamed: "tempos")
+    public var contents: [Tempo] {
+        get { self.tempos }
+        set { self.tempos = newValue }
+    }
+
+    @available(*, deprecated, renamed: "init(metaEvents:tempos:)")
+    public init(events: [MIDIMetaEvent], tempos: [Tempo] = []) {
+        self.init(metaEvents: events, tempos: tempos)
+    }
+
+
+    /// A tempo change.
     public struct Tempo: Sendable, Equatable {
-        
+
+        /// The time of the change, in beats.
         public var timestamp: MusicTimeStamp
-        
-        public var tempo: Double
-        
-        
-        /// The default tempo of 120.
+
+        /// The tempo from ``timestamp`` on, in quarter notes per minute.
+        public var beatsPerMinute: Double
+
+
+        /// The default tempo of 120 BPM.
         ///
-        /// This is the tempo event CoreMIDI uses on write when on is specified.
+        /// This is the tempo CoreMIDI writes when a file specifies none.
         public static var `default`: Tempo {
-            Tempo(timestamp: 0.0, tempo: 120.0)
+            Tempo(timestamp: 0.0, beatsPerMinute: 120.0)
         }
-        
-        public init(timestamp: MusicTimeStamp, tempo: Double) {
+
+        /// Creates a tempo change.
+        ///
+        /// - Parameters:
+        ///   - timestamp: The time of the change, in beats.
+        ///   - beatsPerMinute: The tempo from `timestamp` on, in quarter notes per minute.
+        public init(timestamp: MusicTimeStamp, beatsPerMinute: Double) {
             self.timestamp = timestamp
-            self.tempo = tempo
+            self.beatsPerMinute = beatsPerMinute
+        }
+
+        @available(*, deprecated, renamed: "beatsPerMinute")
+        public var tempo: Double {
+            get { self.beatsPerMinute }
+            set { self.beatsPerMinute = newValue }
+        }
+
+        @available(*, deprecated, renamed: "init(timestamp:beatsPerMinute:)")
+        public init(timestamp: MusicTimeStamp, tempo: Double) {
+            self.init(timestamp: timestamp, beatsPerMinute: tempo)
         }
     }
-    
+
 }

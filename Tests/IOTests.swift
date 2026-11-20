@@ -61,8 +61,8 @@ struct IOTests {
         let read = try MIDIContainer(at: dest)
         
         try #require(read.tracks.count == 1)
-        #expect(read.tempo.events == [.defaultTimeSignature])
-        #expect(read.tempo.contents == [.default])
+        #expect(read.tempo.metaEvents == [.defaultTimeSignature])
+        #expect(read.tempo.tempos == [.default])
         
         let writtenNotes = track.notes.contents
         let readNotes = read.tracks[0].notes.contents

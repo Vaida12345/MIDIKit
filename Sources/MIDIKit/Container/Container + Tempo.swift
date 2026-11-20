@@ -26,8 +26,8 @@ public extension MIDIContainer {
     mutating func normalizeToConstantTempo(_ constantTempo: Double) {
         precondition(constantTempo > 0, "constantTempo must be greater than 0")
         
-        let defaultTempo = MIDITempoTrack.Tempo.default.tempo
-        let sortedTempoEvents = self.tempo.contents.sorted(on: \.timestamp, by: <)
+        let defaultTempo = MIDITempoTrack.Tempo.default.beatsPerMinute
+        let sortedTempoEvents = self.tempo.tempos.sorted(on: \.timestamp, by: <)
         
         func areClose(_ lhs: Double, _ rhs: Double) -> Bool {
             abs(lhs - rhs) <= 1e-9
@@ -36,13 +36,13 @@ public extension MIDIContainer {
         // If the track already has the requested constant tempo, no rescaling is needed.
         let initialTempoAtZero: Double = sortedTempoEvents
             .last(where: { $0.timestamp <= 0 })?
-            .tempo ?? defaultTempo
+            .beatsPerMinute ?? defaultTempo
         let hasConstantTempo = areClose(initialTempoAtZero, constantTempo)
-            && sortedTempoEvents.allSatisfy { areClose($0.tempo, constantTempo) }
+            && sortedTempoEvents.allSatisfy { areClose($0.beatsPerMinute, constantTempo) }
         if hasConstantTempo { return }
         
         var effectiveTempoEvents: [MIDITempoTrack.Tempo] = [
-            MIDITempoTrack.Tempo(timestamp: 0, tempo: initialTempoAtZero)
+            MIDITempoTrack.Tempo(timestamp: 0, beatsPerMinute: initialTempoAtZero)
         ]
         for event in sortedTempoEvents where event.timestamp >= 0 {
             if event.timestamp == 0 {
@@ -61,7 +61,7 @@ public extension MIDIContainer {
             var index = 1
             while index < effectiveTempoEvents.count {
                 let previous = effectiveTempoEvents[index &- 1]
-                scaled += (effectiveTempoEvents[index].timestamp - previous.timestamp) * constantTempo / previous.tempo
+                scaled += (effectiveTempoEvents[index].timestamp - previous.timestamp) * constantTempo / previous.beatsPerMinute
                 buffer[index] = scaled
                 index &+= 1
             }
@@ -87,7 +87,7 @@ public extension MIDIContainer {
             }
             let segment = low &- 1
             let event = effectiveTempoEvents[segment]
-            return segmentStarts[segment] + (timestamp - event.timestamp) * constantTempo / event.tempo
+            return segmentStarts[segment] + (timestamp - event.timestamp) * constantTempo / event.beatsPerMinute
         }
         
         self.tracks.mutatingForEach { _, track in
@@ -115,11 +115,11 @@ public extension MIDIContainer {
         }
 
         // The tempo track's own meta events, such as time and key signatures.
-        for index in self.tempo.events.indices {
-            self.tempo.events[index].timestamp = scaledTime(at: self.tempo.events[index].timestamp)
+        for index in self.tempo.metaEvents.indices {
+            self.tempo.metaEvents[index].timestamp = scaledTime(at: self.tempo.metaEvents[index].timestamp)
         }
 
-        self.tempo.contents = [MIDITempoTrack.Tempo(timestamp: 0, tempo: constantTempo)]
+        self.tempo.tempos = [MIDITempoTrack.Tempo(timestamp: 0, beatsPerMinute: constantTempo)]
     }
     
     /// Deprecated compatibility wrapper for ``normalizeToConstantTempo(_:)``.

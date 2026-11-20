@@ -145,7 +145,7 @@ extension IndexedTrack {
         
         var channelEvents = tracks.flatMap(\.channelEvents.contents)
         channelEvents.sort { $0.onset < $1.onset }
-        var metaEvents = tracks.flatMap(\.metaEvents) + source.tempo.events // the tempo track holds the time and key signatures of format-1 files
+        var metaEvents = tracks.flatMap(\.metaEvents) + source.tempo.metaEvents // the tempo track holds the time and key signatures of format-1 files
         metaEvents.sort { $0.timestamp < $1.timestamp }
         var rawData = tracks.flatMap(\.rawData)
         rawData.sort { $0.timestamp < $1.timestamp }
@@ -230,7 +230,7 @@ extension IndexedTrack {
             channelEvents: MIDIChannelEvents(self.channelEvents)
         )
         track.rawData = self.rawData
-        return MIDIContainer(tracks: [track], tempo: MIDITempoTrack(tempos: [MIDITempoTrack.Tempo(timestamp: 0, tempo: 120)]))
+        return MIDIContainer(tracks: [track], tempo: MIDITempoTrack(tempos: [MIDITempoTrack.Tempo(timestamp: 0, beatsPerMinute: 120)]))
     }
     
     /// Returns whether the notes are sorted by (onset, pitch), and every lane is valid disjoint intervals.

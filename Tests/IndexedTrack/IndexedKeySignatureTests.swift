@@ -146,7 +146,7 @@ struct IndexedKeySignatureTests {
         #expect(inTrack.storedKeySignature?.sharps == -3)
 
         // Format-1 files keep it in the tempo track.
-        let inTempoTrack = IndexedTrack(MIDIContainer(tracks: [MIDITrack(notes: notes)], tempo: MIDITempoTrack(events: [keySignatureEvent(4, at: 0)])))
+        let inTempoTrack = IndexedTrack(MIDIContainer(tracks: [MIDITrack(notes: notes)], tempo: MIDITempoTrack(metaEvents: [keySignatureEvent(4, at: 0)])))
         #expect(inTempoTrack.storedKeySignature?.sharps == 4)
 
         // The earliest wins, wherever it is.
@@ -171,7 +171,7 @@ struct IndexedKeySignatureTests {
 
     @Test
     func storedKeySignatureSurvivesARoundTrip() {
-        let indexed = IndexedTrack(MIDIContainer(tracks: [MIDITrack(notes: scaleTrack(tonic: 0).notes)], tempo: MIDITempoTrack(events: [keySignatureEvent(-2, at: 0)])))
+        let indexed = IndexedTrack(MIDIContainer(tracks: [MIDITrack(notes: scaleTrack(tonic: 0).notes)], tempo: MIDITempoTrack(metaEvents: [keySignatureEvent(-2, at: 0)])))
         #expect(IndexedTrack(indexed.makeContainer()).storedKeySignature?.sharps == -2)
     }
 

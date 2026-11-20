@@ -51,16 +51,16 @@ struct TimeSignatureTests {
 
         tempo.timeSignature = MIDITimeSignature(3, 4)
         #expect(tempo.timeSignature == MIDITimeSignature(3, 4))
-        #expect(tempo.events.count == 1 && tempo.events[0].timestamp == 0)
+        #expect(tempo.metaEvents.count == 1 && tempo.metaEvents[0].timestamp == 0)
 
         // Setting again replaces the event instead of adding one.
         tempo.timeSignature = MIDITimeSignature(6, 8)
         #expect(tempo.timeSignature == MIDITimeSignature(6, 8))
-        #expect(tempo.events.count == 1)
+        #expect(tempo.metaEvents.count == 1)
 
         tempo.timeSignature = nil
         #expect(tempo.timeSignature == nil)
-        #expect(tempo.events.isEmpty)
+        #expect(tempo.metaEvents.isEmpty)
     }
 
     @Test

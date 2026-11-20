@@ -100,30 +100,30 @@ extension MIDITempoTrack {
         // The tempo in effect at `shift` is the last one at or before it.
         var inEffect: Int? = nil
         var index = 0
-        while index < self.contents.count {
-            if self.contents[index].timestamp <= shift && inEffect.isNil(or: { self.contents[$0].timestamp <= self.contents[index].timestamp }) {
+        while index < self.tempos.count {
+            if self.tempos[index].timestamp <= shift && inEffect.isNil(or: { self.tempos[$0].timestamp <= self.tempos[index].timestamp }) {
                 inEffect = index
             }
             index &+= 1
         }
 
         var tempos: [Tempo] = []
-        tempos.reserveCapacity(self.contents.count)
+        tempos.reserveCapacity(self.tempos.count)
         index = 0
-        while index < self.contents.count {
-            let tempo = self.contents[index]
+        while index < self.tempos.count {
+            let tempo = self.tempos[index]
             if index == inEffect {
-                tempos.append(Tempo(timestamp: 0, tempo: tempo.tempo))
+                tempos.append(Tempo(timestamp: 0, beatsPerMinute: tempo.beatsPerMinute))
             } else if tempo.timestamp > shift {
-                tempos.append(Tempo(timestamp: tempo.timestamp - shift, tempo: tempo.tempo))
+                tempos.append(Tempo(timestamp: tempo.timestamp - shift, beatsPerMinute: tempo.beatsPerMinute))
             }
             index &+= 1
         }
-        self.contents = tempos
+        self.tempos = tempos
 
         index = 0
-        while index < self.events.count {
-            self.events[index].timestamp = Swift.max(self.events[index].timestamp - shift, 0)
+        while index < self.metaEvents.count {
+            self.metaEvents[index].timestamp = Swift.max(self.metaEvents[index].timestamp - shift, 0)
             index &+= 1
         }
     }

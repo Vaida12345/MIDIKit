@@ -99,7 +99,7 @@ struct IndexedTrackTests {
             metaEvents: [MIDIMetaEvent(timestamp: 1.5, type: 1, data: Data([1]))],
             channelEvents: MIDIChannelEvents([MIDIChannelEvent(onset: 2.5, message: .controlChange(controller: 0, value: 64))])
         )
-        let container = MIDIContainer(tracks: [source], tempo: MIDITempoTrack(tempos: [MIDITempoTrack.Tempo(timestamp: 0, tempo: 60)]))
+        let container = MIDIContainer(tracks: [source], tempo: MIDITempoTrack(tempos: [MIDITempoTrack.Tempo(timestamp: 0, beatsPerMinute: 60)]))
         let indexed = IndexedTrack(container)
         
         #expect(indexed.notes == [note(2, 4, 60)])
@@ -194,7 +194,7 @@ struct IndexedTrackTests {
         first.rawData = [gmOn]
         var second = MIDITrack(notes: [MIDINote(onset: 1, offset: 2, pitch: 62, velocity: 100)])
         second.rawData = [yamaha]
-        let indexed = IndexedTrack(MIDIContainer(tracks: [first, second], tempo: MIDITempoTrack(tempos: [MIDITempoTrack.Tempo(timestamp: 0, tempo: 120)])))
+        let indexed = IndexedTrack(MIDIContainer(tracks: [first, second], tempo: MIDITempoTrack(tempos: [MIDITempoTrack.Tempo(timestamp: 0, beatsPerMinute: 120)])))
 
         #expect(indexed.rawData == [yamaha, gmOn]) // sorted by timestamp
         #expect(indexed.applyingGap().rawData == indexed.rawData)

@@ -27,7 +27,7 @@ import AVFAudio
 /// - 110
 /// - 111
 /// ```
-public struct MIDIMetaEvent: Sendable, Equatable {
+public struct MIDIMetaEvent: Sendable, Hashable {
     
     public var timestamp: MusicTimeStamp
     

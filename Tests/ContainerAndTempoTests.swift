@@ -39,9 +39,9 @@ struct MIDIContainerTests {
     }
 
     @Test func initWithCustomTempo() {
-        let tempo = MIDITempoTrack(tempos: [MIDITempoTrack.Tempo(timestamp: 0, tempo: 100)])
+        let tempo = MIDITempoTrack(tempos: [MIDITempoTrack.Tempo(timestamp: 0, beatsPerMinute: 100)])
         let container = MIDIContainer(tracks: [], tempo: tempo)
-        #expect(container.tempo.contents[0].tempo == 100)
+        #expect(container.tempo.tempos[0].beatsPerMinute == 100)
     }
 
     @Test func equatable() {
@@ -107,25 +107,25 @@ struct MIDITempoTrackTests {
 
     @Test func initDefault() {
         let tempo = MIDITempoTrack()
-        #expect(tempo.events.isEmpty)
-        #expect(tempo.contents.isEmpty)
+        #expect(tempo.metaEvents.isEmpty)
+        #expect(tempo.tempos.isEmpty)
     }
 
     @Test func initWithTempos() {
         let tempo = MIDITempoTrack(tempos: [
-            MIDITempoTrack.Tempo(timestamp: 0, tempo: 120),
-            MIDITempoTrack.Tempo(timestamp: 10, tempo: 140),
+            MIDITempoTrack.Tempo(timestamp: 0, beatsPerMinute: 120),
+            MIDITempoTrack.Tempo(timestamp: 10, beatsPerMinute: 140),
         ])
-        #expect(tempo.contents.count == 2)
-        #expect(tempo.contents[0].tempo == 120)
-        #expect(tempo.contents[1].tempo == 140)
+        #expect(tempo.tempos.count == 2)
+        #expect(tempo.tempos[0].beatsPerMinute == 120)
+        #expect(tempo.tempos[1].beatsPerMinute == 140)
     }
 
     @Test func setTimeSignatureDefault() {
         var tempo = MIDITempoTrack()
         tempo.timeSignature = MIDITimeSignature(3, 4)
-        #expect(tempo.events.count == 1)
-        let event = tempo.events[0]
+        #expect(tempo.metaEvents.count == 1)
+        let event = tempo.metaEvents[0]
         #expect(event.type == 0x58) // time signature meta event type
         #expect(event.data[0] == 3) // numerator
         #expect(event.data[1] == 2) // log2(4) = 2
@@ -135,21 +135,21 @@ struct MIDITempoTrackTests {
         var tempo = MIDITempoTrack()
         tempo.timeSignature = MIDITimeSignature(4, 4)
         tempo.timeSignature = MIDITimeSignature(6, 8)
-        #expect(tempo.events.count == 1) // should update, not append
-        #expect(tempo.events[0].data[0] == 6) // numerator
-        #expect(tempo.events[0].data[1] == 3) // log2(8) = 3
+        #expect(tempo.metaEvents.count == 1) // should update, not append
+        #expect(tempo.metaEvents[0].data[0] == 6) // numerator
+        #expect(tempo.metaEvents[0].data[1] == 3) // log2(8) = 3
     }
 
     @Test func tempoDefaultIs120() {
         let tempo = MIDITempoTrack.Tempo.default
         #expect(tempo.timestamp == 0)
-        #expect(tempo.tempo == 120)
+        #expect(tempo.beatsPerMinute == 120)
     }
 
     @Test func tempoInit() {
-        let tempo = MIDITempoTrack.Tempo(timestamp: 5.0, tempo: 80.0)
+        let tempo = MIDITempoTrack.Tempo(timestamp: 5.0, beatsPerMinute: 80.0)
         #expect(tempo.timestamp == 5.0)
-        #expect(tempo.tempo == 80.0)
+        #expect(tempo.beatsPerMinute == 80.0)
     }
 
 }
@@ -163,6 +163,13 @@ struct MIDIMetaEventTests {
         #expect(event.timestamp == 1.0)
         #expect(event.type == 0x51)
         #expect(event.data == Data([0x07, 0xA1, 0x20]))
+    }
+
+    @Test func hashable() {
+        let key = MIDIMetaEvent(timestamp: 0, type: 0x59, data: Data([2, 0]))
+        let events: Set<MIDIKit.MIDIMetaEvent> = [key, key, .defaultTimeSignature]
+        #expect(events.count == 2)
+        #expect(events.contains(MIDIMetaEvent(timestamp: 0, type: 0x59, data: Data([2, 0]))))
     }
 
     @Test func defaultTimeSignature() {

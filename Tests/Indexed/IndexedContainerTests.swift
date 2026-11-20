@@ -129,7 +129,7 @@ struct IndexedContainerTests {
                     sustains: [MIDISustainEvent(onset: 0.5, offset: 1.5)]
                 )
             ],
-            tempo: MIDITempoTrack(tempos: [MIDITempoTrack.Tempo(timestamp: 0, tempo: 60)])
+            tempo: MIDITempoTrack(tempos: [MIDITempoTrack.Tempo(timestamp: 0, beatsPerMinute: 60)])
         )
 
         let indexed = container.indexed()
@@ -150,8 +150,8 @@ struct IndexedContainerTests {
                 )
             ],
             tempo: MIDITempoTrack(tempos: [
-                MIDITempoTrack.Tempo(timestamp: 0, tempo: 120),
-                MIDITempoTrack.Tempo(timestamp: 4, tempo: 60),
+                MIDITempoTrack.Tempo(timestamp: 0, beatsPerMinute: 120),
+                MIDITempoTrack.Tempo(timestamp: 4, beatsPerMinute: 60),
             ])
         )
 
