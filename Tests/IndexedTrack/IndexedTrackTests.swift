@@ -178,6 +178,26 @@ struct IndexedTrackTests {
         #expect(again.sustains == indexed.sustains)
     }
     
+    /// The initializer for validated input keeps everything as given, and builds the lanes on first use.
+    @Test
+    func validatedInitializer() {
+        let source = MIDITrack(
+            notes: cleanInput(seed: 2, count: 100),
+            sustains: [MIDISustainEvent(onset: 0, offset: 2), MIDISustainEvent(onset: 3, offset: 5)],
+            metaEvents: [MIDIMetaEvent(timestamp: 1, type: 1, data: Data([1]))],
+            controlEvents: MIDIControlEvents([MIDIControlEvent(onset: 0.5, channel: 0, velocity: 64)])
+        )
+        let indexed = IndexedTrack(MIDIContainer(tracks: [source]))
+        let validated = IndexedTrack(validated: indexed.notes, sustains: indexed.sustains, controlEvents: indexed.controlEvents, metaEvents: indexed.metaEvents, profile: indexed.profile)
+        
+        #expect(validated.notes == indexed.notes)
+        #expect(validated.sustains == indexed.sustains)
+        #expect(validated.controlEvents == indexed.controlEvents)
+        #expect(validated.metaEvents == indexed.metaEvents)
+        #expect(validated.lanes.members == indexed.lanes.members)
+        #expect(validated.lanes.starts == indexed.lanes.starts)
+    }
+    
     /// On input that needs none of the changed rules, the notes are the same as `IndexedContainer`'s.
     @Test(arguments: 0..<20)
     func matchesIndexedContainer(seed: Int) {
@@ -208,7 +228,7 @@ struct IndexedTrackTests {
         #expect(seen == Set(indexed.notes.indices))
         
         // The lanes stored by the initializer equal the ones the lazy path builds.
-        let fresh = IndexedTrack(notes: indexed.notes, sustains: indexed.sustains, controlEvents: indexed.controlEvents, metaEvents: indexed.metaEvents, profile: indexed.profile)
+        let fresh = IndexedTrack(validated: indexed.notes, sustains: indexed.sustains, controlEvents: indexed.controlEvents, metaEvents: indexed.metaEvents, profile: indexed.profile)
         let lazy = fresh.lanes
         #expect(lazy.members == lanes.members)
         #expect(lazy.starts == lanes.starts)

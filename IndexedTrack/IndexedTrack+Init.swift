@@ -171,6 +171,34 @@ extension IndexedTrack {
         assert(Self.isValid(notes: notes, lanes: lanes, sustains: sustains), "The cleaned-up track breaks its invariants.")
     }
     
+    /// Creates an indexed track from notes and events that already meet its invariants, without cleaning them up.
+    ///
+    /// Transforms use this to return a new track: their output is already sorted and cleaned up, so no sort or cleanup is needed, and creating the track costs O(1). The ``lanes`` and other derived structures are computed on first use, as the new notes may differ from the ones they were built for.
+    ///
+    /// - Precondition: The arguments meet the invariants of ``IndexedTrack``, checked with an `assert`:
+    ///   - `notes` are sorted by (onset, pitch), with pitches in `21...108`;
+    ///   - the notes on each key are disjoint: each ends before the next one starts;
+    ///   - `sustains` are sorted and disjoint;
+    ///   - `controlEvents` are sorted by onset, and `metaEvents` by timestamp.
+    ///
+    /// - Parameters:
+    ///   - notes: The cleaned-up notes.
+    ///   - sustains: The merged sustains.
+    ///   - controlEvents: The control events.
+    ///   - metaEvents: The meta events.
+    ///   - profile: The choices the analyses of this track make.
+    package init(validated notes: [MIDINote], sustains: [MIDISustainEvent], controlEvents: [MIDIControlEvent], metaEvents: [MIDIMetaEvent], profile: any AnalysisProfile) {
+        self.notes = notes
+        self.sustains = sustains
+        self.controlEvents = controlEvents
+        self.metaEvents = metaEvents
+        self.profile = profile
+        
+        assert(Self.isValid(notes: notes, lanes: self.lanes, sustains: sustains), "The notes or sustains break the invariants of an indexed track.")
+        assert(controlEvents.indices.dropFirst().allSatisfy { controlEvents[$0 &- 1].onset <= controlEvents[$0].onset }, "The control events must be sorted by onset.")
+        assert(metaEvents.indices.dropFirst().allSatisfy { metaEvents[$0 &- 1].timestamp <= metaEvents[$0].timestamp }, "The meta events must be sorted by timestamp.")
+    }
+    
     /// Returns the track as a container with a single track, at a constant 120 BPM.
     ///
     /// - Complexity: O(*n*), where *n* is the number of events.
