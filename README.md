@@ -118,8 +118,8 @@ let gapped = track.modifyingNotes { notes in
 let warp = transcription.timeWarp(to: score)
 let aligned = transcription.warped(by: warp)
 
-// Gives the score the dynamics of the performance.
-let expressive = score.applyingVelocities(from: transcription, warp: warp)
+// Gives the score the dynamics of the performance. This needs the warp the other way, from the score to the transcription, which it computes itself.
+let expressive = score.applyingVelocities(from: transcription)
 ```
 
 ### Interval queries
@@ -136,7 +136,7 @@ let next = sustains.firstIndex(after: 12.5)
 
 ## Migrating from 1.x
 
-| 1.x | 2.0 |
+| 1.x | 2.0.0 |
 |---|---|
 | `IndexedContainer`, `container.indexed()` | `IndexedTrack`, `container.indexed(profile:)` |
 | `TranscriptionAlgorithm.transkun`, `.pianoTranscription` | the `.transkun` and `.pianoTranscription` analysis profiles |
