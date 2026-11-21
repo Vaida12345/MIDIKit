@@ -93,6 +93,24 @@ let cleaned = track
 try cleaned.makeContainer().write(to: "/path/to/cleaned.mid")
 ```
 
+### Writing a transform
+
+A transform of your own edits a copy of the notes in `modifyingNotes(_:)`, finding them through the `noteIndices` of the lanes and chords. Positions are always the subscripts of a lane or a chord, starting at 0; `noteIndices` gives each note's index in `track.notes`.
+
+```swift
+// End each note an eighth of a beat before the next note on its key.
+let lanes = track.lanes
+let gapped = track.modifyingNotes { notes in
+    for lane in lanes {
+        for (current, next) in zip(lane.noteIndices, lane.noteIndices.dropFirst()) {
+            notes[current].offset = min(notes[current].offset, max(notes[next].onset - 1/8, notes[current].onset + 1/128))
+        }
+    }
+}
+```
+
+`modifyingNotes(_:)` keeps the order and keys of the notes. To move onsets, change keys, or add or remove notes, use `replacing(notes:sustains:)`, then index the result.
+
 ### Aligning two performances
 
 ```swift

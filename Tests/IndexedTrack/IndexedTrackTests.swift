@@ -203,7 +203,7 @@ struct IndexedTrackTests {
             #expect(lane.allSatisfy { $0.pitch == pitch })
             #expect(lane.isValidDisjointIntervals())
             for position in lane.indices {
-                let index = lane.noteIndex(at: position)
+                let index = lane.noteIndices[position]
                 #expect(indexed.notes[index] == lane[position])
                 seen.insert(index)
             }

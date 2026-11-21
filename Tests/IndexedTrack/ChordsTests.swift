@@ -34,7 +34,7 @@ private struct SingleNoteProfile: AnalysisProfile {
 
 /// The chords as lists of note indices, and whether each is a glissando.
 private func partition(_ chords: IndexedTrack.Chords) -> (members: [[Int]], glissando: [Bool]) {
-    (chords.map { chord in chord.indices.map { chord.noteIndex(at: $0) } }, chords.map { $0.features.contains(.glissando) })
+    (chords.map { chord in chord.indices.map { chord.noteIndices[$0] } }, chords.map { $0.features.contains(.glissando) })
 }
 
 /// A run of `count` short notes a semitone apart, 0.1 beat apart.
@@ -131,7 +131,7 @@ struct ChordsTests {
         let chord = chords[0]
         #expect(chord.count == 3)
         #expect(chord.map(\.pitch) == [60, 72, 64])
-        #expect((0..<3).map { chord.noteIndex(at: $0) } == [0, 1, 2])
+        #expect((0..<3).map { chord.noteIndices[$0] } == [0, 1, 2])
         #expect(chord.leadingOnset == 1)
         #expect(chord.maxOffset == 3)
         #expect(chord.duration == 2)

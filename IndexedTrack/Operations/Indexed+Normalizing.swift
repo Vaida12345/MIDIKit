@@ -46,7 +46,7 @@ extension IndexedTrack {
             let nextOnset = chords[index &+ 1].leadingOnset
             var position = 0
             while position < chord.count {
-                let noteIndex = chord.noteIndex(at: position)
+                let noteIndex = chord.noteIndices[position]
                 notes[noteIndex].offset = Self.normalizedOffset(onset: notes[noteIndex].onset, offset: notes[noteIndex].offset, nextOnset: nextOnset, sustains: sustains, preserve: preserve)
                 position &+= 1
             }

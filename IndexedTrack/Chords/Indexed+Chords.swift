@@ -85,15 +85,13 @@ extension IndexedTrack {
         @inlinable public var startIndex: Int { 0 }
         @inlinable public var endIndex: Int { self.members.count }
 
-        /// Returns the index in ``IndexedTrack/notes`` of the note at the given position in this chord.
-        ///
-        /// - Parameter index: A position in this chord, in `0..<count`.
-        @inlinable package func noteIndex(at index: Int) -> Int { members[members.startIndex &+ index] }
+        /// The indices in ``IndexedTrack/notes`` of the notes of this chord, in the same order: `notes[noteIndices[p]]` is `self[p]` for every position `p`.
+        @inlinable public var noteIndices: NoteIndices { NoteIndices(members: self.members) }
 
         /// Returns the note at the given position in this chord.
         ///
-        /// - Parameter index: A position in this chord, in `0..<count`.
-        @inlinable public subscript(index: Int) -> MIDINote { self.notes[self.noteIndex(at: index)] }
+        /// - Parameter index: A position in this chord, in `0..<count`. It is not an index in ``IndexedTrack/notes``; ``noteIndices`` gives those.
+        @inlinable public subscript(index: Int) -> MIDINote { self.notes[self.noteIndices[index]] }
 
         /// The onset of the earliest note.
         ///

@@ -62,8 +62,8 @@ extension IndexedTrack {
     
     /// The notes of an ``IndexedTrack``, grouped by key.
     ///
-    /// Use ``subscript(lane:)`` to get the notes of a single key.
-    public struct Lanes: Sendable {
+    /// A collection of the 88 lanes, indexed by key, `21...108`: `for lane in track.lanes` visits every key from the lowest, and ``subscript(_:)`` gets the notes of a single key.
+    public struct Lanes: RandomAccessCollection, Sendable {
         /// note indices grouped by key, by onset within each key
         let members: [Int]
         /// key k is `members[starts[k]..<starts[k + 1]]`
@@ -72,9 +72,14 @@ extension IndexedTrack {
         /// The CoW copy of `IndexedTrack`'s notes.
         let notes: [MIDINote]
         
-        /// Returns the lane at the given `laneIndex`.
+        /// The lowest key, 21.
+        public var startIndex: UInt8 { 21 }
+        /// One past the highest key, 108.
+        public var endIndex: UInt8 { 109 }
+        
+        /// Returns the lane of the given key.
         ///
-        /// - Parameter laneIndex: 21...108.
+        /// - Parameter laneIndex: The key, `21...108`.
         public subscript(_ laneIndex: UInt8) -> Lane {
             precondition(laneIndex >= 21 && laneIndex <= 108)
             
@@ -106,15 +111,13 @@ extension IndexedTrack {
         @inlinable public var startIndex: Int { 0 }
         @inlinable public var endIndex: Int { self.members.count }
         
-        /// Returns the index in ``IndexedTrack/notes`` of the note at the given position in this lane.
-        ///
-        /// - Parameter index: A position in this lane, in `0..<count`.
-        @inlinable package func noteIndex(at index: Int) -> Int { members[members.startIndex &+ index] }
+        /// The indices in ``IndexedTrack/notes`` of the notes of this lane, in the same order: `notes[noteIndices[p]]` is `self[p]` for every position `p`.
+        @inlinable public var noteIndices: NoteIndices { NoteIndices(members: self.members) }
         
         /// Returns the note at the given position in this lane.
         ///
-        /// - Parameter index: A position in this lane, in `0..<count`.
-        @inlinable public subscript(index: Int) -> MIDINote { return self.notes[self.noteIndex(at: index)] }
+        /// - Parameter index: A position in this lane, in `0..<count`. It is not an index in ``IndexedTrack/notes``; ``noteIndices`` gives those.
+        @inlinable public subscript(index: Int) -> MIDINote { return self.notes[self.noteIndices[index]] }
     }
     
 }
