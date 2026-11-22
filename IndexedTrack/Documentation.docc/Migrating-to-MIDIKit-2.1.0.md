@@ -48,7 +48,7 @@ If the caller relied on durations surviving the warp, or on a gap other than the
 
 `IndexedContainer` was a `final class`, and most of its operations mutated it: `applyGap`, `normalize`, `projection`, `alignFirstNoteToZero`, `applyVelocity(to:)`, `mergeNotesInSameInterval`, and even `removingArtifacts`, which also returned a container. ``IndexedTrack/IndexedTrack`` is an immutable `struct`, and every operation returns a new track.
 
-- A call whose result is dropped does nothing. None of the transforms is `@discardableResult`, so treat every "result of call to … is unused" warning on `applyingGap`, `normalizing`, `removingArtifacts`, `warped`, `applyingVelocities` or `modifyingNotes` as a bug.
+- A call whose result is dropped does nothing. None of the transforms is `@discardableResult`, so treat every "result of call to … is unused" warning on `applyingGap`, `normalizing`, `removingArtifacts`, `mergingNotesInSameInterval`, `warped`, `applyingVelocities` or `modifyingNotes` as a bug.
 - Code that shared one `IndexedContainer` between several owners, and relied on seeing each other's mutations, now needs to pass the new track along explicitly.
 - Writes through `ReferenceNote` (`note.velocity = …` on `container.notes[pitch]` or on a chord) are gone. In 2.1.0, edit offsets, velocities and channels with ``IndexedTrack/IndexedTrack/modifyingNotes(_:)``, finding the notes through `noteIndices`; move, add or remove notes with ``IndexedTrack/IndexedTrack/replacing(notes:sustains:)``, then index the result. See <doc:WritingTransforms>. In 2.0.0, edit a `MIDIContainer`, such as `track.makeContainer()`, and index it again.
 
@@ -174,6 +174,7 @@ What a client needs:
 | `normalize(preserve:optimizeFor:)` (mutating) | `normalizing(preserve:)` → `IndexedTrack` | chords come from the profile; the final pass ends each note strictly before the next on its key |
 | `IndexedContainer.PreserveSettings` | `IndexedTrack.PreserveSettings` | same cases and raw values; lost `description` and `localizedStringResource` (see 14) |
 | `removingArtifacts(threshold:proximityThreshold:)` | same name → `IndexedTrack` | goes through the profile; keeps channel and meta events; see 1.7 |
+| `mergeNotesInSameInterval(in:threshold:difference:)` (mutating) | `mergingNotesInSameInterval(of:threshold:difference:)` → `IndexedTrack` | added after 2.1.0, not in 2.0.0 or 2.1.0; same rule and same timeline as 1.x; keeps sustains, channel, meta and raw events, which 1.x dropped; no longer traps when `difference` is greater than a velocity |
 | `alignFirstNoteToZero()` | `MIDIContainer.trimLeadingSilence()` / `trimmingLeadingSilence()`, before indexing | differs: a sustain held at the first note is clipped to 0 instead of dropped, earlier channel, meta and raw events move to 0 instead of being dropped, and the tempo in effect at the first note moves to 0 |
 | `chords(optimizeFor:)` | `chords` (property) | see section 6 |
 | `downbeats(beatsPerMeasure:prior:optimizeFor:)` | `downbeats(prior:)` | see 1.9 and section 8 |
@@ -382,7 +383,6 @@ A client that used any of these must drop the feature, keep its own copy of the 
 - `keyFeatures()`, `KeyFeature`, `KeyFeatures`, `Pivot`, `Pivots`, `Pivots.append(to:)`
 - `baselineBarLength(beatsPerMeasure:)`, `baselineBarLength(beatsPerMeasure:samples:)`, `localBarRegions(...)`, `LocalBarRegion`
 - `sustainCoverage`, `sustainDurations()`
-- `mergeNotesInSameInterval(in:threshold:difference:)`
 - `splittingHands`
 - `VelocityProvider.inferVelocity(pitch:onset:tolerance:)` as a per-note lookup
 - `Chord.makeSingleHandedChords`, `Chord.Spec(duration:)`, `Chord.Features.preferLeftHand` and `.preferRightHand`
@@ -421,7 +421,7 @@ Run these over the integration's diff and over the whole client, since unchanged
 ```bash
 rg -n 'applyingVelocities|applyVelocity|VelocityProvider|inferVelocity'   # 1.1: the receiver is the track that receives velocities; the result is used
 rg -n 'timeWarp\(|warped\(by|projection\(|TimeWarp'                        # 1.2, 1.3: warp direction; durations; the gap; not copied from the old README
-rg -n 'applyingGap|normalizing\(|removingArtifacts|warped\(by|modifyingNotes' # 1.4: results used, not dropped
+rg -n 'applyingGap|normalizing\(|removingArtifacts|mergingNotesInSameInterval|warped\(by|modifyingNotes' # 1.4: results used, not dropped
 rg -n 'noteIndices|modifyingNotes|replacing\(notes'                        # 2: positions and note indices not mixed; modifyingNotes keeps counts, onsets and keys
 rg -n '\.channel\b'                                                         # 1.5 and 10.1: not used as a track index or as a controller number
 rg -n 'sustains|MIDISustainEvent'                                           # 1.6, 10.3: no merged-pedal assumptions; no mutation; no sorted()

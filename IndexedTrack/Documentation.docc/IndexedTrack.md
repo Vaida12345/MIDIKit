@@ -68,6 +68,7 @@ To write transforms of your own, outside this package, see <doc:WritingTransform
 - ``IndexedTrack/IndexedTrack/normalizing(preserve:)``
 - ``IndexedTrack/IndexedTrack/PreserveSettings``
 - ``IndexedTrack/IndexedTrack/removingArtifacts(threshold:proximityThreshold:)``
+- ``IndexedTrack/IndexedTrack/mergingNotesInSameInterval(of:threshold:difference:)``
 
 ### Alignment and Dynamics
 
